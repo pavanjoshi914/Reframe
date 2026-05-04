@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Reframe — open in Electron</title>
+    <style>
+      body { font-family: system-ui, sans-serif; background: #0e0f12; color: #e6e8ec; margin: 0; padding: 4rem 2rem; max-width: 640px; margin: 0 auto; }
+      h1 { color: #4ade80; }
+      code { background: #1a1d23; padding: 0.15rem 0.4rem; border-radius: 4px; }
+      ul { line-height: 1.8; }
+    </style>
+  </head>
+  <body>
+    <h1>Reframe dev server</h1>
+    <p>This is the Vite dev server for an Electron app. The UI runs inside an Electron window — opening this URL in a browser won't show anything useful.</p>
+    <p>If the Electron window didn't open automatically, check:</p>
+    <ul>
+      <li><code>ELECTRON_RUN_AS_NODE</code> is unset in your shell (<code>env | grep ELECTRON</code>)</li>
+      <li>You ran <code>npm run dev</code> from the project root</li>
+      <li>The HUD pill is small (~620×60). Look near the top-center of your primary display.</li>
+    </ul>
+    <p>The renderer entry points (loaded by Electron) are: <code>/hud.html</code>, <code>/picker.html</code>, <code>/editor.html</code>.</p>
+  </body>
+</html>
