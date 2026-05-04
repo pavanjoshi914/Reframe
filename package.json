@@ -1,0 +1,88 @@
+{
+  "name": "reframe",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Reframe — cross-platform screen recorder + post-recording editor (Linux/Windows/macOS).",
+  "author": {
+    "name": "Pavan Joshi",
+    "email": "pavanj914@gmail.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "screen-recorder",
+    "screen-capture",
+    "video-editor",
+    "webcam",
+    "electron",
+    "react",
+    "typescript",
+    "vite",
+    "linux",
+    "windows",
+    "macos",
+    "mp4",
+    "webm",
+    "ffmpeg"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "electron": "node scripts/electron.mjs",
+    "start": "npm run build && node scripts/electron.mjs",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "package": "npm run build && electron-builder",
+    "package:linux": "npm run build && electron-builder --linux",
+    "package:win": "npm run build && electron-builder --win",
+    "package:mac": "npm run build && electron-builder --mac"
+  },
+  "dependencies": {
+    "lucide-react": "^0.460.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vite-plugin-electron": "^0.28.8",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  },
+  "build": {
+    "appId": "app.reframe.desktop",
+    "productName": "Reframe",
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.video"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-electron/
+release/
+*.log
+*.tsbuildinfo
+.DS_Store
+.vscode/
+.idea/
+.claude/
+docs/
