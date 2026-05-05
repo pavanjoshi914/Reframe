@@ -30,6 +30,13 @@ export function Preview() {
   const layoutPreset = useEditor((s) => s.layoutPreset);
   const webcam = useEditor((s) => s.webcam);
   const setWebcam = useEditor((s) => s.setWebcam);
+  const selectedItemId = useEditor((s) => s.selectedItemId);
+  const updateItem = useEditor((s) => s.updateItem);
+  const selectedZoom = useMemo(() => {
+    if (!selectedItemId) return null;
+    const it = items.find((i) => i.id === selectedItemId);
+    return it && it.kind === 'zoom' ? it : null;
+  }, [selectedItemId, items]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const webcamRef = useRef<HTMLVideoElement>(null);
@@ -258,6 +265,49 @@ export function Preview() {
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   }
 
+  // Focus crosshair drag — converts pointer position on the stage to a
+  // (zoomTargetX, zoomTargetY) pair in the unzoomed-inner reference frame.
+  // The crosshair sits in stage coordinates so it's unaffected by an active
+  // zoom transform on the inner div; users can drag freely whether or not
+  // the playhead is currently inside the zoom region.
+  const focusDragRef = useRef(false);
+  function pointerToFocus(clientX: number, clientY: number): { x: number; y: number } | null {
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const r = stage.getBoundingClientRect();
+    const stageX = (clientX - r.left) / r.width;
+    const stageY = (clientY - r.top) / r.height;
+    const pad = (1 - innerScale) / 2;
+    const innerX = (stageX - pad) / innerScale;
+    const innerY = (stageY - pad) / innerScale;
+    return { x: Math.max(0, Math.min(1, innerX)), y: Math.max(0, Math.min(1, innerY)) };
+  }
+  function onFocusDown(e: React.PointerEvent) {
+    if (!selectedZoom) return;
+    e.stopPropagation();
+    e.preventDefault();
+    focusDragRef.current = true;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const f = pointerToFocus(e.clientX, e.clientY);
+    if (f) updateItem(selectedZoom.id, { zoomTargetX: f.x, zoomTargetY: f.y });
+  }
+  function onFocusMove(e: React.PointerEvent) {
+    if (!focusDragRef.current || !selectedZoom) return;
+    const f = pointerToFocus(e.clientX, e.clientY);
+    if (f) updateItem(selectedZoom.id, { zoomTargetX: f.x, zoomTargetY: f.y });
+  }
+  function onFocusUp(e: React.PointerEvent) {
+    if (!focusDragRef.current) return;
+    focusDragRef.current = false;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  }
+  const focusLeftPct = selectedZoom
+    ? ((1 - innerScale) / 2 + (selectedZoom.zoomTargetX ?? 0.5) * innerScale) * 100
+    : 0;
+  const focusTopPct = selectedZoom
+    ? ((1 - innerScale) / 2 + (selectedZoom.zoomTargetY ?? 0.5) * innerScale) * 100
+    : 0;
+
   return (
     <div className="flex h-full w-full items-center justify-center p-6">
       <div
@@ -362,6 +412,22 @@ export function Preview() {
             <div className="max-w-[80%] rounded-lg bg-black/70 px-4 py-2 text-center text-sm font-medium text-white shadow-lg ring-1 ring-white/10 backdrop-blur-sm">
               {activeAnnotation.text || ''}
             </div>
+          </div>
+        )}
+
+        {selectedZoom && fileUrl && (
+          <div
+            onPointerDown={onFocusDown}
+            onPointerMove={onFocusMove}
+            onPointerUp={onFocusUp}
+            onPointerCancel={onFocusUp}
+            className="absolute z-20 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full bg-emerald-500/30 ring-2 ring-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.6)] active:cursor-grabbing"
+            style={{ left: `${focusLeftPct}%`, top: `${focusTopPct}%` }}
+            title="Drag to set zoom focus"
+          >
+            <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-emerald-300/80" />
+            <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-emerald-300/80" />
+            <span className="block h-1.5 w-1.5 rounded-full bg-emerald-300" />
           </div>
         )}
       </div>

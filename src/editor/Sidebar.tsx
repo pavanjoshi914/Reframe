@@ -1,12 +1,23 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, Squircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, Squircle, Trash2, ZoomIn, Gauge } from 'lucide-react';
 import { useEditor, type PolishPreset } from './store';
 import { runExport } from './export';
 
+const ZOOM_PRESETS = [1.25, 1.5, 1.8, 2.2, 3.5, 5];
+const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2];
+
 export function Sidebar() {
+  const selectedItem = useEditor((s) => s.items.find((it) => it.id === s.selectedItemId) ?? null);
+  const showSelection = selectedItem && (selectedItem.kind === 'zoom' || selectedItem.kind === 'speed');
+
   return (
     <div className="flex h-full w-[320px] flex-col border-l border-white/5 bg-[#0e0f12]">
       <div className="flex-1 overflow-y-auto">
+        {showSelection && (
+          <Section title="Selection" defaultOpen>
+            <SelectionSection />
+          </Section>
+        )}
         <Section title="Composition" defaultOpen>
           <CompositionSection />
         </Section>
@@ -16,6 +27,184 @@ export function Sidebar() {
       </div>
       <ExportSection />
     </div>
+  );
+}
+
+function SelectionSection() {
+  const item = useEditor((s) => s.items.find((it) => it.id === s.selectedItemId) ?? null);
+  const updateItem = useEditor((s) => s.updateItem);
+  const removeItem = useEditor((s) => s.removeItem);
+  const selectItem = useEditor((s) => s.selectItem);
+
+  if (!item) return null;
+
+  if (item.kind === 'zoom') {
+    const zoom = item.zoomLevel ?? 1.5;
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-xs text-white/70">
+            <ZoomIn size={12} /> Zoom Level
+          </span>
+          <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[11px] text-emerald-300">
+            {zoom.toFixed(2)}×
+          </span>
+        </div>
+        <PresetGrid
+          presets={ZOOM_PRESETS}
+          active={zoom}
+          fmt={(v) => `${v}×`}
+          onPick={(v) => updateItem(item.id, { zoomLevel: v })}
+        />
+        <NumberInput
+          label="Custom"
+          value={zoom}
+          min={1}
+          max={10}
+          step={0.05}
+          suffix="×"
+          onChange={(v) => updateItem(item.id, { zoomLevel: v })}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <NumberInput
+            label="Focus X"
+            value={item.zoomTargetX ?? 0.5}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => updateItem(item.id, { zoomTargetX: v })}
+          />
+          <NumberInput
+            label="Focus Y"
+            value={item.zoomTargetY ?? 0.5}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => updateItem(item.id, { zoomTargetY: v })}
+          />
+        </div>
+        <p className="text-[11px] text-white/40">Tip: drag the green crosshair on the preview to set focus.</p>
+        <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label="Delete Zoom" />
+      </div>
+    );
+  }
+
+  if (item.kind === 'speed') {
+    const rate = item.speed ?? 1.5;
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-xs text-white/70">
+            <Gauge size={12} /> Playback Speed
+          </span>
+          <span className="rounded bg-sky-500/15 px-1.5 py-0.5 font-mono text-[11px] text-sky-300">
+            {rate.toFixed(2)}×
+          </span>
+        </div>
+        <PresetGrid
+          presets={SPEED_PRESETS}
+          active={rate}
+          fmt={(v) => `${v}×`}
+          onPick={(v) => updateItem(item.id, { speed: v })}
+        />
+        <NumberInput
+          label="Custom"
+          value={rate}
+          min={0.1}
+          max={10}
+          step={0.05}
+          suffix="×"
+          onChange={(v) => updateItem(item.id, { speed: v })}
+        />
+        <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label="Delete Speed Region" />
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function PresetGrid({
+  presets,
+  active,
+  fmt,
+  onPick
+}: {
+  presets: number[];
+  active: number;
+  fmt: (v: number) => string;
+  onPick: (v: number) => void;
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-1.5">
+      {presets.map((p) => {
+        const isActive = Math.abs(p - active) < 0.001;
+        return (
+          <button
+            key={p}
+            onClick={() => onPick(p)}
+            className={
+              'rounded-md border px-2 py-1.5 text-xs font-medium transition-colors ' +
+              (isActive
+                ? 'border-emerald-400 bg-emerald-500/15 text-emerald-200'
+                : 'border-white/10 bg-black/30 text-white/70 hover:bg-white/5')
+            }
+          >
+            {fmt(p)}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function NumberInput({
+  label,
+  value,
+  min,
+  max,
+  step,
+  suffix,
+  onChange
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  suffix?: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] text-white/60">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <input
+          type="number"
+          value={Number(value.toFixed(2))}
+          min={min}
+          max={max}
+          step={step}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            if (Number.isFinite(next)) onChange(Math.max(min, Math.min(max, next)));
+          }}
+          className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-sm text-white/90 focus:border-emerald-400/60 focus:outline-none"
+        />
+        {suffix && <span className="text-xs text-white/40">{suffix}</span>}
+      </div>
+    </label>
+  );
+}
+
+function DeleteBtn({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex w-full items-center justify-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/20"
+    >
+      <Trash2 size={12} /> {label}
+    </button>
   );
 }
 
