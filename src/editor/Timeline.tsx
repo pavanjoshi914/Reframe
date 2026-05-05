@@ -325,54 +325,17 @@ function SelectedItemInspector() {
 
   if (!item) return null;
 
+  // Zoom / Speed item editing lives in the right sidebar's Selection panel
+  // (presets, custom value, focus crosshair). This inline strip keeps just the
+  // identifying summary, annotation-text inline edit, and a delete shortcut.
+  const showSidebarHint = item.kind === 'zoom' || item.kind === 'speed';
+
   return (
     <div className="flex items-center gap-3 border-b border-white/5 bg-[#0e0f12] px-3 py-1.5 text-xs">
       <span className="font-medium uppercase tracking-wide text-white/60">{item.kind}</span>
       <span className="font-mono text-white/40">
         {formatTime(item.startMs)} → {formatTime(item.endMs)}
       </span>
-
-      {item.kind === 'zoom' && (
-        <>
-          <NumberField
-            label="Zoom"
-            value={item.zoomLevel ?? 1.5}
-            min={1}
-            max={5}
-            step={0.1}
-            suffix="×"
-            onChange={(v) => updateItem(item.id, { zoomLevel: v })}
-          />
-          <NumberField
-            label="Target X"
-            value={item.zoomTargetX ?? 0.5}
-            min={0}
-            max={1}
-            step={0.05}
-            onChange={(v) => updateItem(item.id, { zoomTargetX: v })}
-          />
-          <NumberField
-            label="Target Y"
-            value={item.zoomTargetY ?? 0.5}
-            min={0}
-            max={1}
-            step={0.05}
-            onChange={(v) => updateItem(item.id, { zoomTargetY: v })}
-          />
-        </>
-      )}
-
-      {item.kind === 'speed' && (
-        <NumberField
-          label="Rate"
-          value={item.speed ?? 1.5}
-          min={0.25}
-          max={4}
-          step={0.05}
-          suffix="×"
-          onChange={(v) => updateItem(item.id, { speed: v })}
-        />
-      )}
 
       {item.kind === 'annotation' && (
         <input
@@ -381,6 +344,10 @@ function SelectedItemInspector() {
           placeholder="Annotation text"
           className="flex-1 rounded border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/80 placeholder:text-white/30"
         />
+      )}
+
+      {showSidebarHint && (
+        <span className="text-[11px] text-white/40">Adjust level + focus in the right sidebar →</span>
       )}
 
       <div className="flex-1" />
@@ -392,40 +359,6 @@ function SelectedItemInspector() {
         <Trash2 size={11} /> Delete
       </button>
     </div>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  min,
-  max,
-  step,
-  suffix,
-  onChange
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  suffix?: string;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <label className="flex items-center gap-1.5">
-      <span className="text-white/50">{label}</span>
-      <input
-        type="number"
-        value={value}
-        min={min}
-        max={max}
-        step={step}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-16 rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-right text-xs text-white/80"
-      />
-      {suffix && <span className="text-white/40">{suffix}</span>}
-    </label>
   );
 }
 
