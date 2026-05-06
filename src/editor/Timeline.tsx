@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { Plus, ZoomIn, Scissors, MessageSquare, Gauge, Trash2, type LucideIcon } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Plus, Minus, ZoomIn, Scissors, MessageSquare, Gauge, Trash2, Maximize2, type LucideIcon } from 'lucide-react';
 import { useEditor, type LaneItem, type LaneKind } from './store';
 
 const LANES: { kind: LaneKind; label: string; key: string; icon: LucideIcon; color: string; chip: string }[] = [
@@ -10,12 +10,42 @@ const LANES: { kind: LaneKind; label: string; key: string; icon: LucideIcon; col
 ];
 
 const LANE_LABEL_W = 100;
+// Right-side breathing room past the last tick. The playhead line sits at
+// trackWidth exactly when currentMs === durationMs, and its diamond marker
+// extends ~5px on each side; this margin keeps both fully visible without
+// triggering a horizontal scrollbar in fit mode.
+const TRACK_END_PAD = 12;
+const PPS_MIN = 10;
+const PPS_MAX = 800;
+const PPS_STEP = 1.25; // multiplicative step for +/- buttons
+
+// Log-scale mapping so the slider feels even across the 80× range. The store
+// clamps to [10, 800]; we mirror that here.
+function ppsToSlider(pps: number) {
+  const t = (Math.log(pps) - Math.log(PPS_MIN)) / (Math.log(PPS_MAX) - Math.log(PPS_MIN));
+  return Math.max(0, Math.min(1, t));
+}
+function sliderToPps(t: number) {
+  return Math.exp(Math.log(PPS_MIN) + t * (Math.log(PPS_MAX) - Math.log(PPS_MIN)));
+}
 
 function formatTime(ms: number) {
   const total = Math.max(0, ms / 1000);
   const m = Math.floor(total / 60);
   const s = Math.floor(total % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// Tick labels include one decimal once the step drops below a second so
+// adjacent ticks (e.g. 0.5s and 1.0s) don't both render as "0:00".
+function formatTickLabel(sec: number, step: number) {
+  const total = Math.max(0, sec);
+  const m = Math.floor(total / 60);
+  const s = total - m * 60;
+  if (step >= 1) {
+    return `${m}:${String(Math.round(s)).padStart(2, '0')}`;
+  }
+  return `${m}:${s.toFixed(1).padStart(4, '0')}`;
 }
 
 export function Timeline() {
@@ -32,6 +62,23 @@ export function Timeline() {
 
   const trackRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Fit-to-width is the default. Once the user manually zooms (Ctrl+scroll or
+  // pinch), we leave their pps alone until they hit the Fit button. Long
+  // videos may bottom out at the 10px/sec clamp in the store and overflow —
+  // that's the standard NLE behavior.
+  const [fitToWidth, setFitToWidth] = useState(true);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setContainerWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Keyboard shortcuts: Z/T/A/S add items, Delete removes selected
   useEffect(() => {
@@ -58,18 +105,42 @@ export function Timeline() {
   // and the ruler doesn't overrun. Math.ceil here previously rounded a 10.3s
   // recording up to 11s, producing a phantom 0:11 tick + empty trailing space.
   const totalSec = Math.max(1, durationMs / 1000);
+
+  // When in fit mode, recompute pps to fill the available track area whenever
+  // the container resizes or the duration changes. We round to avoid thrashing
+  // the store on sub-pixel layout shifts.
+  useEffect(() => {
+    if (!fitToWidth) return;
+    if (containerWidth <= 0 || totalSec <= 0) return;
+    const trackArea = Math.max(0, containerWidth - LANE_LABEL_W - TRACK_END_PAD);
+    if (trackArea <= 0) return;
+    const target = Math.round((trackArea / totalSec) * 100) / 100;
+    if (Math.abs(target - pixelsPerSecond) > 0.5) {
+      setPixelsPerSecond(target);
+    }
+  }, [fitToWidth, containerWidth, totalSec, pixelsPerSecond, setPixelsPerSecond]);
+
   const trackWidth = totalSec * pixelsPerSecond;
 
+  // Pick a tick step targeting ~70-100px between labels — same idea as a
+  // standard NLE ruler. Drops below 1s once the zoom is high enough that
+  // half-second ticks have room to breathe.
+  const tickStep = useMemo(() => {
+    if (pixelsPerSecond < 30) return 5;
+    if (pixelsPerSecond < 80) return 1;
+    if (pixelsPerSecond < 200) return 0.5;
+    if (pixelsPerSecond < 400) return 0.25;
+    return 0.1;
+  }, [pixelsPerSecond]);
+
   const ticks = useMemo(() => {
-    const step = pixelsPerSecond < 30 ? 5 : pixelsPerSecond < 80 ? 1 : 0.5;
     const out: number[] = [];
-    // Integer-step ticks up to (but not past) the real duration. The +0.001
-    // epsilon lets a tick land exactly on the end when duration is integral.
-    for (let s = 0; s <= totalSec + 0.001; s += step) {
-      if (s <= totalSec + 0.001) out.push(s);
-    }
+    // Iterate in integer multiples of step to avoid float drift (e.g. 0.1
+    // accumulating to 0.30000000000000004 across many additions).
+    const count = Math.floor(totalSec / tickStep + 0.001);
+    for (let i = 0; i <= count; i++) out.push(i * tickStep);
     return out;
-  }, [totalSec, pixelsPerSecond]);
+  }, [totalSec, tickStep]);
 
   function msFromClientX(clientX: number) {
     const track = trackRef.current;
@@ -100,11 +171,15 @@ export function Timeline() {
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   }
 
+  function applyManualZoom(nextPps: number) {
+    if (fitToWidth) setFitToWidth(false);
+    setPixelsPerSecond(nextPps);
+  }
   function handleWheel(e: React.WheelEvent) {
     if (!e.ctrlKey && !e.metaKey) return; // let normal scroll pan
     e.preventDefault();
     const factor = e.deltaY > 0 ? 0.9 : 1.1;
-    setPixelsPerSecond(pixelsPerSecond * factor);
+    applyManualZoom(pixelsPerSecond * factor);
   }
 
   const playheadPx = (currentMs / 1000) * pixelsPerSecond;
@@ -118,18 +193,57 @@ export function Timeline() {
           <span className="text-[11px]">Press Z / T / A / S to add lane items</span>
         </div>
         <div className="flex items-center gap-2 text-[11px]">
-          <span>Scroll</span>
+          <button
+            onClick={() => applyManualZoom(pixelsPerSecond / PPS_STEP)}
+            disabled={pixelsPerSecond <= PPS_MIN + 0.01}
+            className="flex h-5 w-5 items-center justify-center rounded border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-40"
+            title="Zoom out"
+            aria-label="Zoom out"
+          >
+            <Minus size={11} />
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1000}
+            value={Math.round(ppsToSlider(pixelsPerSecond) * 1000)}
+            onChange={(e) => applyManualZoom(sliderToPps(Number(e.target.value) / 1000))}
+            className="h-1 w-28 cursor-pointer accent-emerald-500"
+            aria-label="Timeline zoom"
+            title="Timeline zoom"
+          />
+          <button
+            onClick={() => applyManualZoom(pixelsPerSecond * PPS_STEP)}
+            disabled={pixelsPerSecond >= PPS_MAX - 0.01}
+            className="flex h-5 w-5 items-center justify-center rounded border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-40"
+            title="Zoom in"
+            aria-label="Zoom in"
+          >
+            <Plus size={11} />
+          </button>
+          <button
+            onClick={() => setFitToWidth(true)}
+            disabled={fitToWidth}
+            className={
+              'flex items-center gap-1 rounded border border-white/10 px-1.5 py-0.5 ' +
+              (fitToWidth
+                ? 'bg-emerald-500/15 text-emerald-300'
+                : 'bg-white/5 text-white/70 hover:bg-white/10')
+            }
+            title="Fit timeline to width"
+          >
+            <Maximize2 size={11} />
+            Fit
+          </button>
           <span className="text-white/30">|</span>
-          <span>Pan</span>
-          <span className="text-white/30">|</span>
-          <span>Ctrl+Scroll Zoom</span>
+          <span>Pinch / Ctrl+Scroll Zoom</span>
         </div>
       </div>
 
       <SelectedItemInspector />
 
-      <div ref={scrollRef} className="overflow-x-auto" onWheel={handleWheel}>
-        <div style={{ width: LANE_LABEL_W + trackWidth }}>
+      <div ref={scrollRef} className="min-w-0 overflow-x-auto" onWheel={handleWheel}>
+        <div style={{ width: LANE_LABEL_W + trackWidth + TRACK_END_PAD }}>
           {/* time ruler */}
           <div className="relative h-6 border-b border-white/5" style={{ paddingLeft: LANE_LABEL_W }}>
             <div
@@ -147,7 +261,7 @@ export function Timeline() {
                   className="absolute top-0 h-full border-l border-white/10"
                   style={{ left: t * pixelsPerSecond }}
                 >
-                  <span className="ml-1 text-[10px] text-white/40">{formatTime(t * 1000)}</span>
+                  <span className="ml-1 text-[10px] text-white/40">{formatTickLabel(t, tickStep)}</span>
                 </div>
               ))}
             </div>
