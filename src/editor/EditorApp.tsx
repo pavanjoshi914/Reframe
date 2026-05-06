@@ -127,10 +127,16 @@ export function EditorApp() {
         </div>
       </div>
 
-      {/* main */}
-      <div className="flex flex-1 overflow-hidden">
-        <div className="flex flex-1 flex-col">
-          <div ref={previewWrapRef} className="flex flex-1 flex-col overflow-hidden bg-[#0a0b0e]">
+      {/* main — three card panels (preview, timeline, sidebar) inset on the
+          page background so the gaps between them read as gutters, openscreen-
+          style. Padding / gap collapse to 0 while previewWrap is fullscreened
+          so the rounded corners don't show on a 100vw element. */}
+      <div className="flex flex-1 gap-2 overflow-hidden p-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div
+            ref={previewWrapRef}
+            className="flex flex-1 flex-col overflow-hidden rounded-lg border border-white/5 bg-[#0e0f12]"
+          >
             <div className="flex-1 overflow-hidden">
               <Preview />
             </div>

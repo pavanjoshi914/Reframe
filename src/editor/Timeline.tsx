@@ -185,7 +185,7 @@ export function Timeline() {
   const playheadPx = (currentMs / 1000) * pixelsPerSecond;
 
   return (
-    <div className="flex flex-col border-t border-white/5 bg-[#0a0b0e]">
+    <div className="flex flex-col overflow-hidden rounded-lg border border-white/5 bg-[#0e0f12]">
       <div className="flex items-center justify-between border-b border-white/5 px-3 py-1.5 text-xs text-white/50">
         <div className="flex items-center gap-3">
           <span className="font-mono text-white/80">{formatTime(currentMs)} / {formatTime(durationMs)}</span>
