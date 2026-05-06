@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, shell, protocol, dialog, globalShortcut } from 'electron';
+import { app, BrowserWindow, Menu, ipcMain, desktopCapturer, shell, protocol, dialog, globalShortcut } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -274,6 +274,11 @@ ipcMain.handle('export:save', async (evt, req: { defaultName: string; data: Arra
 
 app.whenReady().then(() => {
   console.log('[main] electron ready, creating HUD');
+
+  // Drop the default OS menubar (File/Edit/View/Window/Help). The editor's
+  // top toolbar already exposes File/Edit/View — keeping both produced a
+  // duplicate-looking header.
+  Menu.setApplicationMenu(null);
 
   protocol.handle('media', async (req) => {
     const url = new URL(req.url);
