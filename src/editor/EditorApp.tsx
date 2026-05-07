@@ -139,7 +139,7 @@ export function EditorApp() {
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div
             ref={previewWrapRef}
-            className="flex flex-1 flex-col overflow-hidden rounded-lg border border-white/5 bg-[#0e0f12]"
+            className="flex flex-1 flex-col overflow-hidden rounded-xl border border-white/5 bg-[#0e0f12]"
           >
             <div className="flex-1 overflow-hidden">
               <Preview />
