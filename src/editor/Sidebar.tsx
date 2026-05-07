@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, Squircle, Trash2, ZoomIn, Gauge } from 'lucide-react';
-import { useEditor, type PolishPreset } from './store';
+import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, Squircle, Trash2, ZoomIn, Gauge, Crop } from 'lucide-react';
+import { useEditor, type PolishPreset, DEFAULT_CROP_REGION } from './store';
 import { runExport } from './export';
+import { CropModal } from './CropModal';
 
 const ZOOM_PRESETS = [1.25, 1.5, 1.8, 2.2, 3.5, 5];
 const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2];
@@ -366,10 +367,17 @@ function StyleSection() {
 
 // Video Effects — was previously buried behind a Style → Advanced toggle.
 // Promoted to its own section with a 2-col slider grid for parity with the
-// openscreen reference.
+// openscreen reference, plus a Crop Video entry point.
 function VideoEffectsSection() {
   const effects = useEditor((s) => s.effects);
   const setEffect = useEditor((s) => s.setEffect);
+  const cropRegion = useEditor((s) => s.cropRegion);
+  const setCropRegion = useEditor((s) => s.setCropRegion);
+  const fileUrl = useEditor((s) => s.fileUrl);
+  const [cropOpen, setCropOpen] = useState(false);
+
+  const cropActive =
+    cropRegion.x !== 0 || cropRegion.y !== 0 || cropRegion.width !== 1 || cropRegion.height !== 1;
 
   return (
     <div className="space-y-3">
@@ -379,6 +387,25 @@ function VideoEffectsSection() {
         <RangeRow label="Roundness" value={effects.roundnessPx} min={0} max={40} step={1} onChange={(v) => setEffect('roundnessPx', v)} fmt={(v) => `${v}px`} />
         <RangeRow label="Padding" value={effects.paddingPct} min={0} max={100} step={1} onChange={(v) => setEffect('paddingPct', v)} fmt={(v) => `${v}%`} />
       </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => setCropOpen(true)}
+          disabled={!fileUrl}
+          className="flex flex-1 items-center justify-center gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Crop size={14} /> {cropActive ? 'Edit Crop' : 'Crop Video'}
+        </button>
+        {cropActive && (
+          <button
+            onClick={() => setCropRegion(DEFAULT_CROP_REGION)}
+            className="rounded-md border border-white/10 bg-white/5 px-2 text-xs text-white/70 hover:bg-white/10"
+            title="Clear crop"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+      {cropOpen && <CropModal onClose={() => setCropOpen(false)} />}
     </div>
   );
 }

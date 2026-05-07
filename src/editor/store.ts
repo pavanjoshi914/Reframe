@@ -23,6 +23,11 @@ export type PolishPreset = 'subtle' | 'soft' | 'dramatic';
 
 export type WebcamShape = 'circle' | 'square' | 'rounded';
 
+// Crop region in normalized 0..1 coordinates relative to the source frame.
+// Identity = full frame. Persisted with the project so saved files round-trip.
+export type CropRegion = { x: number; y: number; width: number; height: number };
+export const DEFAULT_CROP_REGION: CropRegion = { x: 0, y: 0, width: 1, height: 1 };
+
 export type EditorState = {
   recording: RecordingMeta | null;
   fileUrl: string | null;
@@ -31,10 +36,15 @@ export type EditorState = {
   currentMs: number;
   playing: boolean;
   videoIntrinsicSize: { width: number; height: number } | null;
+  // Live ref to the main <video> DOM element. Set by Preview on mount, used
+  // by overlays like CropModal that need to render the same frames the editor
+  // is showing (the element is already primed and at the right currentTime).
+  mainVideoEl: HTMLVideoElement | null;
 
   aspect: AspectRatio;
 
   // Composition
+  cropRegion: CropRegion;
   background: { mode: BackgroundMode; value: string };
   webcam: { x: number; y: number; size: number; enabled: boolean; shape: WebcamShape }; // x,y in 0..1 (normalized)
   layoutPreset: 'pip-bottom-right' | 'pip-bottom-left' | 'pip-top-right' | 'pip-top-left' | 'side-by-side';
@@ -61,10 +71,12 @@ export type EditorState = {
   // Actions
   setRecording: (r: RecordingMeta, fileUrl: string, webcamFileUrl?: string | null) => void;
   setVideoIntrinsicSize: (size: { width: number; height: number } | null) => void;
+  setMainVideoEl: (el: HTMLVideoElement | null) => void;
   setCurrent: (ms: number) => void;
   setPlaying: (p: boolean) => void;
   setAspect: (a: AspectRatio) => void;
   setBackground: (b: { mode: BackgroundMode; value: string }) => void;
+  setCropRegion: (r: CropRegion) => void;
   setWebcam: (w: Partial<EditorState['webcam']>) => void;
   setLayoutPreset: (p: EditorState['layoutPreset']) => void;
   setPolish: (p: PolishPreset) => void;
@@ -85,6 +97,7 @@ export type EditorState = {
 
 export type SerializedProject = {
   aspect: AspectRatio;
+  cropRegion?: CropRegion;
   background: EditorState['background'];
   webcam: EditorState['webcam'];
   layoutPreset: EditorState['layoutPreset'];
@@ -95,6 +108,10 @@ export type SerializedProject = {
   exportQuality: EditorState['exportQuality'];
   items: LaneItem[];
 };
+
+function clamp01(n: number) {
+  return Math.max(0, Math.min(1, n));
+}
 
 const presetEffects: Record<PolishPreset, EditorState['effects']> = {
   subtle: { roundnessPx: 6, paddingPct: 25, shadowPct: 6, motionBlur: 0, blurBg: false },
@@ -110,9 +127,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   currentMs: 0,
   playing: false,
   videoIntrinsicSize: null,
+  mainVideoEl: null,
 
   aspect: '16:9',
 
+  cropRegion: DEFAULT_CROP_REGION,
   background: { mode: 'gradient', value: 'linear-gradient(135deg,#fb923c,#ec4899)' },
   // x,y are top-left position normalized to the stage (0..1).
   // size is the webcam's diameter as a fraction of stage HEIGHT — guarantees
@@ -147,10 +166,21 @@ export const useEditor = create<EditorState>((set, get) => ({
       webcam: webcamFileUrl ? { ...s.webcam, enabled: true } : s.webcam
     })),
   setVideoIntrinsicSize: (size) => set({ videoIntrinsicSize: size }),
+  setMainVideoEl: (el) => set({ mainVideoEl: el }),
   setCurrent: (ms) => set({ currentMs: ms }),
   setPlaying: (p) => set({ playing: p }),
   setAspect: (a) => set({ aspect: a }),
   setBackground: (b) => set({ background: b }),
+  setCropRegion: (r) => set({
+    cropRegion: {
+      x: clamp01(r.x),
+      y: clamp01(r.y),
+      // Min crop size of 5% — prevents the user from accidentally collapsing
+      // the crop to zero via numeric inputs and matches openscreen's floor.
+      width: Math.max(0.05, Math.min(1 - clamp01(r.x), r.width)),
+      height: Math.max(0.05, Math.min(1 - clamp01(r.y), r.height))
+    }
+  }),
   setWebcam: (w) => set((s) => ({ webcam: { ...s.webcam, ...w } })),
   setLayoutPreset: (p) => {
     // Corner positions assume a 16:9 stage and the current webcam size; user
@@ -207,6 +237,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     return {
       aspect: s.aspect,
+      cropRegion: s.cropRegion,
       background: s.background,
       webcam: s.webcam,
       layoutPreset: s.layoutPreset,
@@ -221,6 +252,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   hydrate: (data) =>
     set({
       aspect: data.aspect,
+      cropRegion: data.cropRegion ?? DEFAULT_CROP_REGION,
       background: data.background,
       webcam: data.webcam,
       layoutPreset: data.layoutPreset,

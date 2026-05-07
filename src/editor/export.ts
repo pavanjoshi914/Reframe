@@ -1,4 +1,4 @@
-import { useEditor } from './store';
+import { useEditor, type CropRegion } from './store';
 import { primeVideo } from './videoPrime';
 
 type ProgressFn = (phase: string, pct: number) => void;
@@ -52,7 +52,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
     throw new Error('GIF export requires ffmpeg post-processing — coming in a future update. For now, please pick MP4.');
   }
 
-  const { fileUrl, webcamFileUrl, durationMs, items, background, effects, webcam, layoutPreset, aspect, exportQuality, exportFormat, videoMuted } = state;
+  const { fileUrl, webcamFileUrl, durationMs, items, background, effects, webcam, layoutPreset, aspect, exportQuality, exportFormat, videoMuted, cropRegion } = state;
 
   function loadVideo(src: string) {
     return new Promise<HTMLVideoElement>((resolve, reject) => {
@@ -196,7 +196,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
       const innerY = (outH - innerH) / 2;
       const wcW = innerW * 0.4;
       const vidW = innerW - wcW - 12;
-      drawVideoBox(ctx!, video, innerX, innerY, vidW, innerH, effects.roundnessPx, activeZoom);
+      drawVideoBox(ctx!, video, innerX, innerY, vidW, innerH, effects.roundnessPx, cropRegion, activeZoom);
       if (webcamVideo) {
         drawWebcamVideo(ctx!, webcamVideo, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx, false);
       } else {
@@ -207,7 +207,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
       const innerH = outH * innerScale;
       const innerX = (outW - innerW) / 2;
       const innerY = (outH - innerH) / 2;
-      drawVideoBox(ctx!, video, innerX, innerY, innerW, innerH, effects.roundnessPx, activeZoom);
+      drawVideoBox(ctx!, video, innerX, innerY, innerW, innerH, effects.roundnessPx, cropRegion, activeZoom);
       if (webcam.enabled) {
         const wcSide = outH * webcam.size;
         const wx = webcam.x * outW;
@@ -342,6 +342,7 @@ function drawVideoBox(
   w: number,
   h: number,
   roundness: number,
+  crop: CropRegion,
   activeZoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number }
 ) {
   ctx.save();
@@ -355,8 +356,10 @@ function drawVideoBox(
   ctx.scale(z, z);
   ctx.translate(-w / 2 + tx / z, -h / 2 + ty / z);
 
-  // object-cover behavior:
-  drawCover(ctx, video, 0, 0, w, h);
+  // Crop-aware cover. With identity crop {0,0,1,1} this is equivalent to
+  // drawCover; otherwise the cropped sub-rect of the source becomes the new
+  // "source" and is cover-fit into the destination box.
+  drawCoverWithCrop(ctx, video, crop, 0, 0, w, h);
   ctx.restore();
 }
 
@@ -479,6 +482,45 @@ function drawCover(
   const ox = dx + (dw - w) / 2;
   const oy = dy + (dh - h) / 2;
   ctx.drawImage(src as CanvasImageSource, ox, oy, w, h);
+}
+
+// Cover-fit a CROPPED region of the source into the destination box. The
+// crop rect is normalized 0..1 against the source's intrinsic dimensions;
+// {x:0,y:0,width:1,height:1} reduces this to plain drawCover. Cover-overflow
+// (when crop aspect != dest aspect) is centered and trimmed by reducing the
+// source rect we sample, never by overdrawing past the dest clip.
+function drawCoverWithCrop(
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+  crop: CropRegion,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number
+) {
+  const sw = video.videoWidth;
+  const sh = video.videoHeight;
+  if (!sw || !sh) return;
+
+  const cropPxW = crop.width * sw;
+  const cropPxH = crop.height * sh;
+  if (cropPxW <= 0 || cropPxH <= 0) return;
+
+  // Cover scale based on cropped source.
+  const scale = Math.max(dw / cropPxW, dh / cropPxH);
+  const drawnW = cropPxW * scale;
+  const drawnH = cropPxH * scale;
+
+  // Pixels of the crop region that overflow the destination — trim from the
+  // source rect symmetrically.
+  const overflowSrcW = (drawnW - dw) / scale;
+  const overflowSrcH = (drawnH - dh) / scale;
+  const sx = crop.x * sw + overflowSrcW / 2;
+  const sy = crop.y * sh + overflowSrcH / 2;
+  const sWidth = cropPxW - overflowSrcW;
+  const sHeight = cropPxH - overflowSrcH;
+
+  ctx.drawImage(video, sx, sy, sWidth, sHeight, dx, dy, dw, dh);
 }
 
 function parseLinearGradient(

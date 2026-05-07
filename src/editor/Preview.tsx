@@ -40,6 +40,25 @@ export function Preview() {
 
   const videoVolume = useEditor((s) => s.videoVolume);
   const videoMuted = useEditor((s) => s.videoMuted);
+  const cropRegion = useEditor((s) => s.cropRegion);
+
+  // Crop is implemented as: oversize the video element so the cropped region
+  // fills its overflow:hidden parent, then translate the rest off-frame. The
+  // math maps each source pixel to a fraction of the parent box and assumes
+  // the parent has the *crop's* aspect ratio (see cropFrameStyle below),
+  // hence object-fit:fill — cover would re-crop and break the mapping.
+  const cropStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: `${-(cropRegion.x / cropRegion.width) * 100}%`,
+    top: `${-(cropRegion.y / cropRegion.height) * 100}%`,
+    width: `${100 / cropRegion.width}%`,
+    height: `${100 / cropRegion.height}%`,
+    // Tailwind preflight applies `video { max-width: 100% }` globally, which
+    // silently clamps a >100% width and breaks the crop math — undo it.
+    maxWidth: 'none',
+    maxHeight: 'none',
+    objectFit: 'fill'
+  };
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const webcamRef = useRef<HTMLVideoElement>(null);
@@ -66,6 +85,15 @@ export function Preview() {
       v.pause();
     }
   }, [playing, setPlaying]);
+
+  // Publish the live <video> ref into the store so overlays (CropModal,
+  // future thumbnail extractors) can read frames from the same already-primed
+  // element the editor is using. Re-runs whenever videoRef target changes
+  // (layout swap between side-by-side and standard re-mounts the element).
+  useEffect(() => {
+    useEditor.getState().setMainVideoEl(videoRef.current);
+    return () => { useEditor.getState().setMainVideoEl(null); };
+  });
 
   // Mirror the user's volume/mute preference onto the main video element.
   // Webcam stays permanently muted (mic audio comes from the main recording).
@@ -237,6 +265,28 @@ export function Preview() {
 
   const padding = effects.paddingPct / 100;
   const innerScale = 1 - padding * 0.5;
+
+  // Aspect ratio of the cropped sub-rectangle in source pixels. The rounded
+  // clipping frame is sized to this ratio and centered inside the project
+  // frame (letterbox/pillarbox), matching openscreen's PixiJS mask layout —
+  // the crop reshapes the visible content area, it doesn't stretch to fill.
+  const cropAspect = videoIntrinsicSize
+    ? (cropRegion.width * videoIntrinsicSize.width) /
+      (cropRegion.height * videoIntrinsicSize.height)
+    : ratio;
+  // Pick the constraining axis: wider crop than project → fit width;
+  // taller crop than project → fit height. `aspect-ratio` then derives
+  // the other dimension.
+  const cropFrameStyle: React.CSSProperties = {
+    aspectRatio: String(cropAspect),
+    width: cropAspect >= ratio ? '100%' : 'auto',
+    height: cropAspect >= ratio ? 'auto' : '100%',
+    maxWidth: '100%',
+    maxHeight: '100%',
+    borderRadius: `${effects.roundnessPx}px`,
+    boxShadow: `0 ${4 + effects.shadowPct / 2}px ${20 + effects.shadowPct}px rgba(0,0,0,${effects.shadowPct / 100})`
+  };
+
   const zoomScale = activeZoom?.zoomLevel ?? 1;
   const zoomTx = activeZoom ? (0.5 - (activeZoom.zoomTargetX ?? 0.5)) * 100 * (zoomScale - 1) : 0;
   const zoomTy = activeZoom ? (0.5 - (activeZoom.zoomTargetY ?? 0.5)) * 100 * (zoomScale - 1) : 0;
@@ -343,15 +393,16 @@ export function Preview() {
               style={{ width: `${innerScale * 100}%`, height: `${innerScale * 100}%` }}
             >
               <div
-                className="relative flex-1 overflow-hidden"
+                className="relative flex flex-1 items-center justify-center"
                 style={{
-                  borderRadius: `${effects.roundnessPx}px`,
-                  boxShadow: `0 ${4 + effects.shadowPct / 2}px ${20 + effects.shadowPct}px rgba(0,0,0,${effects.shadowPct / 100})`,
                   transform: `scale(${zoomScale}) translate(${zoomTx}%, ${zoomTy}%)`,
                   transformOrigin: 'center center'
                 }}
               >
-                <video ref={videoRef} src={fileUrl} className="h-full w-full object-cover" playsInline muted={false} />
+                {/* Crop frame — see comment on the standard-layout branch. */}
+                <div className="relative overflow-hidden" style={cropFrameStyle}>
+                  <video ref={videoRef} src={fileUrl} style={cropStyle} playsInline muted={false} />
+                </div>
               </div>
               <div
                 className="relative flex shrink-0 items-center justify-center overflow-hidden bg-black/50"
@@ -373,17 +424,21 @@ export function Preview() {
             <>
               <div
                 ref={innerRef}
-                className="relative overflow-hidden transition-transform duration-300 ease-out"
+                className="relative flex items-center justify-center transition-transform duration-300 ease-out"
                 style={{
                   width: `${innerScale * 100}%`,
                   height: `${innerScale * 100}%`,
-                  borderRadius: `${effects.roundnessPx}px`,
-                  boxShadow: `0 ${4 + effects.shadowPct / 2}px ${20 + effects.shadowPct}px rgba(0,0,0,${effects.shadowPct / 100})`,
                   transform: `scale(${zoomScale}) translate(${zoomTx}%, ${zoomTy}%)`,
                   transformOrigin: 'center center'
                 }}
               >
-                <video ref={videoRef} src={fileUrl} className="h-full w-full object-cover" playsInline muted={false} />
+                {/* Crop frame — sized to the crop's aspect ratio and
+                    centered inside the project frame (letterbox/pillarbox).
+                    Rounded corners and shadow live here so they hug the
+                    visible cropped content, not the unused background. */}
+                <div className="relative overflow-hidden" style={cropFrameStyle}>
+                  <video ref={videoRef} src={fileUrl} style={cropStyle} playsInline muted={false} />
+                </div>
               </div>
               {webcam.enabled && (
                 <div
