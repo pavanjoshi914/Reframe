@@ -134,7 +134,16 @@ export function Preview() {
 
     if (!playing) {
       wc.pause();
-      if (Math.abs(wc.currentTime - target) > 0.05) wc.currentTime = target;
+      // Webcam recordings often have a black warm-up frame at t=0 (camera
+      // sensor is still settling). When parked at the very start, show a
+      // slightly later frame as the visible preview — much friendlier than a
+      // black circle. Once playback runs from 0, currentMs increments past
+      // this offset within a couple of frames so it doesn't look like a jump.
+      const previewTarget =
+        currentMs === 0
+          ? Math.min(0.15, (recording?.durationMs ?? 0) / 1000 / 20)
+          : target;
+      if (Math.abs(wc.currentTime - previewTarget) > 0.05) wc.currentTime = previewTarget;
       return;
     }
 
