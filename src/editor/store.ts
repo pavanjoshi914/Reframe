@@ -44,6 +44,11 @@ export type EditorState = {
   showAdvanced: boolean;
   effects: { roundnessPx: number; paddingPct: number; shadowPct: number; motionBlur: number; blurBg: boolean };
 
+  // Audio — applies to preview playback AND to export. When muted, the export
+  // pipeline drops the audio track entirely, so the saved file has no sound.
+  videoVolume: number; // 0..1
+  videoMuted: boolean;
+
   // Export
   exportFormat: 'mp4' | 'gif';
   exportQuality: 'low' | 'medium' | 'high';
@@ -67,6 +72,8 @@ export type EditorState = {
   setEffect: <K extends keyof EditorState['effects']>(key: K, value: EditorState['effects'][K]) => void;
   setExportFormat: (f: 'mp4' | 'gif') => void;
   setExportQuality: (q: 'low' | 'medium' | 'high') => void;
+  setVideoVolume: (v: number) => void;
+  setVideoMuted: (m: boolean) => void;
   addItem: (kind: LaneKind, atMs: number) => void;
   updateItem: (id: string, patch: Partial<LaneItem>) => void;
   removeItem: (id: string) => void;
@@ -122,6 +129,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   exportFormat: 'mp4',
   exportQuality: 'medium',
 
+  videoVolume: 1,
+  videoMuted: false,
+
   items: [],
   selectedItemId: null,
   pixelsPerSecond: 60,
@@ -168,6 +178,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   setEffect: (key, value) => set((s) => ({ effects: { ...s.effects, [key]: value } })),
   setExportFormat: (f) => set({ exportFormat: f }),
   setExportQuality: (q) => set({ exportQuality: q }),
+  setVideoVolume: (v) => set({ videoVolume: Math.max(0, Math.min(1, v)) }),
+  setVideoMuted: (m) => set({ videoMuted: m }),
   addItem: (kind, atMs) => {
     const dur = get().durationMs || 1000;
     const len = Math.min(2000, Math.max(200, dur - atMs));

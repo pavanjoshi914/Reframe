@@ -38,6 +38,9 @@ export function Preview() {
     return it && it.kind === 'zoom' ? it : null;
   }, [selectedItemId, items]);
 
+  const videoVolume = useEditor((s) => s.videoVolume);
+  const videoMuted = useEditor((s) => s.videoMuted);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const webcamRef = useRef<HTMLVideoElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -63,6 +66,15 @@ export function Preview() {
       v.pause();
     }
   }, [playing, setPlaying]);
+
+  // Mirror the user's volume/mute preference onto the main video element.
+  // Webcam stays permanently muted (mic audio comes from the main recording).
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.volume = videoVolume;
+    v.muted = videoMuted;
+  }, [videoVolume, videoMuted]);
 
   // External seek: when something else (timeline scrubber, programmatic jump)
   // moves currentMs, push it onto the main video. The 100ms threshold avoids

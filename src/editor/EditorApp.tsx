@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, Maximize2, Minimize2 } from 'lucide-react';
+import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX } from 'lucide-react';
 import { Preview } from './Preview';
 import { Sidebar } from './Sidebar';
 import { Timeline } from './Timeline';
@@ -22,6 +22,10 @@ export function EditorApp() {
   const durationMs = useEditor((s) => s.durationMs);
   const aspect = useEditor((s) => s.aspect);
   const setAspect = useEditor((s) => s.setAspect);
+  const videoVolume = useEditor((s) => s.videoVolume);
+  const videoMuted = useEditor((s) => s.videoMuted);
+  const setVideoVolume = useEditor((s) => s.setVideoVolume);
+  const setVideoMuted = useEditor((s) => s.setVideoMuted);
 
   // Load recording on first mount + listen for new recordings
   useEffect(() => {
@@ -163,6 +167,35 @@ export function EditorApp() {
                 className="flex-1 accent-emerald-500"
                 aria-label="Scrubber"
               />
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setVideoMuted(!videoMuted)}
+                  className="flex h-7 w-7 items-center justify-center rounded hover:bg-white/10"
+                  aria-label={videoMuted ? 'Unmute' : 'Mute'}
+                  title={videoMuted ? 'Unmute (export will include audio)' : 'Mute (export will be silent)'}
+                >
+                  {videoMuted || videoVolume === 0 ? (
+                    <VolumeX size={14} className="text-white/60" />
+                  ) : (
+                    <Volume2 size={14} />
+                  )}
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round((videoMuted ? 0 : videoVolume) * 100)}
+                  onChange={(e) => {
+                    const v = Number(e.target.value) / 100;
+                    setVideoVolume(v);
+                    if (v > 0 && videoMuted) setVideoMuted(false);
+                    if (v === 0 && !videoMuted) setVideoMuted(true);
+                  }}
+                  className="h-1 w-20 cursor-pointer accent-emerald-500"
+                  aria-label="Volume"
+                  title="Volume"
+                />
+              </div>
               <button
                 onClick={handleFullscreen}
                 className="flex h-7 w-7 items-center justify-center rounded hover:bg-white/10"
@@ -207,7 +240,11 @@ function FileMenu({ onSave, onLoad }: { onSave: () => void; onLoad: () => void }
       <MenuItem
         label="View"
         items={[
-          { label: 'Toggle Advanced Style', onClick: () => useEditor.getState().setShowAdvanced(!useEditor.getState().showAdvanced) }
+          { label: 'Toggle Advanced Style', onClick: () => useEditor.getState().setShowAdvanced(!useEditor.getState().showAdvanced) },
+          { label: 'Toggle Mute', onClick: () => {
+              const s = useEditor.getState();
+              s.setVideoMuted(!s.videoMuted);
+            }, shortcut: 'M' }
         ]}
       />
     </div>

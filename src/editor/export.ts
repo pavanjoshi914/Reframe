@@ -52,7 +52,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
     throw new Error('GIF export requires ffmpeg post-processing — coming in a future update. For now, please pick MP4.');
   }
 
-  const { fileUrl, webcamFileUrl, durationMs, items, background, effects, webcam, layoutPreset, aspect, exportQuality, exportFormat } = state;
+  const { fileUrl, webcamFileUrl, durationMs, items, background, effects, webcam, layoutPreset, aspect, exportQuality, exportFormat, videoMuted } = state;
 
   function loadVideo(src: string) {
     return new Promise<HTMLVideoElement>((resolve, reject) => {
@@ -111,6 +111,27 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
 
   const fps = 30;
   const stream = (canvas as HTMLCanvasElement).captureStream(fps);
+  // When not muted, pull the audio track off the source video and merge it
+  // into the canvas-driven stream so the exported file isn't silent. We must
+  // do this BEFORE constructing the MediaRecorder; once it's recording, you
+  // can't add tracks. captureStream() on the source returns live audio even
+  // though the element itself is muted (mute only gates the local speaker
+  // sink, not the underlying decoded track).
+  if (!videoMuted) {
+    const sourceCapture = (video as HTMLVideoElement & {
+      captureStream?: () => MediaStream;
+      mozCaptureStream?: () => MediaStream;
+    });
+    const grab = sourceCapture.captureStream ?? sourceCapture.mozCaptureStream;
+    if (grab) {
+      try {
+        const srcStream = grab.call(video);
+        for (const track of srcStream.getAudioTracks()) stream.addTrack(track);
+      } catch (err) {
+        console.warn('[export] could not capture source audio, exporting silent', err);
+      }
+    }
+  }
   const { mime, ext } = pickMimeType(exportFormat);
   const recorder = new MediaRecorder(stream, {
     mimeType: mime,
