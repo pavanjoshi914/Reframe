@@ -24,6 +24,9 @@ export function Sidebar() {
         <Section title="Style" defaultOpen>
           <StyleSection />
         </Section>
+        <Section title="Video Effects" defaultOpen>
+          <VideoEffectsSection />
+        </Section>
       </div>
       <ExportSection />
     </div>
@@ -337,10 +340,6 @@ function CompositionSection() {
 function StyleSection() {
   const polish = useEditor((s) => s.polish);
   const setPolish = useEditor((s) => s.setPolish);
-  const showAdvanced = useEditor((s) => s.showAdvanced);
-  const setShowAdvanced = useEditor((s) => s.setShowAdvanced);
-  const effects = useEditor((s) => s.effects);
-  const setEffect = useEditor((s) => s.setEffect);
 
   return (
     <div className="space-y-4">
@@ -361,15 +360,25 @@ function StyleSection() {
           ))}
         </div>
       </div>
-      <ToggleRow label="Advanced" checked={showAdvanced} onChange={setShowAdvanced} />
-      {showAdvanced && (
-        <div className="space-y-2 border-t border-white/5 pt-3">
-          <RangeRow label="Roundness" value={effects.roundnessPx} min={0} max={40} step={1} onChange={(v) => setEffect('roundnessPx', v)} fmt={(v) => `${v}px`} />
-          <RangeRow label="Padding" value={effects.paddingPct} min={0} max={100} step={1} onChange={(v) => setEffect('paddingPct', v)} fmt={(v) => `${v}%`} />
-          <RangeRow label="Shadow" value={effects.shadowPct} min={0} max={100} step={1} onChange={(v) => setEffect('shadowPct', v)} fmt={(v) => `${v}%`} />
-          <ToggleRow label="Blur BG" checked={effects.blurBg} onChange={(v) => setEffect('blurBg', v)} />
-        </div>
-      )}
+    </div>
+  );
+}
+
+// Video Effects — was previously buried behind a Style → Advanced toggle.
+// Promoted to its own section with a 2-col slider grid for parity with the
+// openscreen reference.
+function VideoEffectsSection() {
+  const effects = useEditor((s) => s.effects);
+  const setEffect = useEditor((s) => s.setEffect);
+
+  return (
+    <div className="space-y-3">
+      <ToggleRow label="Blur BG" checked={effects.blurBg} onChange={(v) => setEffect('blurBg', v)} />
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        <RangeRow label="Shadow" value={effects.shadowPct} min={0} max={100} step={1} onChange={(v) => setEffect('shadowPct', v)} fmt={(v) => `${v}%`} />
+        <RangeRow label="Roundness" value={effects.roundnessPx} min={0} max={40} step={1} onChange={(v) => setEffect('roundnessPx', v)} fmt={(v) => `${v}px`} />
+        <RangeRow label="Padding" value={effects.paddingPct} min={0} max={100} step={1} onChange={(v) => setEffect('paddingPct', v)} fmt={(v) => `${v}%`} />
+      </div>
     </div>
   );
 }

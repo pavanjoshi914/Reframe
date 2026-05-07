@@ -240,7 +240,6 @@ function FileMenu({ onSave, onLoad }: { onSave: () => void; onLoad: () => void }
       <MenuItem
         label="View"
         items={[
-          { label: 'Toggle Advanced Style', onClick: () => useEditor.getState().setShowAdvanced(!useEditor.getState().showAdvanced) },
           { label: 'Toggle Mute', onClick: () => {
               const s = useEditor.getState();
               s.setVideoMuted(!s.videoMuted);
