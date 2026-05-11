@@ -5,6 +5,13 @@ export type RecordingOptions = {
   withCam: boolean;
   micDeviceId?: string;
   camDeviceId?: string;
+  // Optional pre-opened webcam stream. The HUD opens this when the user
+  // toggles the cam icon (so the camera LED turns on right away) and hands
+  // it in here so we don't re-prompt or blink the LED off/on at record time.
+  // When provided, the recorder treats the stream as borrowed — it records
+  // from it but does NOT stop the tracks on `stop()`; the caller owns the
+  // stream's lifecycle.
+  camStream?: MediaStream | null;
 };
 
 export type RecordingHandle = {
@@ -89,23 +96,28 @@ export async function startRecording(opts: RecordingOptions): Promise<RecordingH
   };
 
   // Optional webcam — separate stream + recorder so the editor can re-position it.
-  let camStream: MediaStream | null = null;
+  // If the caller already opened a preview stream (`opts.camStream`) we borrow
+  // it; otherwise we open one ourselves and own its lifecycle.
+  let camStream: MediaStream | null = opts.camStream ?? null;
+  const ownsCamStream = !opts.camStream;
   let camRecorder: MediaRecorder | null = null;
   const camChunks: BlobPart[] = [];
   if (opts.withCam) {
     try {
-      // Cap webcam at 30fps so the software encoder isn't doing 60fps on the
-      // cam in addition to whatever the screen recorder is doing.
-      const camVideoConstraints: MediaTrackConstraints = {
-        width: { ideal: 640, max: 1280 },
-        height: { ideal: 480, max: 720 },
-        frameRate: { ideal: 30, max: 30 },
-        ...(opts.camDeviceId ? { deviceId: { exact: opts.camDeviceId } } : {})
-      };
-      camStream = await navigator.mediaDevices.getUserMedia({
-        video: camVideoConstraints,
-        audio: false
-      });
+      if (!camStream) {
+        // Cap webcam at 30fps so the software encoder isn't doing 60fps on the
+        // cam in addition to whatever the screen recorder is doing.
+        const camVideoConstraints: MediaTrackConstraints = {
+          width: { ideal: 640, max: 1280 },
+          height: { ideal: 480, max: 720 },
+          frameRate: { ideal: 30, max: 30 },
+          ...(opts.camDeviceId ? { deviceId: { exact: opts.camDeviceId } } : {})
+        };
+        camStream = await navigator.mediaDevices.getUserMedia({
+          video: camVideoConstraints,
+          audio: false
+        });
+      }
       // 6 Mbps for the webcam — enough headroom for the encoder to produce a
       // clean stream at 480p–720p without starving and emitting the malformed
       // clusters that caused the "plays a few seconds then freezes" symptom.
@@ -115,6 +127,7 @@ export async function startRecording(opts: RecordingOptions): Promise<RecordingH
       };
     } catch (err) {
       console.warn('webcam capture failed; continuing without it', err);
+      if (ownsCamStream) camStream?.getTracks().forEach((t) => t.stop());
       camStream = null;
       camRecorder = null;
     }
@@ -139,7 +152,9 @@ export async function startRecording(opts: RecordingOptions): Promise<RecordingH
 
       combinedStream.getTracks().forEach((t) => t.stop());
       screenStream.getTracks().forEach((t) => t.stop());
-      camStream?.getTracks().forEach((t) => t.stop());
+      // Only stop tracks on a stream we own; a borrowed preview stream keeps
+      // running so the camera LED stays lit between sessions.
+      if (ownsCamStream) camStream?.getTracks().forEach((t) => t.stop());
 
       const blob = new Blob(chunks, { type: mimeType });
       const webcamBlob = camChunks.length > 0 ? new Blob(camChunks, { type: mimeType }) : undefined;

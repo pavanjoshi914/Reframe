@@ -38,6 +38,11 @@ export function HudApp() {
   const recorderRef = useRef<RecordingHandle | null>(null);
   const startTsRef = useRef(0);
   const tickRef = useRef<number | null>(null);
+  // Live webcam preview stream — opened the instant the user toggles the cam
+  // icon (so the camera LED comes on immediately) and reused as the recording
+  // source when they hit record. Lives in a ref because it's an imperative
+  // resource we own across renders, not part of React's reactive tree.
+  const camStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     const off = window.api.onSourceSelected((s) => setSource(s));
@@ -51,6 +56,48 @@ export function HudApp() {
     });
     return off;
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cam toggle → open/close the webcam preview stream. Doing this here
+  // (rather than at recording start) is the whole point: the camera's
+  // hardware LED tracks the existence of an active media track, so opening
+  // the stream when the icon is clicked is what makes the light come on
+  // before the user hits record.
+  useEffect(() => {
+    let cancelled = false;
+    if (cam && !camStreamRef.current) {
+      navigator.mediaDevices
+        .getUserMedia({
+          video: { width: { ideal: 640, max: 1280 }, height: { ideal: 480, max: 720 }, frameRate: { ideal: 30, max: 30 } },
+          audio: false
+        })
+        .then((stream) => {
+          if (cancelled) {
+            stream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          camStreamRef.current = stream;
+        })
+        .catch((err) => {
+          console.warn('webcam preview failed', err);
+          if (!cancelled) setCam(false);
+        });
+    } else if (!cam && camStreamRef.current && phase !== 'recording') {
+      // Don't yank the stream mid-recording — the recorder is reading it.
+      camStreamRef.current.getTracks().forEach((t) => t.stop());
+      camStreamRef.current = null;
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [cam, phase]);
+
+  // Final cleanup when the HUD unmounts (window close).
+  useEffect(() => {
+    return () => {
+      camStreamRef.current?.getTracks().forEach((t) => t.stop());
+      camStreamRef.current = null;
+    };
   }, []);
 
   async function handlePickSource() {
@@ -67,7 +114,8 @@ export function HudApp() {
         sourceId: source.id,
         withSystemAudio: sysAudio,
         withMic: mic,
-        withCam: cam
+        withCam: cam,
+        camStream: camStreamRef.current
       });
       recorderRef.current = handle;
       startTsRef.current = Date.now();
