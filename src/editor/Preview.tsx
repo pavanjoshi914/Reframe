@@ -302,6 +302,24 @@ export function Preview() {
 
   const isSideBySide = layoutPreset === 'side-by-side';
 
+  // Webcam container aspect (width/height). Rectangle uses 16:9 to match the
+  // typical webcam intrinsic; square and circle stay 1:1. Used both to size
+  // the box and to clamp drag bounds.
+  const webcamAspect = webcam.shape === 'rectangle' ? 16 / 9 : 1;
+
+  // Clamp the saved x/y back into the frame whenever shape / size / project
+  // aspect change. Without this, switching from a 1:1 shape parked in the
+  // bottom-right to rectangle would leave the wider box overflowing the stage.
+  useEffect(() => {
+    if (!webcam.enabled) return;
+    const widthFrac = (webcam.size * webcamAspect) / ratio;
+    const maxX = Math.max(0, 1 - widthFrac);
+    const maxY = Math.max(0, 1 - webcam.size);
+    if (webcam.x > maxX || webcam.y > maxY) {
+      setWebcam({ x: Math.min(webcam.x, maxX), y: Math.min(webcam.y, maxY) });
+    }
+  }, [webcam.shape, webcam.size, ratio, webcam.enabled, webcam.x, webcam.y, webcamAspect, setWebcam]);
+
   // Webcam dragging — coords are normalized (0..1) of the OUTER stage (the
   // full canvas including the gradient padding), so the webcam sits at the
   // canvas corner regardless of the screen-recording's padded size.
@@ -320,9 +338,9 @@ export function Preview() {
     const r = stage.getBoundingClientRect();
     const dx = (e.clientX - d.startX) / r.width;
     const dy = (e.clientY - d.startY) / r.height;
-    // Webcam side is `size * stageHeight` in px (height-based). As fraction
-    // of width that's (size * stageHeight / stageWidth) — clamp accordingly.
-    const widthInPctOfW = (webcam.size * r.height) / r.width;
+    // Webcam height is `size * stageHeight`. Width = height * aspect. Convert
+    // both to fractions of the stage axes so dragging clamps to the canvas.
+    const widthInPctOfW = (webcam.size * webcamAspect * r.height) / r.width;
     const maxX = 1 - widthInPctOfW;
     const maxY = 1 - webcam.size;
     setWebcam({
@@ -460,13 +478,11 @@ export function Preview() {
                     left: `${webcam.x * 100}%`,
                     top: `${webcam.y * 100}%`,
                     height: `${webcam.size * 100}%`,
-                    aspectRatio: '1 / 1',
-                    borderRadius:
-                      webcam.shape === 'circle'
-                        ? '9999px'
-                        : webcam.shape === 'rounded'
-                        ? '16px'
-                        : '0px'
+                    aspectRatio: String(webcamAspect),
+                    // Circle = full pill; square + rectangle share the same
+                    // soft 16px corner so the only visual difference between
+                    // them is the aspect ratio.
+                    borderRadius: webcam.shape === 'circle' ? '9999px' : '16px'
                   }}
                   title="Drag to reposition"
                 >

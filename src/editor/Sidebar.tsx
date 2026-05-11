@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, Squircle, Trash2, ZoomIn, Gauge, Crop } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop } from 'lucide-react';
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION } from './store';
 import { runExport } from './export';
 import { CropModal } from './CropModal';
@@ -265,14 +265,14 @@ function CompositionSection() {
         <div className="mt-2">
           <div className="mb-1 text-xs text-white/70">Shape</div>
           <div className="grid grid-cols-3 gap-1.5">
-            <ShapeBtn active={webcam.shape === 'circle'} onClick={() => setWebcam({ shape: 'circle' })} label="Circle">
-              <Circle size={14} />
-            </ShapeBtn>
-            <ShapeBtn active={webcam.shape === 'rounded'} onClick={() => setWebcam({ shape: 'rounded' })} label="Rounded">
-              <Squircle size={14} />
+            <ShapeBtn active={webcam.shape === 'rectangle'} onClick={() => setWebcam({ shape: 'rectangle' })} label="Rectangle">
+              <RectangleHorizontal size={14} />
             </ShapeBtn>
             <ShapeBtn active={webcam.shape === 'square'} onClick={() => setWebcam({ shape: 'square' })} label="Square">
               <Square size={14} />
+            </ShapeBtn>
+            <ShapeBtn active={webcam.shape === 'circle'} onClick={() => setWebcam({ shape: 'circle' })} label="Circle">
+              <Circle size={14} />
             </ShapeBtn>
           </div>
         </div>

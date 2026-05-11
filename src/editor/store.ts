@@ -21,7 +21,11 @@ export type BackgroundMode = 'image' | 'color' | 'gradient';
 
 export type PolishPreset = 'subtle' | 'soft' | 'dramatic';
 
-export type WebcamShape = 'circle' | 'square' | 'rounded';
+// Webcam container shape. Rectangle uses a 16:9 box (matches typical webcam
+// intrinsic aspect); Square and Rectangle both render with rounded corners,
+// Circle is the full pill. The legacy 'rounded' value (square box, mid
+// radius) is migrated to 'square' on hydrate.
+export type WebcamShape = 'circle' | 'square' | 'rectangle';
 
 // Crop region in normalized 0..1 coordinates relative to the source frame.
 // Identity = full frame. Persisted with the project so saved files round-trip.
@@ -113,6 +117,17 @@ function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
 }
 
+// Numeric width/height ratio for an AspectRatio enum value. 'auto' maps to
+// the fallback so callers that need a concrete number for layout math (e.g.
+// webcam corner snapping) don't have to special-case it.
+function aspectToRatio(a: AspectRatio, fallback: number): number {
+  if (a === '16:9') return 16 / 9;
+  if (a === '9:16') return 9 / 16;
+  if (a === '4:3') return 4 / 3;
+  if (a === '1:1') return 1;
+  return fallback;
+}
+
 const presetEffects: Record<PolishPreset, EditorState['effects']> = {
   subtle: { roundnessPx: 6, paddingPct: 25, shadowPct: 6, motionBlur: 0, blurBg: false },
   soft: { roundnessPx: 14, paddingPct: 50, shadowPct: 16, motionBlur: 0, blurBg: false },
@@ -181,15 +196,38 @@ export const useEditor = create<EditorState>((set, get) => ({
       height: Math.max(0.05, Math.min(1 - clamp01(r.y), r.height))
     }
   }),
-  setWebcam: (w) => set((s) => ({ webcam: { ...s.webcam, ...w } })),
+  setWebcam: (w) => set((s) => {
+    const next = { ...s.webcam, ...w };
+    // When the shape changes the box's aspect (and therefore its width)
+    // changes too, so the saved x/y no longer corresponds to a corner. Snap
+    // back to the same logical corner (right/left, bottom/top) using the new
+    // shape's aspect so e.g. switching square → rectangle doesn't leave the
+    // box hugging the edge with no margin.
+    if (w.shape && w.shape !== s.webcam.shape) {
+      const aspect = w.shape === 'rectangle' ? 16 / 9 : 1;
+      const projectAspect = aspectToRatio(s.aspect, 16 / 9);
+      const widthFrac = (next.size * aspect) / projectAspect;
+      const margin = 0.04;
+      // Anchor by the side the box is closer to. Compare midpoint vs 0.5 so
+      // the snap feels right whether the user dragged a tiny bit off the
+      // corner or kept the default.
+      const isRight = s.webcam.x + (s.webcam.size / projectAspect) / 2 >= 0.5;
+      const isBottom = s.webcam.y + s.webcam.size / 2 >= 0.5;
+      next.x = isRight ? Math.max(0, 1 - widthFrac - margin) : margin;
+      next.y = isBottom ? Math.max(0, 1 - next.size - margin) : margin;
+    }
+    return { webcam: next };
+  }),
   setLayoutPreset: (p) => {
-    // Corner positions assume a 16:9 stage and the current webcam size; user
-    // can fine-tune by dragging. side_in_W = size * 9/16, margin = 4%.
+    // Corner positions follow the project + webcam aspect. Width fraction =
+    // size * webcamAspect / projectAspect; user can fine-tune by dragging.
     set((s) => {
       const sz = s.webcam.size;
-      const sideInW = sz * (9 / 16);
+      const webcamAspect = s.webcam.shape === 'rectangle' ? 16 / 9 : 1;
+      const projectAspect = aspectToRatio(s.aspect, 16 / 9);
+      const widthFrac = (sz * webcamAspect) / projectAspect;
       const margin = 0.04;
-      const right = 1 - sideInW - margin;
+      const right = 1 - widthFrac - margin;
       const bottom = 1 - sz - margin;
       const left = margin;
       const top = margin;
@@ -254,7 +292,12 @@ export const useEditor = create<EditorState>((set, get) => ({
       aspect: data.aspect,
       cropRegion: data.cropRegion ?? DEFAULT_CROP_REGION,
       background: data.background,
-      webcam: data.webcam,
+      // Migrate legacy 'rounded' shape — kept the square aspect so 'square'
+      // (which now rounds its corners by default) is the closest match.
+      webcam: {
+        ...data.webcam,
+        shape: (data.webcam.shape as string) === 'rounded' ? 'square' : data.webcam.shape
+      },
       layoutPreset: data.layoutPreset,
       polish: data.polish,
       showAdvanced: data.showAdvanced,

@@ -209,17 +209,21 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
       const innerY = (outH - innerH) / 2;
       drawVideoBox(ctx!, video, innerX, innerY, innerW, innerH, effects.roundnessPx, cropRegion, activeZoom);
       if (webcam.enabled) {
-        const wcSide = outH * webcam.size;
+        const wcH = outH * webcam.size;
+        // Rectangle uses 16:9 (matches the live preview); square + circle
+        // stay 1:1.
+        const wcW = wcH * (webcam.shape === 'rectangle' ? 16 / 9 : 1);
         const wx = webcam.x * outW;
         const wy = webcam.y * outH;
         const cornerRadius =
-          webcam.shape === 'circle' ? wcSide / 2 :
-          webcam.shape === 'rounded' ? Math.min(wcSide / 4, 24 * (outH / 1080)) :
-          0;
+          webcam.shape === 'circle' ? wcH / 2 :
+          // Square + rectangle share a soft corner that scales with output
+          // height so 4K renders don't look unrounded vs. 1080p.
+          Math.min(wcH / 4, 24 * (outH / 1080));
         if (webcamVideo) {
-          drawWebcamVideo(ctx!, webcamVideo, wx, wy, wcSide, wcSide, cornerRadius, webcam.shape === 'circle');
+          drawWebcamVideo(ctx!, webcamVideo, wx, wy, wcW, wcH, cornerRadius, webcam.shape === 'circle');
         } else {
-          drawWebcamPlaceholder(ctx!, wx, wy, wcSide, wcSide, cornerRadius);
+          drawWebcamPlaceholder(ctx!, wx, wy, wcW, wcH, cornerRadius);
         }
       }
     }
