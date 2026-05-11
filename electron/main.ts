@@ -120,6 +120,7 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
     minWidth: 960,
     minHeight: 600,
     backgroundColor: '#0e0f12',
+    show: false,
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -127,6 +128,14 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
       sandbox: false,
       webSecurity: true
     }
+  });
+  // Open maximized so the user lands in a full editor view straight after
+  // recording instead of a cramped 1280×820 window. `show: false` + maximize
+  // on ready-to-show avoids the visible resize jump from default size to
+  // maximized that you get with `.maximize()` right after construction.
+  editorWindow.once('ready-to-show', () => {
+    editorWindow?.maximize();
+    editorWindow?.show();
   });
   loadHtml(editorWindow, 'editor.html');
   editorWindow.on('closed', () => {
