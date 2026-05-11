@@ -27,3 +27,33 @@ button {
 .no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* Scrollbars — thin, dark, rounded. Webkit + Firefox both styled so the
+   editor doesn't show jarring native (Ubuntu-grey, fat) scrollbars in
+   panels. Track is transparent so it blends into the panel; thumb is a
+   low-opacity white that brightens on hover for affordance. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  /* Border-as-padding trick so the thumb looks slimmer than the gutter
+     while still giving a generous hit target. */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.28);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}

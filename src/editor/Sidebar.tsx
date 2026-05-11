@@ -12,7 +12,7 @@ export function Sidebar() {
   const showSelection = selectedItem && (selectedItem.kind === 'zoom' || selectedItem.kind === 'speed');
 
   return (
-    <div className="flex h-full w-[320px] flex-col overflow-hidden rounded-xl border border-white/5 bg-[#0e0f12]">
+    <div className="flex h-full w-[380px] flex-col overflow-hidden rounded-xl border border-white/5 bg-[#0e0f12]">
       <div className="flex-1 overflow-y-auto">
         {showSelection && (
           <Section title="Selection" defaultOpen>
