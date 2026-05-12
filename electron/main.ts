@@ -20,6 +20,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const RENDERER_DIST = path.join(__dirname, '../dist');
 const PRELOAD = path.join(__dirname, 'preload.js');
+const APP_ICON = path.join(__dirname, '..', 'assets', 'logo-transparent.png');
 
 let hudWindow: BrowserWindow | null = null;
 let pickerWindow: BrowserWindow | null = null;
@@ -57,6 +58,7 @@ function createHud() {
     hasShadow: useTransparent ? false : true,
     skipTaskbar: false,
     movable: true,
+    icon: APP_ICON,
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -92,6 +94,7 @@ function createPicker() {
     resizable: false,
     transparent: useTransparent,
     backgroundColor: useTransparent ? '#00000000' : '#0e0f12',
+    icon: APP_ICON,
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -121,6 +124,7 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
     minHeight: 600,
     backgroundColor: '#0e0f12',
     show: false,
+    icon: APP_ICON,
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,

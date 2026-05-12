@@ -65,7 +65,8 @@
     "productName": "Reframe",
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "assets/**/*"
     ],
     "directories": {
       "output": "release"
@@ -75,14 +76,17 @@
         "AppImage",
         "deb"
       ],
-      "category": "AudioVideo"
+      "category": "AudioVideo",
+      "icon": "assets/logo-transparent.png"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "assets/logo-transparent.png"
     },
     "mac": {
       "target": "dmg",
-      "category": "public.app-category.video"
+      "category": "public.app-category.video",
+      "icon": "assets/logo-transparent.png"
     }
   }
 }
