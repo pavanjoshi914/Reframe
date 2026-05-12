@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar';
 import { Timeline } from './Timeline';
 import { useEditor, type SerializedProject } from './store';
 import type { ProjectFile } from '@shared/ipc';
+import wordmarkUrl from '../../assets/logo-wordmark-transparent.png';
 
 declare global {
   interface Window {
@@ -108,7 +109,11 @@ export function EditorApp() {
       {/* top toolbar */}
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-white/5 bg-[#0e0f12] px-4">
         <div className="flex items-center gap-3 text-sm">
-          <span className="font-semibold tracking-wide text-emerald-400">Reframe</span>
+          <img
+            src={wordmarkUrl}
+            alt="Reframe"
+            className="h-7 object-contain [filter:brightness(0)_invert(1)]"
+          />
           <Divider />
           <FileMenu onSave={handleSaveProject} onLoad={handleLoadProject} />
         </div>
