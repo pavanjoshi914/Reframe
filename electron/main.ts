@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, ipcMain, desktopCapturer, shell, protocol, dialog, globalShortcut } from 'electron';
+import { app, BrowserWindow, Menu, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -25,6 +25,11 @@ const APP_ICON = path.join(__dirname, '..', 'assets', 'logo-transparent.png');
 let hudWindow: BrowserWindow | null = null;
 let pickerWindow: BrowserWindow | null = null;
 let editorWindow: BrowserWindow | null = null;
+let regionSelectorWindow: BrowserWindow | null = null;
+// Source associated with the display the user is currently selecting a region
+// from. Captured when the overlay opens so the resulting region IPC payload
+// can carry the matching desktopCapturer source id back to the HUD.
+let regionSelectorSource: import('../src/shared/ipc.js').DesktopSource | null = null;
 
 // Transparent windows on Linux/X11 require a running compositor; without one
 // they render as fully invisible. Default ON everywhere — modern desktop envs
@@ -161,6 +166,106 @@ ipcMain.handle('sources:get', async () => {
   }));
 });
 
+ipcMain.handle('displays:get', async () => {
+  const allDisplays = screen.getAllDisplays();
+  const primaryId = screen.getPrimaryDisplay().id;
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: { width: 320, height: 200 }
+  });
+  return allDisplays.map((d, idx) => {
+    // Electron sets `display_id` on screen sources to the matching
+    // screen.Display.id, but the field is poorly typed; cast through unknown.
+    const source =
+      sources.find((s) => String((s as unknown as { display_id: string }).display_id) === String(d.id)) ??
+      sources[idx] ??
+      null;
+    return {
+      id: String(d.id),
+      name: `Display ${idx + 1}${d.id === primaryId ? ' (primary)' : ''}`,
+      bounds: d.bounds,
+      scaleFactor: d.scaleFactor,
+      isPrimary: d.id === primaryId,
+      sourceId: source?.id ?? '',
+      thumbnailDataUrl: source?.thumbnail.toDataURL() ?? ''
+    };
+  });
+});
+
+async function createRegionSelector(displayId: string) {
+  if (regionSelectorWindow) {
+    regionSelectorWindow.focus();
+    return;
+  }
+  const display = screen.getAllDisplays().find((d) => String(d.id) === displayId);
+  if (!display) return;
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: { width: 1, height: 1 }
+  });
+  const source =
+    sources.find((s) => String((s as unknown as { display_id: string }).display_id) === displayId) ??
+    sources[0];
+  if (!source) return;
+  regionSelectorSource = {
+    id: source.id,
+    name: source.name,
+    type: 'screen',
+    thumbnailDataUrl: ''
+  };
+
+  regionSelectorWindow = new BrowserWindow({
+    x: display.bounds.x,
+    y: display.bounds.y,
+    width: display.bounds.width,
+    height: display.bounds.height,
+    frame: false,
+    transparent: useTransparent,
+    backgroundColor: useTransparent ? '#00000000' : '#000000',
+    alwaysOnTop: true,
+    hasShadow: false,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    fullscreenable: false,
+    icon: APP_ICON,
+    webPreferences: {
+      preload: PRELOAD,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  // 'screen-saver' level keeps the overlay above panels/docks across DEs.
+  regionSelectorWindow.setAlwaysOnTop(true, 'screen-saver');
+  regionSelectorWindow.setContentProtection(true);
+  loadHtml(regionSelectorWindow, 'region.html');
+  if (isDev) regionSelectorWindow.webContents.openDevTools({ mode: 'detach' });
+  regionSelectorWindow.on('closed', () => {
+    regionSelectorWindow = null;
+    regionSelectorSource = null;
+  });
+}
+
+ipcMain.handle('region:open', (_evt, displayId: string) => {
+  // Close the picker (the user picked Area → display, the overlay takes over).
+  pickerWindow?.close();
+  void createRegionSelector(displayId);
+});
+
+ipcMain.handle('region:select', (_evt, region: import('../src/shared/ipc.js').Region) => {
+  if (!regionSelectorSource) return;
+  hudWindow?.webContents.send('region:selected', {
+    source: regionSelectorSource,
+    region
+  });
+  regionSelectorWindow?.close();
+});
+
+ipcMain.handle('region:cancel', () => {
+  regionSelectorWindow?.close();
+});
+
 ipcMain.handle('picker:open', () => {
   createPicker();
 });
@@ -174,7 +279,7 @@ ipcMain.handle('picker:cancel', () => {
   pickerWindow?.close();
 });
 
-ipcMain.handle('recording:save', async (_evt, data: ArrayBuffer, meta: { durationMs: number; width: number; height: number; startedAt: number; webcamData?: ArrayBuffer }) => {
+ipcMain.handle('recording:save', async (_evt, data: ArrayBuffer, meta: import('../src/shared/ipc.js').SaveRecordingMeta) => {
   const ts = new Date(meta.startedAt).toISOString().replace(/[:.]/g, '-');
   const filePath = path.join(recordingsDir, `${ts}.webm`);
   fs.writeFileSync(filePath, Buffer.from(data));

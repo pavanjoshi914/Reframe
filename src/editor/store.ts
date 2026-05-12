@@ -178,7 +178,18 @@ export const useEditor = create<EditorState>((set, get) => ({
       durationMs: r.durationMs,
       // Auto-enable webcam in editor if a webcam file came with the recording
       // and the user hasn't explicitly turned it on/off in this session.
-      webcam: webcamFileUrl ? { ...s.webcam, enabled: true } : s.webcam
+      webcam: webcamFileUrl ? { ...s.webcam, enabled: true } : s.webcam,
+      // If the recording was captured with a region selection, pre-fill the
+      // editor's crop to match. The region is already stored as normalized
+      // 0..1 fractions, which is exactly the cropRegion shape.
+      cropRegion: r.region
+        ? {
+            x: clamp01(r.region.x),
+            y: clamp01(r.region.y),
+            width: Math.max(0.05, Math.min(1 - clamp01(r.region.x), r.region.width)),
+            height: Math.max(0.05, Math.min(1 - clamp01(r.region.y), r.region.height))
+          }
+        : DEFAULT_CROP_REGION
     })),
   setVideoIntrinsicSize: (size) => set({ videoIntrinsicSize: size }),
   setMainVideoEl: (el) => set({ mainVideoEl: el }),

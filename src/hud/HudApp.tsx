@@ -16,7 +16,7 @@ import {
   RefreshCw,
   GripVertical
 } from 'lucide-react';
-import type { DesktopSource } from '@shared/ipc';
+import type { DesktopSource, Region } from '@shared/ipc';
 import { startRecording, type RecordingHandle } from './recording';
 
 type Phase = 'idle' | 'recording';
@@ -30,6 +30,9 @@ function fmt(ms: number) {
 
 export function HudApp() {
   const [source, setSource] = useState<DesktopSource | null>(null);
+  // Optional region for the next recording. Cleared whenever the user picks a
+  // different source via the screens/windows tabs.
+  const [region, setRegion] = useState<Region | null>(null);
   const [sysAudio, setSysAudio] = useState(false);
   const [mic, setMic] = useState(false);
   const [cam, setCam] = useState(false);
@@ -45,8 +48,19 @@ export function HudApp() {
   const camStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
-    const off = window.api.onSourceSelected((s) => setSource(s));
-    return off;
+    const offSource = window.api.onSourceSelected((s) => {
+      setSource(s);
+      // A plain source pick (Screens/Windows tab) implies no region crop.
+      setRegion(null);
+    });
+    const offRegion = window.api.onRegionSelected(({ source: s, region: r }) => {
+      setSource(s);
+      setRegion(r);
+    });
+    return () => {
+      offSource();
+      offRegion();
+    };
   }, []);
 
   // Global Ctrl+Shift+0 → stop recording (only fires when recording).
@@ -149,7 +163,8 @@ export function HudApp() {
       width: result.width,
       height: result.height,
       startedAt: result.startedAt,
-      webcamData: webcamBuf
+      webcamData: webcamBuf,
+      region: region ?? undefined
     });
     await window.api.openEditor(meta);
   }
@@ -160,7 +175,11 @@ export function HudApp() {
     setTimeout(() => handleRecord(), 200);
   }
 
-  const sourceLabel = source ? truncate(source.name, 18) : 'Screen';
+  const sourceLabel = region
+    ? 'Area'
+    : source
+    ? truncate(source.name, 18)
+    : 'Screen';
 
   return (
     <div className="flex h-screen w-screen items-center justify-center px-1 py-0.5">

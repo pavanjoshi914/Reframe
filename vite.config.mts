@@ -50,7 +50,8 @@ export default defineConfig({
       input: {
         hud: path.resolve(__dirname, 'hud.html'),
         picker: path.resolve(__dirname, 'picker.html'),
-        editor: path.resolve(__dirname, 'editor.html')
+        editor: path.resolve(__dirname, 'editor.html'),
+        region: path.resolve(__dirname, 'region.html')
       }
     }
   },
