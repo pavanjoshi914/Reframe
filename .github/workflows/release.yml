@@ -1,0 +1,82 @@
+name: Build Reframe
+
+# Manual trigger only — open the Actions tab, pick this workflow, click
+# "Run workflow". ~10–15 min later the per-OS installers are attached to the
+# run as downloadable artifacts. Download them, then create the GitHub release
+# by hand and upload the files. (Same flow openscreen uses.)
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Package Linux app
+        run: npm run package:linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-installers
+          path: |
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error
+          retention-days: 30
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Package Windows app
+        run: npm run package:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Package macOS app (${{ matrix.arch }})
+        run: npm run package:mac -- --${{ matrix.arch }}
+        env:
+          # No Apple Developer cert wired up — build unsigned. The .dmg works
+          # but macOS Gatekeeper flags it as "unidentified developer"; users
+          # right-click → Open on first launch to bypass.
+          #
+          # To ship a signed + notarized .dmg later (like openscreen does):
+          #   1. Get an Apple Developer membership ($99/yr).
+          #   2. Add repo secrets: MAC_CERTIFICATE_P12, MAC_CERTIFICATE_PASSWORD,
+          #      APPLE_ID, APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD.
+          #   3. Import the cert into a temp keychain before packaging, set
+          #      CSC_LINK / CSC_KEY_PASSWORD, and add an electron-builder
+          #      `afterSign` notarize hook (or run `xcrun notarytool` here).
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer-${{ matrix.arch }}
+          path: release/*.dmg
+          if-no-files-found: error
+          retention-days: 30
