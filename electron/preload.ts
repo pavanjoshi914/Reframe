@@ -26,9 +26,14 @@ const api: Api = {
   getRecordingFileUrl: (filePath) => ipcRenderer.invoke('recording:fileUrl', filePath),
   minimizeHud: () => ipcRenderer.invoke('hud:minimize'),
   closeHud: () => ipcRenderer.invoke('hud:close'),
-  openRecordingsFolder: () => ipcRenderer.invoke('recordings:openFolder'),
   saveProject: (project) => ipcRenderer.invoke('project:save', project),
   loadProject: () => ipcRenderer.invoke('project:load'),
+  initialProjectPath: (startedAt) => ipcRenderer.invoke('project:initialPath', startedAt),
+  autoSaveProject: (filePath, project) => ipcRenderer.invoke('project:autoSave', filePath, project),
+  openProjectFromPicker: () => ipcRenderer.invoke('project:openFromPicker'),
+  renameProject: (oldPath, newName) => ipcRenderer.invoke('project:rename', oldPath, newName),
+  getLastLoadedProject: () => ipcRenderer.invoke('project:lastLoaded'),
+  openExportsFolder: () => ipcRenderer.invoke('exports:openFolder'),
   pickImageFile: () => ipcRenderer.invoke('image:pick'),
   openExternal: (url) => ipcRenderer.invoke('external:open', url),
   saveExport: (req) => ipcRenderer.invoke('export:save', req),
@@ -42,11 +47,21 @@ const api: Api = {
 
 contextBridge.exposeInMainWorld('api', api);
 
-// allow editor to listen for recording opened
+// allow editor to listen for recording opened + projects opened from HUD picker
 contextBridge.exposeInMainWorld('apiEvents', {
   onRecordingOpened: (cb: (r: RecordingMeta) => void) => {
     const handler = (_e: unknown, r: RecordingMeta) => cb(r);
     ipcRenderer.on('recording:opened', handler);
     return () => ipcRenderer.off('recording:opened', handler);
+  },
+  onProjectOpened: (
+    cb: (p: { state: unknown; path: string; recording: RecordingMeta }) => void
+  ) => {
+    const handler = (
+      _e: unknown,
+      p: { state: unknown; path: string; recording: RecordingMeta }
+    ) => cb(p);
+    ipcRenderer.on('project:opened', handler);
+    return () => ipcRenderer.off('project:opened', handler);
   }
 });

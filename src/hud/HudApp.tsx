@@ -1,21 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
+// Material-Design filled icons (via react-icons) — chunkier, solid silhouettes
+// that read as "weighted" against the dark HUD pill. Lucide's outline strokes
+// felt flat in side-by-side comparison with similar tools.
 import {
-  Monitor,
-  Volume2,
-  VolumeX,
-  Mic,
-  MicOff,
-  Video,
-  VideoOff,
-  Circle,
-  Square,
-  FileText,
-  Folder,
-  Minus,
-  X,
-  RefreshCw,
-  GripVertical
-} from 'lucide-react';
+  MdMonitor,
+  MdVolumeUp,
+  MdVolumeOff,
+  MdMic,
+  MdMicOff,
+  MdVideocam,
+  MdVideocamOff,
+  MdInsertDriveFile,
+  MdFolderOpen,
+  MdRemove,
+  MdClose,
+  MdRefresh,
+  MdDragIndicator
+} from 'react-icons/md';
 import type { DesktopSource, Region } from '@shared/ipc';
 import { startRecording, type RecordingHandle } from './recording';
 
@@ -181,100 +182,168 @@ export function HudApp() {
     ? truncate(source.name, 18)
     : 'Screen';
 
+  const recording = phase === 'recording';
+
   return (
     <div className="flex h-screen w-screen items-center justify-center px-1 py-0.5">
       <div
-        className="draggable flex h-12 items-center gap-1 rounded-full border border-hud-border bg-hud-bg px-2 shadow-2xl backdrop-blur-md"
-        style={{ WebkitBackdropFilter: 'blur(12px)' }}
+        className="draggable relative flex h-12 items-center gap-0.5 rounded-full px-2"
         title="Drag to move"
+        style={{
+          background:
+            'linear-gradient(180deg, rgba(32,34,40,0.94) 0%, rgba(20,22,26,0.94) 60%, rgba(14,15,18,0.94) 100%)',
+          boxShadow:
+            'inset 0 1px 0 0 rgba(255,255,255,0.08), 0 1px 0 0 rgba(0,0,0,0.6), 0 12px 28px -8px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06)',
+          WebkitBackdropFilter: 'blur(14px)',
+          backdropFilter: 'blur(14px)'
+        }}
       >
-        {/* Drag grip — visual affordance that the pill is draggable. */}
-        <span className="flex h-9 w-4 items-center justify-center text-hud-icon/50">
-          <GripVertical size={14} />
+        {/* Subtle glossy highlight at the very top of the pill */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-3 top-0 h-1/2 rounded-t-full opacity-40"
+          style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0))' }}
+        />
+
+        {/* Drag grip */}
+        <span className="relative mr-1 flex h-9 w-4 items-center justify-center text-hud-icon/40">
+          <MdDragIndicator size={16} />
         </span>
 
-        {/* Source label */}
+        {/* Source chip */}
         <button
           onClick={handlePickSource}
-          disabled={phase === 'recording'}
-          className="no-drag flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-hud-icon hover:bg-white/5 disabled:opacity-50"
+          disabled={recording}
+          className="no-drag relative flex h-8 items-center gap-1.5 rounded-full bg-white/[0.04] px-3 text-xs font-medium text-hud-icon ring-1 ring-white/10 transition hover:bg-white/[0.07] hover:ring-white/15 disabled:opacity-50"
           title="Pick source"
         >
-          <Monitor size={14} />
+          <MdMonitor size={14} className="text-hud-icon/80" />
           <span className="max-w-[120px] truncate">{sourceLabel}</span>
         </button>
 
         <Divider />
 
-        {/* Audio toggles */}
-        <IconBtn active={sysAudio} onClick={() => setSysAudio((v) => !v)} title="System audio">
-          {sysAudio ? <Volume2 size={16} /> : <VolumeX size={16} />}
-        </IconBtn>
-        <IconBtn active={mic} onClick={() => setMic((v) => !v)} title="Microphone">
-          {mic ? <Mic size={16} /> : <MicOff size={16} />}
-        </IconBtn>
-        <IconBtn active={cam} onClick={() => setCam((v) => !v)} title="Webcam">
-          {cam ? <Video size={16} /> : <VideoOff size={16} />}
-        </IconBtn>
+        {/* Capture toggles */}
+        <ToggleBtn active={sysAudio} onClick={() => setSysAudio((v) => !v)} title="System audio">
+          {sysAudio ? <MdVolumeUp size={18} /> : <MdVolumeOff size={18} />}
+        </ToggleBtn>
+        <ToggleBtn active={mic} onClick={() => setMic((v) => !v)} title="Microphone">
+          {mic ? <MdMic size={18} /> : <MdMicOff size={18} />}
+        </ToggleBtn>
+        <ToggleBtn active={cam} onClick={() => setCam((v) => !v)} title="Webcam">
+          {cam ? <MdVideocam size={18} /> : <MdVideocamOff size={18} />}
+        </ToggleBtn>
 
         <Divider />
 
         {/* Record / stop */}
-        {phase === 'idle' ? (
-          <button
-            onClick={handleRecord}
-            className="no-drag flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/5"
-            title="Start recording"
-          >
-            <Circle size={18} fill="#ef4444" stroke="#ef4444" />
-          </button>
+        {!recording ? (
+          <RecordButton onClick={handleRecord} />
         ) : (
           <>
-            <button
-              onClick={handleStop}
-              className="no-drag flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/5"
-              title="Stop recording"
-            >
-              <Square size={14} fill="#ef4444" stroke="#ef4444" />
-            </button>
-            <button
-              onClick={handleRestart}
-              className="no-drag flex h-9 w-9 items-center justify-center rounded-full text-hud-icon hover:bg-white/5"
-              title="Restart recording"
-            >
-              <RefreshCw size={14} />
-            </button>
-            <span className="no-drag font-mono text-xs tabular-nums text-hud-icon">{fmt(elapsed)}</span>
+            <StopButton onClick={handleStop} />
+            <IconBtn onClick={handleRestart} title="Restart recording">
+              <MdRefresh size={16} />
+            </IconBtn>
+            <RecordingTimer ms={elapsed} />
           </>
         )}
 
         <Divider />
 
-        <IconBtn onClick={() => {/* load project — TODO v0.5 */}} title="Open project">
-          <FileText size={16} />
+        <IconBtn onClick={() => window.api.openProjectFromPicker()} title="Open project">
+          <MdInsertDriveFile size={18} />
         </IconBtn>
-        <IconBtn onClick={() => window.api.openRecordingsFolder()} title="Open recordings folder">
-          <Folder size={16} />
+        <IconBtn onClick={() => window.api.openExportsFolder()} title="Open Recordings folder (exports)">
+          <MdFolderOpen size={18} />
         </IconBtn>
 
         <Divider />
 
         <IconBtn onClick={() => window.api.minimizeHud()} title="Minimize">
-          <Minus size={16} />
+          <MdRemove size={18} />
         </IconBtn>
         <IconBtn onClick={() => window.api.closeHud()} title="Close">
-          <X size={16} />
+          <MdClose size={18} />
         </IconBtn>
       </div>
     </div>
   );
 }
 
-function Divider() {
-  return <span className="mx-0.5 h-5 w-px bg-white/10" />;
+function RecordButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title="Start recording"
+      className="no-drag group flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.04] ring-1 ring-white/10 transition hover:scale-105 hover:bg-white/[0.07] hover:ring-red-400/30 active:scale-95"
+    >
+      <span className="block h-3.5 w-3.5 rounded-full bg-[#ef4444] shadow-[0_0_8px_2px_rgba(239,68,68,0.45)] transition group-hover:shadow-[0_0_14px_3px_rgba(239,68,68,0.65)]" />
+    </button>
+  );
 }
 
+function StopButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title="Stop recording"
+      className="no-drag relative flex h-9 w-9 items-center justify-center rounded-full bg-red-500/[0.18] ring-1 ring-red-400/40 transition hover:scale-105 hover:bg-red-500/25 active:scale-95"
+    >
+      {/* Outer pulsing halo */}
+      <span aria-hidden className="absolute inset-0 animate-pulse rounded-full ring-2 ring-red-400/30" />
+      <span className="block h-3 w-3 rounded-[3px] bg-[#ef4444] shadow-[0_0_8px_2px_rgba(239,68,68,0.45)]" />
+    </button>
+  );
+}
+
+function RecordingTimer({ ms }: { ms: number }) {
+  return (
+    <span
+      className="no-drag flex h-8 items-center gap-1.5 rounded-full bg-red-500/[0.14] px-2.5 text-xs font-medium tabular-nums text-red-200 ring-1 ring-red-400/25"
+    >
+      <span className="block h-1.5 w-1.5 animate-pulse rounded-full bg-red-400" />
+      <span className="font-mono">{fmt(ms)}</span>
+    </span>
+  );
+}
+
+function Divider() {
+  return (
+    <span
+      aria-hidden
+      className="mx-0.5 h-4 w-px"
+      style={{
+        background:
+          'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.14) 50%, rgba(255,255,255,0.02))'
+      }}
+    />
+  );
+}
+
+// Plain icon button: no active state, just a hover wash.
 function IconBtn({
+  children,
+  onClick,
+  title
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  title: string;
+}) {
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className="no-drag flex h-9 w-9 items-center justify-center rounded-full text-hud-icon transition hover:bg-white/[0.06]"
+    >
+      {children}
+    </button>
+  );
+}
+
+// Toggle button: shows a chip (emerald-tinted) when active, plain icon when not.
+function ToggleBtn({
   children,
   onClick,
   active,
@@ -290,8 +359,10 @@ function IconBtn({
       title={title}
       onClick={onClick}
       className={
-        'no-drag flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/5 ' +
-        (active ? 'text-hud-icon-active' : 'text-hud-icon')
+        'no-drag flex h-9 w-9 items-center justify-center rounded-full transition ' +
+        (active
+          ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/30 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.10)]'
+          : 'text-hud-icon hover:bg-white/[0.06]')
       }
     >
       {children}

@@ -11,6 +11,9 @@ declare global {
   interface Window {
     apiEvents: {
       onRecordingOpened: (cb: (r: import('@shared/ipc').RecordingMeta) => void) => () => void;
+      onProjectOpened: (
+        cb: (p: { state: unknown; path: string; recording: import('@shared/ipc').RecordingMeta }) => void
+      ) => () => void;
     };
   }
 }
@@ -27,26 +30,97 @@ export function EditorApp() {
   const videoMuted = useEditor((s) => s.videoMuted);
   const setVideoVolume = useEditor((s) => s.setVideoVolume);
   const setVideoMuted = useEditor((s) => s.setVideoMuted);
+  const currentProjectPath = useEditor((s) => s.currentProjectPath);
 
-  // Load recording on first mount + listen for new recordings
+  // Load recording on first mount + listen for new recordings & opened
+  // projects. Also kick off the auto-save lifecycle: every fresh recording
+  // gets a unique project file in the user's Projects folder, written
+  // synchronously now so it exists from edit #0 (no orphans on immediate close).
   useEffect(() => {
     let cancelled = false;
-    async function loadFor(rec: import('@shared/ipc').RecordingMeta) {
+
+    async function hydrateForRecording(rec: import('@shared/ipc').RecordingMeta) {
       const url = await window.api.getRecordingFileUrl(rec.filePath);
       const webcamUrl = rec.webcamFilePath ? await window.api.getRecordingFileUrl(rec.webcamFilePath) : null;
-      if (!cancelled) setRecording(rec, url, webcamUrl);
+      if (cancelled) return;
+      setRecording(rec, url, webcamUrl);
+
+      // Initial project file for a freshly-captured recording.
+      const projectPath = await window.api.initialProjectPath(rec.startedAt);
+      if (cancelled) return;
+      useEditor.getState().setCurrentProjectPath(projectPath);
+      const initialProject: ProjectFile = {
+        version: 1,
+        recording: rec,
+        state: useEditor.getState().serialize()
+      };
+      const res = await window.api.autoSaveProject(projectPath, initialProject);
+      if (res.saved) useEditor.getState().setLastSavedAt(Date.now());
     }
+
+    async function hydrateForProject(p: { state: unknown; path: string; recording: import('@shared/ipc').RecordingMeta }) {
+      useEditor.getState().hydrate(p.state as SerializedProject);
+      const url = await window.api.getRecordingFileUrl(p.recording.filePath);
+      const webcamUrl = p.recording.webcamFilePath ? await window.api.getRecordingFileUrl(p.recording.webcamFilePath) : null;
+      if (cancelled) return;
+      setRecording(p.recording, url, webcamUrl);
+      useEditor.getState().setCurrentProjectPath(p.path);
+    }
+
     async function init() {
+      // Prefer a project parked by the HUD's "Open Project" picker; fall back
+      // to the lastRecording (fresh capture) if no project was loaded.
+      const parked = await window.api.getLastLoadedProject();
+      if (parked) {
+        await hydrateForProject(parked);
+        return;
+      }
       const rec = await window.api.getRecordingMeta();
-      if (rec) await loadFor(rec);
+      if (rec) await hydrateForRecording(rec);
     }
     init();
-    const off = window.apiEvents.onRecordingOpened(loadFor);
+    const offRec = window.apiEvents.onRecordingOpened(hydrateForRecording);
+    const offProj = window.apiEvents.onProjectOpened(hydrateForProject);
     return () => {
       cancelled = true;
-      off();
+      offRec();
+      offProj();
     };
   }, [setRecording]);
+
+  // Debounced auto-save on every state change. Subscribing to the whole store
+  // is intentional — every edit touches the store, so any change triggers a
+  // save. 500 ms is short enough to feel "live" but coalesces rapid edits
+  // (e.g. dragging a slider) into a single write.
+  useEffect(() => {
+    let timer: number | null = null;
+    let lastJson = '';
+    const unsubscribe = useEditor.subscribe((s) => {
+      const projectPath = s.currentProjectPath;
+      const recording = s.recording;
+      if (!projectPath || !recording) return;
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const project: ProjectFile = {
+          version: 1,
+          recording,
+          state: useEditor.getState().serialize()
+        };
+        const json = JSON.stringify(project);
+        // Skip the write if nothing material changed (e.g. only `playing` or
+        // `currentMs` ticked, which are part of state but not in serialize()).
+        if (json === lastJson) return;
+        lastJson = json;
+        window.api.autoSaveProject(projectPath, project).then((res) => {
+          if (res.saved) useEditor.getState().setLastSavedAt(Date.now());
+        });
+      }, 500);
+    });
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      unsubscribe();
+    };
+  }, []);
 
   // Spacebar play/pause
   useEffect(() => {
@@ -83,15 +157,17 @@ export function EditorApp() {
   }
 
   async function handleLoadProject() {
-    const project = await window.api.loadProject();
-    if (!project || !project.state) return;
-    useEditor.getState().hydrate(project.state as SerializedProject);
-    if (project.recording) {
-      const rec = project.recording;
+    const result = await window.api.loadProject();
+    if (!result || !result.state) return;
+    useEditor.getState().hydrate(result.state as SerializedProject);
+    if (result.recording) {
+      const rec = result.recording;
       const url = await window.api.getRecordingFileUrl(rec.filePath);
       const webcamUrl = rec.webcamFilePath ? await window.api.getRecordingFileUrl(rec.webcamFilePath) : null;
       useEditor.getState().setRecording(rec, url, webcamUrl);
     }
+    // Auto-save now continues to write into the file the user just opened.
+    useEditor.getState().setCurrentProjectPath(result._path);
   }
 
   function handleFullscreen() {
@@ -116,6 +192,12 @@ export function EditorApp() {
           />
           <Divider />
           <FileMenu onSave={handleSaveProject} onLoad={handleLoadProject} />
+          {currentProjectPath && (
+            <>
+              <Divider />
+              <ProjectNameField path={currentProjectPath} />
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <label className="text-xs text-white/60">Aspect</label>
@@ -226,11 +308,7 @@ function FileMenu({ onSave, onLoad }: { onSave: () => void; onLoad: () => void }
         label="File"
         items={[
           { label: 'Open Project…', onClick: onLoad, shortcut: 'Ctrl+O' },
-          { label: 'Save Project…', onClick: onSave, shortcut: 'Ctrl+S' },
-          {
-            label: 'Open Recordings Folder',
-            onClick: () => window.api.openRecordingsFolder()
-          }
+          { label: 'Save Project…', onClick: onSave, shortcut: 'Ctrl+S' }
         ]}
       />
       <MenuItem
@@ -281,6 +359,114 @@ function MenuItem({
         ))}
       </div>
     </details>
+  );
+}
+
+function projectDisplayName(filePath: string) {
+  // Take just the basename and strip the .reframe.json suffix so the toolbar
+  // shows "Untitled-2026-05-18-203021" rather than the full absolute path.
+  const base = filePath.split(/[\\/]/).pop() ?? filePath;
+  return base.replace(/\.reframe\.json$/i, '');
+}
+
+function formatSavedAgo(savedAt: number | null): string {
+  if (!savedAt) return 'auto-save pending';
+  const seconds = Math.max(0, Math.floor((Date.now() - savedAt) / 1000));
+  if (seconds < 5) return 'saved just now';
+  if (seconds < 60) return `saved ${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `saved ${minutes}m ago`;
+  // Anything older falls back to a wall-clock time so it doesn't keep ticking.
+  const d = new Date(savedAt);
+  return `saved at ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function ProjectNameField({ path }: { path: string }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const setCurrentProjectPath = useEditor((s) => s.setCurrentProjectPath);
+  const lastSavedAt = useEditor((s) => s.lastSavedAt);
+
+  // The "saved 5s ago" label needs to re-render as time passes even when the
+  // store hasn't changed. Tick a local counter every 10 s so the relative-time
+  // string stays fresh without spamming renders.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => forceTick((n) => n + 1), 10_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  function enterEdit() {
+    setDraft(projectDisplayName(path));
+    setError(null);
+    setEditing(true);
+    // Focus + select on next paint, after the input renders.
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+  }
+
+  async function commit() {
+    const next = draft.trim();
+    if (!next || next === projectDisplayName(path)) {
+      setEditing(false);
+      setError(null);
+      return;
+    }
+    const res = await window.api.renameProject(path, next);
+    if (res.ok && res.path) {
+      setCurrentProjectPath(res.path);
+      setEditing(false);
+      setError(null);
+    } else {
+      setError(res.error ?? 'Rename failed');
+    }
+  }
+
+  function cancel() {
+    setEditing(false);
+    setError(null);
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={enterEdit}
+        title={`${path}\n\nClick to rename`}
+        className="group flex max-w-[360px] items-center gap-2 truncate rounded px-1.5 py-0.5 text-xs text-white/55 hover:bg-white/[0.06] hover:text-white/80"
+      >
+        <span className="truncate">{projectDisplayName(path)}</span>
+        <span className="shrink-0 text-emerald-400/70">· {formatSavedAgo(lastSavedAt)}</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setError(null);
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            void commit();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+        className="w-[280px] rounded border border-emerald-400/40 bg-black/40 px-2 py-0.5 text-xs text-white outline-none focus:border-emerald-400/70"
+      />
+      {error && <span className="text-xs text-red-400" title={error}>!</span>}
+    </div>
   );
 }
 

@@ -58,6 +58,15 @@ export type EditorState = {
   showAdvanced: boolean;
   effects: { roundnessPx: number; paddingPct: number; shadowPct: number; motionBlur: number; blurBg: boolean };
 
+  // On-disk path of the auto-saved project file (set when a recording is
+  // first loaded, kept stable for the rest of the session). Used by the editor
+  // to debounce-write changes to the same file silently.
+  currentProjectPath: string | null;
+  // Wall-clock ms of the most recent successful auto-save write — drives the
+  // "saved 5s ago" indicator in the toolbar so the user has feedback that
+  // their changes have been persisted.
+  lastSavedAt: number | null;
+
   // Audio — applies to preview playback AND to export. When muted, the export
   // pipeline drops the audio track entirely, so the saved file has no sound.
   videoVolume: number; // 0..1
@@ -74,6 +83,8 @@ export type EditorState = {
 
   // Actions
   setRecording: (r: RecordingMeta, fileUrl: string, webcamFileUrl?: string | null) => void;
+  setCurrentProjectPath: (p: string | null) => void;
+  setLastSavedAt: (t: number | null) => void;
   setVideoIntrinsicSize: (size: { width: number; height: number } | null) => void;
   setMainVideoEl: (el: HTMLVideoElement | null) => void;
   setCurrent: (ms: number) => void;
@@ -166,9 +177,15 @@ export const useEditor = create<EditorState>((set, get) => ({
   videoVolume: 1,
   videoMuted: false,
 
+  currentProjectPath: null,
+  lastSavedAt: null,
+
   items: [],
   selectedItemId: null,
   pixelsPerSecond: 60,
+
+  setCurrentProjectPath: (p) => set({ currentProjectPath: p }),
+  setLastSavedAt: (t) => set({ lastSavedAt: t }),
 
   setRecording: (r, fileUrl, webcamFileUrl) =>
     set((s) => ({

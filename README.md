@@ -47,11 +47,50 @@ npm run package:mac        # .dmg
 
 Output lands in `release/`.
 
-## Recordings on disk
+## Releasing
 
-Saved to `~/Videos/reframe/` as timestamped `.webm` files. If you record with the webcam toggle on, a second `<timestamp>-webcam.webm` is saved alongside so the editor can re-position the webcam over the screen.
+Cross-platform installers are built on GitHub's runners — you can't cross-build
+macOS/Windows from Linux locally. The `.github/workflows/release.yml` workflow
+is **manual-trigger only**:
 
-Project files: `.reframe.json` — saved/loaded via the editor's `File` menu.
+1. Push your commits (and bump `version` in `package.json` if needed).
+2. GitHub → **Actions** tab → **Build Reframe** → **Run workflow**.
+3. ~10–15 min later, download the artifacts from the finished run:
+   `linux-installers` (AppImage + deb), `windows-installer` (.exe),
+   `macos-installer-arm64` / `macos-installer-x64` (.dmg).
+4. Create the GitHub release by hand and upload those files.
+
+The macOS `.dmg` is **unsigned** — users right-click → Open on first launch to
+get past Gatekeeper. See the comment in `release.yml` for what's needed to ship
+a signed + notarized build.
+
+## Recording lifecycle
+
+Raw `.webm` recordings are treated as the editor's scratch files — users
+never see them in their file manager. The flow:
+
+1. **Record** → file written to the OS app-data folder
+   (`~/.config/Reframe/recordings/` on Linux,
+   `~/Library/Application Support/Reframe/recordings/` on macOS,
+   `%APPDATA%\Reframe\recordings\` on Windows).
+2. **Editor opens** with the recording loaded. State is "pending".
+3. From here, one of three things happens:
+   - **Save Project** (`File → Save Project…`) → writes a `.reframe.json` to
+     the user's Documents folder. The recording is now "kept" — referenced by
+     that project file and never auto-deleted.
+   - **Export Video** → an MP4 / GIF / WebM lands at the user-chosen path.
+     The raw `.webm` is still pending; if no project was saved, it gets
+     cleaned up at editor close.
+   - **Close the editor** → if no project was saved this session, the pending
+     `.webm` (and webcam companion, if any) are deleted from the app-data
+     folder. Starting a new recording while the editor is open also discards
+     the previous pending file.
+
+Net result: the app-data recordings folder only contains files referenced by
+saved projects. Closing the editor without saving leaves no scratch behind.
+
+Project files (`.reframe.json`) live wherever the user saves them — by default
+inside `~/Documents/`. Reopen one via `File → Open Project…`.
 
 ## Layout
 

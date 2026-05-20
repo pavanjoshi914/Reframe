@@ -1,7 +1,6 @@
-import { app, BrowserWindow, Menu, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import os from 'node:os';
 import { Readable } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -17,6 +16,12 @@ protocol.registerSchemesAsPrivileged([
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Force a single canonical name so `app.getPath('userData')` resolves to the
+// same folder in dev and prod (otherwise dev uses package.json `name` =
+// "reframe" and prod uses electron-builder `productName` = "Reframe", and a
+// dev build can't see prod-saved data).
+app.setName('Reframe');
+
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const RENDERER_DIST = path.join(__dirname, '../dist');
 const PRELOAD = path.join(__dirname, 'preload.js');
@@ -26,6 +31,7 @@ let hudWindow: BrowserWindow | null = null;
 let pickerWindow: BrowserWindow | null = null;
 let editorWindow: BrowserWindow | null = null;
 let regionSelectorWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
 // Source associated with the display the user is currently selecting a region
 // from. Captured when the overlay opens so the resulting region IPC payload
 // can carry the matching desktopCapturer source id back to the HUD.
@@ -40,8 +46,29 @@ const isDev = !!VITE_DEV_SERVER_URL;
 
 let lastRecording: import('../src/shared/ipc.js').RecordingMeta | null = null;
 
-const recordingsDir = path.join(os.homedir(), 'Videos', 'reframe');
-fs.mkdirSync(recordingsDir, { recursive: true });
+// Three directories, three jobs:
+//
+//   recordingsTempDir — internal scratch for raw .webm screen captures. Lives
+//                       in OS app-data (~/.config/Reframe/recordings on Linux,
+//                       ~/Library/Application Support/Reframe/recordings on
+//                       macOS, %APPDATA%\Reframe\recordings on Windows). The
+//                       user never sees this folder in their file manager;
+//                       cleanup happens via the startup orphan sweep.
+//
+//   projectsDir       — user-facing folder where auto-saved .reframe.json
+//                       projects live. One file per recording session,
+//                       auto-named like "Untitled-2026-05-18-203021.reframe.json".
+//                       The user browses/deletes here.
+//
+//   exportsDir        — user-facing folder where exported MP4 / GIF / WebM
+//                       files land by default (still overridable via the Save
+//                       dialog).
+//
+// All three are assigned inside app.whenReady() because `app.getPath()`
+// requires the app to be initialized first.
+let recordingsTempDir = '';
+let projectsDir = '';
+let exportsDir = '';
 
 function loadHtml(win: BrowserWindow, htmlName: string) {
   if (VITE_DEV_SERVER_URL) {
@@ -52,9 +79,21 @@ function loadHtml(win: BrowserWindow, htmlName: string) {
 }
 
 function createHud() {
+  // Park the pill at the bottom-center of the primary display's work area
+  // (so it sits just above the taskbar/dock, not on top of it). Same approach
+  // openscreen uses — much more discoverable than the default OS-centered
+  // placement where the HUD lands in the middle of the screen.
+  const { workArea } = screen.getPrimaryDisplay();
+  const windowWidth = 620;
+  const windowHeight = 56;
+  const x = Math.floor(workArea.x + (workArea.width - windowWidth) / 2);
+  const y = Math.floor(workArea.y + workArea.height - windowHeight - 28);
+
   hudWindow = new BrowserWindow({
-    width: 620,
-    height: 56,
+    width: windowWidth,
+    height: windowHeight,
+    x,
+    y,
     frame: false,
     transparent: useTransparent,
     backgroundColor: useTransparent ? '#00000000' : '#14161a',
@@ -149,7 +188,62 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
   loadHtml(editorWindow, 'editor.html');
   editorWindow.on('closed', () => {
     editorWindow = null;
+    // No cleanup needed on close — the editor auto-saves a project file the
+    // moment a recording is loaded, so every recording is already "kept" via
+    // its .reframe.json. Orphan temp recordings (e.g. from a crash or from a
+    // project the user manually deleted) are swept on next app launch.
   });
+}
+
+function showHud() {
+  if (!hudWindow || hudWindow.isDestroyed()) {
+    createHud();
+    return;
+  }
+  if (hudWindow.isMinimized()) hudWindow.restore();
+  hudWindow.show();
+  hudWindow.focus();
+}
+
+function createTray() {
+  if (tray) return;
+  // Tray icons want a small bitmap; the app icon is 512×512. Resize once on
+  // construction so the menubar/status area gets a crisp 22px (Linux/Win) or
+  // 16px (macOS) glyph instead of a downscaled-at-paint-time blur.
+  const isMac = process.platform === 'darwin';
+  const trayIconSize = isMac ? 16 : 22;
+  const image = nativeImage
+    .createFromPath(APP_ICON)
+    .resize({ width: trayIconSize, height: trayIconSize, quality: 'best' });
+  // On macOS, marking the icon as a template lets the OS recolor it for
+  // light/dark menubars. Our plum logo isn't a single-color glyph, so we keep
+  // it as a regular (colored) icon — same as openscreen.
+  tray = new Tray(image);
+  tray.on('click', showHud);
+  tray.on('double-click', showHud);
+  updateTrayMenu();
+}
+
+function updateTrayMenu() {
+  if (!tray) return;
+  const tooltip = isRecording ? 'Reframe — recording' : 'Reframe';
+  const template: Electron.MenuItemConstructorOptions[] = isRecording
+    ? [
+        {
+          label: 'Stop recording',
+          click: () => hudWindow?.webContents.send('hud:stop-shortcut')
+        },
+        { type: 'separator' },
+        { label: 'Open', click: showHud },
+        { label: 'Quit', click: () => app.quit() }
+      ]
+    : [
+        { label: 'Open', click: showHud },
+        { type: 'separator' },
+        { label: 'Quit', click: () => app.quit() }
+      ];
+  tray.setToolTip(tooltip);
+  tray.setContextMenu(Menu.buildFromTemplate(template));
 }
 
 ipcMain.handle('sources:get', async () => {
@@ -281,16 +375,18 @@ ipcMain.handle('picker:cancel', () => {
 
 ipcMain.handle('recording:save', async (_evt, data: ArrayBuffer, meta: import('../src/shared/ipc.js').SaveRecordingMeta) => {
   const ts = new Date(meta.startedAt).toISOString().replace(/[:.]/g, '-');
-  const filePath = path.join(recordingsDir, `${ts}.webm`);
+  const filePath = path.join(recordingsTempDir, `${ts}.webm`);
   fs.writeFileSync(filePath, Buffer.from(data));
   let webcamFilePath: string | undefined;
   if (meta.webcamData) {
-    webcamFilePath = path.join(recordingsDir, `${ts}-webcam.webm`);
+    webcamFilePath = path.join(recordingsTempDir, `${ts}-webcam.webm`);
     fs.writeFileSync(webcamFilePath, Buffer.from(meta.webcamData));
   }
   const { webcamData, ...rest } = meta;
   void webcamData;
-  return { ...rest, filePath, webcamFilePath };
+  const result: import('../src/shared/ipc.js').RecordingMeta = { ...rest, filePath, webcamFilePath };
+  lastRecording = result;
+  return result;
 });
 
 ipcMain.handle('editor:open', (_evt, recording) => {
@@ -298,6 +394,15 @@ ipcMain.handle('editor:open', (_evt, recording) => {
 });
 
 ipcMain.handle('recording:meta', () => lastRecording);
+
+// A project loaded via the HUD's "Open Project" button is parked here so the
+// editor can pick it up on mount. Single-use — read once, then cleared.
+let lastLoadedProject: { state: unknown; path: string; recording: import('../src/shared/ipc.js').RecordingMeta } | null = null;
+ipcMain.handle('project:lastLoaded', () => {
+  const p = lastLoadedProject;
+  lastLoadedProject = null;
+  return p;
+});
 
 ipcMain.handle('recording:fileUrl', (_evt, filePath: string) => {
   // Serve via the custom `media://` scheme so the editor (http origin in dev)
@@ -307,25 +412,52 @@ ipcMain.handle('recording:fileUrl', (_evt, filePath: string) => {
 
 ipcMain.handle('hud:minimize', () => hudWindow?.minimize());
 ipcMain.handle('hud:close', () => hudWindow?.close());
-ipcMain.handle('recordings:openFolder', () => shell.openPath(recordingsDir));
 
 let isRecording = false;
 
 ipcMain.handle('hud:setRecording', (_evt, recording: boolean) => {
   isRecording = !!recording;
-  if (!hudWindow) return;
-  // Keep setContentProtection on — excludes the HUD from screen capture on
-  // macOS/Windows. On Linux it's a no-op (the HUD will be visible in the
-  // recording); the user accepts that trade-off so they can still see/stop
-  // recording from the HUD pill.
-  hudWindow.setContentProtection(true);
+  if (hudWindow) {
+    // Keep setContentProtection on — excludes the HUD from screen capture on
+    // macOS/Windows. On Linux it's a no-op (the HUD will be visible in the
+    // recording); the user accepts that trade-off so they can still see/stop
+    // recording from the HUD pill.
+    hudWindow.setContentProtection(true);
+  }
+  updateTrayMenu();
+});
+
+// Generate a unique on-disk path for a brand-new auto-saved project. Called
+// by the editor the moment a recording loads, so a project file exists from
+// the very first state change. The name is based on the recording's
+// startedAt timestamp so it's stable across the session.
+ipcMain.handle('project:initialPath', (_evt, startedAt: number) => {
+  const ts = new Date(startedAt).toISOString().replace(/[:.]/g, '-');
+  return path.join(projectsDir, `Untitled-${ts}.reframe.json`);
+});
+
+// Silent auto-save (no dialog) to a previously-known path. The editor calls
+// this on every state change, debounced.
+ipcMain.handle('project:autoSave', async (_evt, filePath: string, project) => {
+  try {
+    // Safety: only write inside our projects dir.
+    const resolved = path.resolve(filePath);
+    if (!projectsDir || !resolved.startsWith(projectsDir + path.sep)) {
+      return { saved: false };
+    }
+    await fs.promises.writeFile(resolved, JSON.stringify(project, null, 2));
+    return { saved: true, path: resolved };
+  } catch (err) {
+    console.error('[main] project:autoSave failed', err);
+    return { saved: false };
+  }
 });
 
 ipcMain.handle('project:save', async (evt, project) => {
   const win = BrowserWindow.fromWebContents(evt.sender) ?? editorWindow ?? undefined;
   const res = await dialog.showSaveDialog(win!, {
-    title: 'Save Project',
-    defaultPath: path.join(recordingsDir, 'project.reframe.json'),
+    title: 'Save Project As',
+    defaultPath: path.join(projectsDir, 'Untitled.reframe.json'),
     filters: [{ name: 'Reframe Project', extensions: ['reframe.json', 'json'] }]
   });
   if (res.canceled || !res.filePath) return { saved: false };
@@ -336,19 +468,83 @@ ipcMain.handle('project:save', async (evt, project) => {
 ipcMain.handle('project:load', async (evt) => {
   const win = BrowserWindow.fromWebContents(evt.sender) ?? editorWindow ?? undefined;
   const res = await dialog.showOpenDialog(win!, {
-    title: 'Load Project',
-    defaultPath: recordingsDir,
+    title: 'Open Project',
+    defaultPath: projectsDir,
     filters: [{ name: 'Reframe Project', extensions: ['reframe.json', 'json'] }],
     properties: ['openFile']
   });
   if (res.canceled || res.filePaths.length === 0) return null;
   const raw = fs.readFileSync(res.filePaths[0], 'utf-8');
   try {
-    return JSON.parse(raw);
+    const project = JSON.parse(raw);
+    return { ...project, _path: res.filePaths[0] };
   } catch {
     return null;
   }
 });
+
+// Triggered from the HUD's "Open Project" button — picks a .reframe.json,
+// loads its content, and routes it to the editor (creating one if needed).
+// The editor reads the parked payload on mount, or via the project:opened
+// push event if it's already alive.
+ipcMain.handle('project:openFromPicker', async (evt) => {
+  const win = BrowserWindow.fromWebContents(evt.sender) ?? hudWindow ?? undefined;
+  const res = await dialog.showOpenDialog(win!, {
+    title: 'Open Project',
+    defaultPath: projectsDir,
+    filters: [{ name: 'Reframe Project', extensions: ['reframe.json', 'json'] }],
+    properties: ['openFile']
+  });
+  if (res.canceled || res.filePaths.length === 0) return { opened: false };
+  const filePath = res.filePaths[0];
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const project = JSON.parse(raw);
+    if (!project?.recording) return { opened: false };
+    lastRecording = project.recording;
+    lastLoadedProject = { state: project.state, path: filePath, recording: project.recording };
+    if (editorWindow && !editorWindow.isDestroyed()) {
+      editorWindow.focus();
+      editorWindow.webContents.send('project:opened', lastLoadedProject);
+      // Consumed by the live editor — clear so a subsequent mount doesn't re-hydrate.
+      lastLoadedProject = null;
+    } else {
+      createEditor(project.recording);
+    }
+    return { opened: true, path: filePath };
+  } catch (err) {
+    console.error('[main] project:openFromPicker failed', err);
+    return { opened: false };
+  }
+});
+
+// Rename a .reframe.json on disk (used by the editor's inline-rename UI).
+// Only basename — file stays in projectsDir, .reframe.json suffix is fixed.
+ipcMain.handle('project:rename', async (_evt, oldPath: string, newName: string) => {
+  try {
+    const resolved = path.resolve(oldPath);
+    if (!projectsDir || !resolved.startsWith(projectsDir + path.sep)) {
+      return { ok: false, error: 'Path outside projects folder' };
+    }
+    // Sanitize the new name: strip our extension if the user retyped it, then
+    // replace anything that isn't safe-for-filename with underscores.
+    let base = newName.trim().replace(/\.reframe\.json$/i, '');
+    base = base.replace(/[^a-zA-Z0-9._\- ]/g, '_').slice(0, 100);
+    if (!base) return { ok: false, error: 'Empty name' };
+    const newPath = path.join(projectsDir, `${base}.reframe.json`);
+    if (newPath === resolved) return { ok: true, path: resolved };
+    if (fs.existsSync(newPath)) {
+      return { ok: false, error: 'A project with that name already exists' };
+    }
+    await fs.promises.rename(resolved, newPath);
+    return { ok: true, path: newPath };
+  } catch (err) {
+    console.error('[main] project:rename failed', err);
+    return { ok: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('exports:openFolder', () => shell.openPath(exportsDir));
 
 ipcMain.handle('image:pick', async (evt) => {
   const win = BrowserWindow.fromWebContents(evt.sender) ?? editorWindow ?? undefined;
@@ -382,7 +578,7 @@ ipcMain.handle('export:save', async (evt, req: { defaultName: string; data: Arra
   const safeName = req.defaultName.replace(/[^a-z0-9._-]+/gi, '-') + '.' + ext;
   const res = await dialog.showSaveDialog(win!, {
     title: 'Export Video',
-    defaultPath: path.join(recordingsDir, safeName),
+    defaultPath: path.join(exportsDir, safeName),
     filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
   });
   if (res.canceled || !res.filePath) return { saved: false };
@@ -390,8 +586,18 @@ ipcMain.handle('export:save', async (evt, req: { defaultName: string; data: Arra
   return { saved: true, path: res.filePath };
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   console.log('[main] electron ready, creating HUD');
+
+  // Resolve the three on-disk locations (see comments at the top of the file).
+  recordingsTempDir = path.join(app.getPath('userData'), 'recordings');
+  const reframeUserDir = path.join(app.getPath('videos'), 'Reframe');
+  projectsDir = path.join(reframeUserDir, 'Projects');
+  exportsDir = path.join(reframeUserDir, 'Recordings');
+  fs.mkdirSync(recordingsTempDir, { recursive: true });
+  fs.mkdirSync(projectsDir, { recursive: true });
+  fs.mkdirSync(exportsDir, { recursive: true });
+  console.log('[main] paths:', { recordingsTempDir, projectsDir, exportsDir });
 
   // Drop the default OS menubar (File/Edit/View/Window/Help). The editor's
   // top toolbar already exposes File/Edit/View — keeping both produced a
@@ -401,24 +607,66 @@ app.whenReady().then(() => {
   protocol.handle('media', async (req) => {
     const url = new URL(req.url);
     const filePath = decodeURIComponent(url.pathname);
-    // Only allow paths under the recordings dir.
+    // Only allow paths under the temp recordings dir.
     const resolved = path.resolve(filePath);
-    if (!resolved.startsWith(recordingsDir + path.sep)) {
+    if (!resolved.startsWith(recordingsTempDir + path.sep)) {
       return new Response('forbidden', { status: 403 });
     }
     try {
       const stat = await fs.promises.stat(resolved);
+      const total = stat.size;
+
+      // HTTP Range support is mandatory for <video> playback. The media stack
+      // reads the header, then range-requests the rest as it buffers/seeks.
+      // Without 206 responses the element desyncs its byte offsets and bails
+      // out a fraction of a second in (currentTime snaps to duration) — which
+      // is exactly what broke export.
+      const rangeHeader = req.headers.get('Range');
+      const rangeMatch = rangeHeader ? /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim()) : null;
+
+      if (rangeMatch) {
+        let start = rangeMatch[1] ? parseInt(rangeMatch[1], 10) : 0;
+        let end = rangeMatch[2] ? parseInt(rangeMatch[2], 10) : total - 1;
+        if (!Number.isFinite(start) || start < 0) start = 0;
+        if (!Number.isFinite(end) || end >= total) end = total - 1;
+        if (start > end || start >= total) {
+          return new Response('range not satisfiable', {
+            status: 416,
+            headers: { 'Content-Range': `bytes */${total}` }
+          });
+        }
+        const stream = fs.createReadStream(resolved, { start, end });
+        return new Response(Readable.toWeb(stream) as ReadableStream, {
+          status: 206,
+          headers: {
+            'Content-Type': 'video/webm',
+            'Content-Length': String(end - start + 1),
+            'Content-Range': `bytes ${start}-${end}/${total}`,
+            'Accept-Ranges': 'bytes'
+          }
+        });
+      }
+
       const stream = fs.createReadStream(resolved);
       return new Response(Readable.toWeb(stream) as ReadableStream, {
+        status: 200,
         headers: {
           'Content-Type': 'video/webm',
-          'Content-Length': String(stat.size)
+          'Content-Length': String(total),
+          'Accept-Ranges': 'bytes'
         }
       });
     } catch {
       return new Response('not found', { status: 404 });
     }
   });
+
+  // Orphan recording sweep — walk every saved .reframe.json, collect the
+  // recording filePaths it references, and delete anything in
+  // recordingsTempDir that isn't referenced. Handles two failure modes:
+  // (a) crash during a recording session (project file never got auto-saved),
+  // (b) user manually deleted a project from their file manager.
+  await sweepOrphanRecordings();
 
   // Convenience global stop shortcut — works from any focused window.
   globalShortcut.register('CommandOrControl+Shift+0', () => {
@@ -427,13 +675,50 @@ app.whenReady().then(() => {
   });
 
   createHud();
+  createTray();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createHud();
   });
 });
 
+async function sweepOrphanRecordings() {
+  try {
+    const projectFiles = (await fs.promises.readdir(projectsDir))
+      .filter((f) => f.endsWith('.reframe.json'));
+    const referenced = new Set<string>();
+    for (const pf of projectFiles) {
+      try {
+        const raw = await fs.promises.readFile(path.join(projectsDir, pf), 'utf-8');
+        const parsed = JSON.parse(raw);
+        const rec = parsed?.recording as { filePath?: string; webcamFilePath?: string } | undefined;
+        if (rec?.filePath) referenced.add(path.resolve(rec.filePath));
+        if (rec?.webcamFilePath) referenced.add(path.resolve(rec.webcamFilePath));
+      } catch {
+        // Malformed project file — ignore, don't crash startup.
+      }
+    }
+    const tempFiles = await fs.promises.readdir(recordingsTempDir);
+    let deleted = 0;
+    for (const tf of tempFiles) {
+      const full = path.resolve(recordingsTempDir, tf);
+      if (referenced.has(full)) continue;
+      try {
+        await fs.promises.rm(full, { force: true });
+        deleted++;
+      } catch {
+        // Best-effort — leave it for next sweep.
+      }
+    }
+    if (deleted > 0) console.log(`[main] orphan sweep: removed ${deleted} unreferenced temp recording(s)`);
+  } catch (err) {
+    console.warn('[main] orphan sweep failed', err);
+  }
+}
+
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  tray?.destroy();
+  tray = null;
 });
 
 app.on('window-all-closed', () => {
