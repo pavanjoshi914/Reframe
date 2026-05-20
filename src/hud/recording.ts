@@ -14,6 +14,8 @@ export type RecordingOptions = {
   camStream?: MediaStream | null;
 };
 
+import fixWebmDuration from 'fix-webm-duration';
+
 export type RecordingHandle = {
   stop: () => Promise<{
     blob: Blob;
@@ -24,6 +26,21 @@ export type RecordingHandle = {
     startedAt: number;
   }>;
 };
+
+// MediaRecorder writes streaming WebM with no Duration element in the header,
+// so HTMLVideoElement.duration reads as Infinity and seeking/currentTime are
+// unreliable everywhere downstream (editor preview + export). Patch the real
+// duration into the EBML header right after recording so every consumer gets
+// a well-formed file. No-op (returns the blob untouched) for non-WebM blobs.
+async function repairWebmDuration(blob: Blob, durationMs: number): Promise<Blob> {
+  if (!blob.type.includes('webm') || durationMs <= 0) return blob;
+  try {
+    return await fixWebmDuration(blob, durationMs, { logger: false });
+  } catch (err) {
+    console.warn('[recording] fixWebmDuration failed, using unrepaired blob', err);
+    return blob;
+  }
+}
 
 export async function startRecording(opts: RecordingOptions): Promise<RecordingHandle> {
   const constraints: any = {
@@ -56,8 +73,8 @@ export async function startRecording(opts: RecordingOptions): Promise<RecordingH
       audio: opts.micDeviceId ? { deviceId: { exact: opts.micDeviceId } } : true,
       video: false
     });
-    const tracks = [...screenStream.getVideoTracks()];
-    const audioTracks = [...screenStream.getAudioTracks(), ...micStream.getAudioTracks()];
+    const tracks: MediaStreamTrack[] = [...screenStream.getVideoTracks()];
+    const audioTracks: MediaStreamTrack[] = [...screenStream.getAudioTracks(), ...micStream.getAudioTracks()];
     if (audioTracks.length > 0) {
       const ctx = new AudioContext();
       const dest = ctx.createMediaStreamDestination();
@@ -74,17 +91,23 @@ export async function startRecording(opts: RecordingOptions): Promise<RecordingH
   const width = settings.width ?? 1920;
   const height = settings.height ?? 1080;
 
-  // Codec preference: prefer H.264 (hardware-accelerated on Linux/Intel/AMD/
-  // NVIDIA), then VP8 (cheap software encode), VP9/AV1 last. VP9 software
-  // encoding on Linux can't keep up with 60fps capture — frames pile up,
-  // MediaRecorder writes malformed clusters, and playback freezes a few
-  // seconds in. Audio codec is left implicit so the same mimeType works for
-  // the audio-less webcam recorder.
+  // Codec preference: VP8 first. It must be VP8/VP9 — NOT H.264.
+  //
+  // MediaRecorder will happily produce `video/webm;codecs=h264` (H.264 video
+  // inside a WebM/Matroska container), and it's tempting because H.264 has
+  // hardware encoders. But it's a non-standard combination: Chromium's
+  // <video> element cannot reliably DEMUX H.264-in-WebM for playback — it
+  // decodes a fraction of a second then declares the clip "ended". That made
+  // the editor preview flaky and broke export entirely (the exporter plays
+  // the recording through a <video> element to composite frames).
+  //
+  // VP8-in-WebM is the most battle-tested codec/container combo in Chromium;
+  // playback + seeking are rock-solid. VP8 software encoding is cheap enough
+  // for screen capture. VP9 is the fallback. Audio codec is left implicit so
+  // the same mimeType works for the audio-less webcam recorder.
   const mimeCandidates = [
-    'video/webm;codecs=h264',
     'video/webm;codecs=vp8',
     'video/webm;codecs=vp9',
-    'video/webm;codecs=av1',
     'video/webm'
   ];
   const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? 'video/webm';
@@ -156,12 +179,20 @@ export async function startRecording(opts: RecordingOptions): Promise<RecordingH
       // running so the camera LED stays lit between sessions.
       if (ownsCamStream) camStream?.getTracks().forEach((t) => t.stop());
 
-      const blob = new Blob(chunks, { type: mimeType });
-      const webcamBlob = camChunks.length > 0 ? new Blob(camChunks, { type: mimeType }) : undefined;
+      const durationMs = Date.now() - startedAt;
+      const rawBlob = new Blob(chunks, { type: mimeType });
+      const rawWebcamBlob = camChunks.length > 0 ? new Blob(camChunks, { type: mimeType }) : undefined;
+
+      // Repair both files' duration headers before handing them off.
+      const blob = await repairWebmDuration(rawBlob, durationMs);
+      const webcamBlob = rawWebcamBlob
+        ? await repairWebmDuration(rawWebcamBlob, durationMs)
+        : undefined;
+
       return {
         blob,
         webcamBlob,
-        durationMs: Date.now() - startedAt,
+        durationMs,
         width,
         height,
         startedAt

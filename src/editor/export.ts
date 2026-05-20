@@ -1,7 +1,34 @@
+import {
+  Input,
+  Output,
+  BlobSource,
+  BufferTarget,
+  Mp4OutputFormat,
+  WebMOutputFormat,
+  CanvasSink,
+  CanvasSource,
+  ALL_FORMATS,
+  getFirstEncodableVideoCodec,
+  type VideoCodec
+} from 'mediabunny';
 import { useEditor, type CropRegion } from './store';
-import { primeVideo } from './videoPrime';
+
+// Export pipeline — frame-accurate, NOT real-time.
+//
+// Earlier versions played the recording through a <video> element and captured
+// canvas.captureStream() with MediaRecorder. That was unreliable: the <video>
+// element would declare the clip "ended" a fraction of a second in and the
+// export came out 1–2 s long regardless of the real duration.
+//
+// This version follows openscreen's approach: decode the source with WebCodecs
+// (via mediabunny's CanvasSink), composite each decoded frame onto the output
+// canvas, and encode + mux the result (via mediabunny's CanvasSource + Output).
+// Every source frame is processed deterministically — no playback, no
+// MediaRecorder, no dependence on video.currentTime.
 
 type ProgressFn = (phase: string, pct: number) => void;
+
+type FrameSource = HTMLCanvasElement | OffscreenCanvas | HTMLImageElement;
 
 const QUALITY_PRESETS = {
   low: { maxHeight: 720, bitrate: 2_000_000 },
@@ -28,21 +55,16 @@ const LAYOUT_COORDS: Record<
   'side-by-side': { x: 0.5, y: 0.5, size: 0.4, sideBySide: true }
 };
 
-function pickMimeType(format: 'mp4' | 'gif'): { mime: string; ext: 'mp4' | 'webm' } {
-  if (format === 'mp4') {
-    const candidates = [
-      'video/mp4;codecs=avc1.42E01E',
-      'video/mp4;codecs=h264',
-      'video/mp4'
-    ];
-    const ok = candidates.find((m) => MediaRecorder.isTypeSupported(m));
-    if (ok) return { mime: ok, ext: 'mp4' };
-    // Fall through to webm.
-  }
-  const webm = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find((m) =>
-    MediaRecorder.isTypeSupported(m)
-  ) ?? 'video/webm';
-  return { mime: webm, ext: 'webm' };
+function srcDims(s: CanvasImageSource): { w: number; h: number } {
+  const anyS = s as unknown as {
+    videoWidth?: number; videoHeight?: number;
+    naturalWidth?: number; naturalHeight?: number;
+    width?: number; height?: number;
+  };
+  return {
+    w: anyS.videoWidth || anyS.naturalWidth || anyS.width || 0,
+    h: anyS.videoHeight || anyS.naturalHeight || anyS.height || 0
+  };
 }
 
 export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
@@ -52,46 +74,48 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
     throw new Error('GIF export requires ffmpeg post-processing — coming in a future update. For now, please pick MP4.');
   }
 
-  const { fileUrl, webcamFileUrl, durationMs, items, background, effects, webcam, layoutPreset, aspect, exportQuality, exportFormat, videoMuted, cropRegion } = state;
+  const {
+    fileUrl, webcamFileUrl, items, background, effects, webcam,
+    layoutPreset, aspect, exportQuality, cropRegion
+  } = state;
 
-  function loadVideo(src: string) {
-    return new Promise<HTMLVideoElement>((resolve, reject) => {
-      const v = document.createElement('video');
-      v.src = src;
-      v.muted = true;
-      v.playsInline = true;
-      v.crossOrigin = 'anonymous';
-      const cleanup = () => {
-        v.removeEventListener('loadedmetadata', onMeta);
-        v.removeEventListener('error', onErr);
-      };
-      const onMeta = () => { cleanup(); resolve(v); };
-      const onErr = () => { cleanup(); reject(new Error('Failed to load video: ' + src)); };
-      v.addEventListener('loadedmetadata', onMeta);
-      v.addEventListener('error', onErr);
-    });
+  onProgress('Preparing', 0);
+
+  // ── Open the source recording(s) ────────────────────────────────────────
+  // fetch() works on the media:// scheme (registered with supportFetchAPI).
+  // mediabunny reads the resulting Blob entirely in-memory, so there's no
+  // dependence on HTTP range support or <video> playback quirks.
+  const screenBlob = await (await fetch(fileUrl)).blob();
+  const screenInput = new Input({ source: new BlobSource(screenBlob), formats: ALL_FORMATS });
+  const screenTrack = await screenInput.getPrimaryVideoTrack();
+  if (!screenTrack) throw new Error('Recording has no video track.');
+  const screenSink = new CanvasSink(screenTrack);
+
+  let webcamSink: CanvasSink | null = null;
+  if (webcamFileUrl && webcam.enabled) {
+    try {
+      const webcamBlob = await (await fetch(webcamFileUrl)).blob();
+      const webcamInput = new Input({ source: new BlobSource(webcamBlob), formats: ALL_FORMATS });
+      const webcamTrack = await webcamInput.getPrimaryVideoTrack();
+      if (webcamTrack) webcamSink = new CanvasSink(webcamTrack);
+    } catch (err) {
+      console.warn('[export] webcam track failed to open, exporting without it', err);
+    }
   }
 
-  const video = await loadVideo(fileUrl);
-  const webcamVideo = webcamFileUrl && webcam.enabled ? await loadVideo(webcamFileUrl).catch(() => null) : null;
+  const sourceDurationSec = await screenTrack.computeDuration();
 
-  // Prime so .duration and seeking work — see videoPrime.ts.
-  onProgress('Preparing', 0);
-  await primeVideo(video, durationMs);
-  if (webcamVideo) await primeVideo(webcamVideo, durationMs);
-
-  // Output dimensions.
-  const intrinsic = { w: video.videoWidth || 1920, h: video.videoHeight || 1080 };
+  // ── Output dimensions ───────────────────────────────────────────────────
+  const intrinsic = { w: screenTrack.displayWidth || 1920, h: screenTrack.displayHeight || 1080 };
   const ratio =
     aspect === 'auto' ? intrinsic.w / intrinsic.h : ASPECT_RATIOS[aspect] ?? intrinsic.w / intrinsic.h;
   const preset = QUALITY_PRESETS[exportQuality];
   let outH = Math.min(intrinsic.h, preset.maxHeight);
-  // Make even (some encoders require it).
   outH = Math.max(2, Math.floor(outH / 2) * 2);
   let outW = Math.floor(outH * ratio);
   outW = Math.max(2, Math.floor(outW / 2) * 2);
 
-  // Background image preload (if used).
+  // ── Background image preload ────────────────────────────────────────────
   let bgImage: HTMLImageElement | null = null;
   if (background.mode === 'image' && background.value) {
     bgImage = new Image();
@@ -102,227 +126,91 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
     });
   }
 
-  // Canvas + recorder.
+  // ── Output canvas + encoder + muxer ─────────────────────────────────────
   const canvas = document.createElement('canvas');
   canvas.width = outW;
   canvas.height = outH;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('2D canvas unavailable');
 
-  const fps = 30;
-  const stream = (canvas as HTMLCanvasElement).captureStream(fps);
-  // When not muted, pull the audio track off the source video and merge it
-  // into the canvas-driven stream so the exported file isn't silent. We must
-  // do this BEFORE constructing the MediaRecorder; once it's recording, you
-  // can't add tracks. captureStream() on the source returns live audio even
-  // though the element itself is muted (mute only gates the local speaker
-  // sink, not the underlying decoded track).
-  if (!videoMuted) {
-    const sourceCapture = (video as HTMLVideoElement & {
-      captureStream?: () => MediaStream;
-      mozCaptureStream?: () => MediaStream;
-    });
-    const grab = sourceCapture.captureStream ?? sourceCapture.mozCaptureStream;
-    if (grab) {
-      try {
-        const srcStream = grab.call(video);
-        for (const track of srcStream.getAudioTracks()) stream.addTrack(track);
-      } catch (err) {
-        console.warn('[export] could not capture source audio, exporting silent', err);
-      }
-    }
-  }
-  const { mime, ext } = pickMimeType(exportFormat);
-  const recorder = new MediaRecorder(stream, {
-    mimeType: mime,
-    videoBitsPerSecond: preset.bitrate
+  // Prefer H.264/MP4; fall back to VP9/VP8 in WebM if the system can't encode
+  // H.264 via WebCodecs.
+  const codec = await getFirstEncodableVideoCodec(['avc', 'vp9', 'vp8'], {
+    width: outW,
+    height: outH
   });
-  const chunks: BlobPart[] = [];
-  recorder.ondataavailable = (e) => {
-    if (e.data && e.data.size > 0) chunks.push(e.data);
-  };
+  if (!codec) throw new Error('No encodable video codec available on this system.');
+  const isMp4 = codec === 'avc';
+  const ext: 'mp4' | 'webm' = isMp4 ? 'mp4' : 'webm';
 
-  let canceled = false;
-  let finished = false;
-  let raf = 0;
-  let lastMs = 0;
-  let lastProgressTickAt = performance.now();
-
-  const stopped = new Promise<void>((resolve) => {
-    recorder.onstop = () => resolve();
+  const output = new Output({
+    format: isMp4 ? new Mp4OutputFormat() : new WebMOutputFormat(),
+    target: new BufferTarget()
   });
+  const videoSource = new CanvasSource(canvas, {
+    codec: codec as VideoCodec,
+    bitrate: preset.bitrate
+  });
+  output.addVideoTrack(videoSource);
+  await output.start();
 
-  function finalize() {
-    if (finished) return;
-    finished = true;
-    if (recorder.state === 'recording') recorder.stop();
-    stream.getTracks().forEach((t) => t.stop());
-  }
+  // ── Composite every source frame ────────────────────────────────────────
+  // outTs accumulates the OUTPUT timeline position (seconds). For untouched
+  // footage it tracks the source timestamp 1:1; trim regions are skipped and
+  // speed regions stretch/compress each frame's duration.
+  let outTs = 0;
+  let lastProgress = 0;
 
-  function drawFrame() {
-    const ms = video.currentTime * 1000;
+  for await (const wrapped of screenSink.canvases()) {
+    const { canvas: srcCanvas, timestamp, duration } = wrapped;
+    const ms = timestamp * 1000;
 
-    // Background.
-    ctx!.save();
-    ctx!.fillStyle = '#0a0b0e';
-    ctx!.fillRect(0, 0, outW, outH);
-
-    if (background.mode === 'color') {
-      ctx!.fillStyle = background.value;
-      ctx!.fillRect(0, 0, outW, outH);
-    } else if (background.mode === 'gradient') {
-      const grad = parseLinearGradient(ctx!, background.value, outW, outH);
-      ctx!.fillStyle = grad ?? '#1a1d23';
-      ctx!.fillRect(0, 0, outW, outH);
-    } else if (background.mode === 'image' && bgImage && bgImage.complete) {
-      drawCover(ctx!, bgImage, 0, 0, outW, outH);
-    }
-
-    // Inner padded video frame.
-    const padding = effects.paddingPct / 100;
-    const innerScale = 1 - padding * 0.5;
-
-    // Active overlays.
-    const activeZoom = items.find((it) => it.kind === 'zoom' && ms >= it.startMs && ms <= it.endMs);
-    const activeAnnotation = items.find(
-      (it) => it.kind === 'annotation' && ms >= it.startMs && ms <= it.endMs
+    // Trim: drop frames inside any trim region entirely.
+    const inTrim = items.some(
+      (it) => it.kind === 'trim' && ms >= it.startMs && ms < it.endMs
     );
-    const layout = LAYOUT_COORDS[layoutPreset];
+    if (inTrim) continue;
 
-    if (layout.sideBySide && webcam.enabled) {
-      const innerW = outW * innerScale;
-      const innerH = outH * innerScale;
-      const innerX = (outW - innerW) / 2;
-      const innerY = (outH - innerH) / 2;
-      const wcW = innerW * 0.4;
-      const vidW = innerW - wcW - 12;
-      drawVideoBox(ctx!, video, innerX, innerY, vidW, innerH, effects.roundnessPx, cropRegion, activeZoom);
-      if (webcamVideo) {
-        drawWebcamVideo(ctx!, webcamVideo, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx, false);
-      } else {
-        drawWebcamPlaceholder(ctx!, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx);
+    // Speed: a speed region stretches (slow) or compresses (fast) the frame's
+    // contribution to the output timeline.
+    const speed = items.find(
+      (it) => it.kind === 'speed' && ms >= it.startMs && ms <= it.endMs
+    );
+    const speedFactor = speed?.speed ?? 1;
+    const outDuration = Math.max(1 / 240, (duration || 1 / 30) / speedFactor);
+
+    // Webcam frame for this timestamp (random-access; mediabunny caches).
+    let webcamCanvas: FrameSource | null = null;
+    if (webcamSink) {
+      const wc = await webcamSink.getCanvas(timestamp).catch(() => null);
+      webcamCanvas = wc?.canvas ?? null;
+    }
+
+    drawFrame(ctx, outW, outH, srcCanvas, webcamCanvas, ms, {
+      items, background, effects, webcam, layoutPreset, cropRegion, bgImage
+    });
+
+    await videoSource.add(outTs, outDuration);
+    outTs += outDuration;
+
+    if (sourceDurationSec > 0) {
+      const pct = Math.min(99, (timestamp / sourceDurationSec) * 100);
+      if (pct - lastProgress >= 1) {
+        lastProgress = pct;
+        onProgress('Encoding', pct);
       }
-    } else {
-      const innerW = outW * innerScale;
-      const innerH = outH * innerScale;
-      const innerX = (outW - innerW) / 2;
-      const innerY = (outH - innerH) / 2;
-      drawVideoBox(ctx!, video, innerX, innerY, innerW, innerH, effects.roundnessPx, cropRegion, activeZoom);
-      if (webcam.enabled) {
-        const wcH = outH * webcam.size;
-        // Rectangle uses 16:9 (matches the live preview); square + circle
-        // stay 1:1.
-        const wcW = wcH * (webcam.shape === 'rectangle' ? 16 / 9 : 1);
-        const wx = webcam.x * outW;
-        const wy = webcam.y * outH;
-        const cornerRadius =
-          webcam.shape === 'circle' ? wcH / 2 :
-          // Square + rectangle share a soft corner that scales with output
-          // height so 4K renders don't look unrounded vs. 1080p.
-          Math.min(wcH / 4, 24 * (outH / 1080));
-        if (webcamVideo) {
-          drawWebcamVideo(ctx!, webcamVideo, wx, wy, wcW, wcH, cornerRadius, webcam.shape === 'circle');
-        } else {
-          drawWebcamPlaceholder(ctx!, wx, wy, wcW, wcH, cornerRadius);
-        }
-      }
-    }
-
-    if (activeAnnotation && activeAnnotation.text) {
-      drawAnnotation(ctx!, activeAnnotation.text, outW, outH);
-    }
-
-    ctx!.restore();
-  }
-
-  function tick() {
-    if (canceled || finished) return;
-    const ms = video.currentTime * 1000;
-
-    // Authoritative end: durationMs from the recording metadata is the wall-clock
-    // truth; rely on it instead of `video.ended`, which is unreliable for
-    // MediaRecorder-emitted WebMs.
-    if (durationMs > 0 && ms >= durationMs - 30) {
-      drawFrame();
-      finalize();
-      return;
-    }
-
-    // Stuck detection: if the source video stops advancing for >1.5s the file
-    // is probably tripping over an unindexed region — finalize gracefully so
-    // the user always gets a partial export instead of a hung UI.
-    if (Math.abs(ms - lastMs) > 1) {
-      lastMs = ms;
-      lastProgressTickAt = performance.now();
-    } else if (performance.now() - lastProgressTickAt > 1500) {
-      console.warn('[export] source video stalled — finalizing partial export');
-      drawFrame();
-      finalize();
-      return;
-    }
-
-    // Trim skip.
-    const trim = items.find((it) => it.kind === 'trim' && ms >= it.startMs && ms < it.endMs);
-    if (trim) {
-      video.currentTime = Math.min(durationMs / 1000, trim.endMs / 1000 + 0.001);
-      if (webcamVideo) webcamVideo.currentTime = video.currentTime;
-      raf = requestAnimationFrame(tick);
-      return;
-    }
-    // Speed.
-    const speed = items.find((it) => it.kind === 'speed' && ms >= it.startMs && ms <= it.endMs);
-    const targetRate = speed?.speed ?? 1;
-    if (Math.abs(video.playbackRate - targetRate) > 0.01) video.playbackRate = targetRate;
-    if (webcamVideo) {
-      if (Math.abs(webcamVideo.playbackRate - targetRate) > 0.01) webcamVideo.playbackRate = targetRate;
-      if (Math.abs(webcamVideo.currentTime - video.currentTime) > 0.15) webcamVideo.currentTime = video.currentTime;
-    }
-
-    drawFrame();
-
-    if (durationMs > 0) {
-      onProgress('Encoding', Math.min(99, (ms / durationMs) * 100));
-    }
-
-    raf = requestAnimationFrame(tick);
-  }
-
-  const onEnded = () => finalize();
-  video.addEventListener('ended', onEnded);
-
-  try {
-    video.currentTime = 0;
-    if (webcamVideo) webcamVideo.currentTime = 0;
-    // Draw an initial frame so the recorder has data.
-    await new Promise((r) => setTimeout(r, 50));
-    drawFrame();
-    recorder.start(250);
-    lastProgressTickAt = performance.now();
-    await video.play();
-    if (webcamVideo) {
-      try { await webcamVideo.play(); } catch { /* ignore */ }
-    }
-    raf = requestAnimationFrame(tick);
-    await stopped;
-  } finally {
-    canceled = true;
-    cancelAnimationFrame(raf);
-    video.removeEventListener('ended', onEnded);
-    video.pause();
-    video.src = '';
-    if (webcamVideo) {
-      webcamVideo.pause();
-      webcamVideo.src = '';
     }
   }
 
   onProgress('Saving', 99);
-  const blob = new Blob(chunks, { type: mime });
-  const buf = await blob.arrayBuffer();
+  await output.finalize();
+  const buffer = output.target.buffer;
+  if (!buffer) throw new Error('Export produced no data.');
+
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const res = await window.api.saveExport({
     defaultName: `reframe-${stamp}`,
-    data: buf,
+    data: buffer,
     format: ext
   });
   if (!res.saved) {
@@ -330,17 +218,102 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
     return;
   }
   onProgress('Done', 100);
-  if (ext === 'webm' && exportFormat === 'mp4') {
-    alert(
-      'Saved as .webm — your build of Chromium did not advertise MP4 encoder support. ' +
-      'Convert with: ffmpeg -i in.webm -c:v libx264 -c:a aac out.mp4'
-    );
+}
+
+// ── Frame compositing ──────────────────────────────────────────────────────
+// Draws one fully-composited output frame: background, the (cropped, possibly
+// zoomed) screen recording, the webcam overlay, and any active annotation.
+
+type DrawCtx = {
+  items: ReturnType<typeof useEditor.getState>['items'];
+  background: ReturnType<typeof useEditor.getState>['background'];
+  effects: ReturnType<typeof useEditor.getState>['effects'];
+  webcam: ReturnType<typeof useEditor.getState>['webcam'];
+  layoutPreset: ReturnType<typeof useEditor.getState>['layoutPreset'];
+  cropRegion: CropRegion;
+  bgImage: HTMLImageElement | null;
+};
+
+function drawFrame(
+  ctx: CanvasRenderingContext2D,
+  outW: number,
+  outH: number,
+  srcCanvas: FrameSource,
+  webcamCanvas: FrameSource | null,
+  ms: number,
+  d: DrawCtx
+) {
+  const { items, background, effects, webcam, layoutPreset, cropRegion, bgImage } = d;
+
+  ctx.save();
+  ctx.fillStyle = '#0a0b0e';
+  ctx.fillRect(0, 0, outW, outH);
+
+  if (background.mode === 'color') {
+    ctx.fillStyle = background.value;
+    ctx.fillRect(0, 0, outW, outH);
+  } else if (background.mode === 'gradient') {
+    const grad = parseLinearGradient(ctx, background.value, outW, outH);
+    ctx.fillStyle = grad ?? '#1a1d23';
+    ctx.fillRect(0, 0, outW, outH);
+  } else if (background.mode === 'image' && bgImage && bgImage.complete) {
+    drawCover(ctx, bgImage, 0, 0, outW, outH);
   }
+
+  const padding = effects.paddingPct / 100;
+  const innerScale = 1 - padding * 0.5;
+
+  const activeZoom = items.find((it) => it.kind === 'zoom' && ms >= it.startMs && ms <= it.endMs);
+  const activeAnnotation = items.find(
+    (it) => it.kind === 'annotation' && ms >= it.startMs && ms <= it.endMs
+  );
+  const layout = LAYOUT_COORDS[layoutPreset];
+
+  if (layout.sideBySide && webcam.enabled) {
+    const innerW = outW * innerScale;
+    const innerH = outH * innerScale;
+    const innerX = (outW - innerW) / 2;
+    const innerY = (outH - innerH) / 2;
+    const wcW = innerW * 0.4;
+    const vidW = innerW - wcW - 12;
+    drawVideoBox(ctx, srcCanvas, innerX, innerY, vidW, innerH, effects.roundnessPx, cropRegion, activeZoom);
+    if (webcamCanvas) {
+      drawWebcamVideo(ctx, webcamCanvas, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx, false);
+    } else {
+      drawWebcamPlaceholder(ctx, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx);
+    }
+  } else {
+    const innerW = outW * innerScale;
+    const innerH = outH * innerScale;
+    const innerX = (outW - innerW) / 2;
+    const innerY = (outH - innerH) / 2;
+    drawVideoBox(ctx, srcCanvas, innerX, innerY, innerW, innerH, effects.roundnessPx, cropRegion, activeZoom);
+    if (webcam.enabled) {
+      const wcH = outH * webcam.size;
+      const wcW = wcH * (webcam.shape === 'rectangle' ? 16 / 9 : 1);
+      const wx = webcam.x * outW;
+      const wy = webcam.y * outH;
+      const cornerRadius =
+        webcam.shape === 'circle' ? wcH / 2 :
+        Math.min(wcH / 4, 24 * (outH / 1080));
+      if (webcamCanvas) {
+        drawWebcamVideo(ctx, webcamCanvas, wx, wy, wcW, wcH, cornerRadius, webcam.shape === 'circle');
+      } else {
+        drawWebcamPlaceholder(ctx, wx, wy, wcW, wcH, cornerRadius);
+      }
+    }
+  }
+
+  if (activeAnnotation && activeAnnotation.text) {
+    drawAnnotation(ctx, activeAnnotation.text, outW, outH);
+  }
+
+  ctx.restore();
 }
 
 function drawVideoBox(
   ctx: CanvasRenderingContext2D,
-  video: HTMLVideoElement,
+  src: FrameSource,
   x: number,
   y: number,
   w: number,
@@ -350,26 +323,38 @@ function drawVideoBox(
   activeZoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number }
 ) {
   ctx.save();
+
+  // Zoom scales the ENTIRE framed box — rounded corners and all — about its
+  // centre, matching the editor preview, where the CSS `transform` sits on the
+  // outer container that wraps the rounded crop frame. The key is applying the
+  // transform BEFORE clipping so the rounded clip rect scales up too. (The old
+  // code clipped first, so the frame stayed put and only the content inside it
+  // scaled — "the internal canvas zooms instead of the window".)
+  //
+  // Matches the preview's `transform: scale(z) translate(tx%, ty%)` with
+  // transform-origin centre: a point P maps to  centre + z·(P − centre) + z·t,
+  // which the translate→scale→translate sequence below reproduces exactly.
+  const z = activeZoom?.zoomLevel ?? 1;
+  if (z !== 1) {
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const tx = (0.5 - (activeZoom?.zoomTargetX ?? 0.5)) * (z - 1) * w;
+    const ty = (0.5 - (activeZoom?.zoomTargetY ?? 0.5)) * (z - 1) * h;
+    ctx.translate(cx, cy);
+    ctx.scale(z, z);
+    ctx.translate(-cx + tx, -cy + ty);
+  }
+
   roundedRectPath(ctx, x, y, w, h, Math.min(roundness, Math.min(w, h) / 2));
   ctx.clip();
+  drawCoverWithCrop(ctx, src, crop, x, y, w, h);
 
-  const z = activeZoom?.zoomLevel ?? 1;
-  const tx = activeZoom ? (0.5 - (activeZoom.zoomTargetX ?? 0.5)) * w * (z - 1) : 0;
-  const ty = activeZoom ? (0.5 - (activeZoom.zoomTargetY ?? 0.5)) * h * (z - 1) : 0;
-  ctx.translate(x + w / 2, y + h / 2);
-  ctx.scale(z, z);
-  ctx.translate(-w / 2 + tx / z, -h / 2 + ty / z);
-
-  // Crop-aware cover. With identity crop {0,0,1,1} this is equivalent to
-  // drawCover; otherwise the cropped sub-rect of the source becomes the new
-  // "source" and is cover-fit into the destination box.
-  drawCoverWithCrop(ctx, video, crop, 0, 0, w, h);
   ctx.restore();
 }
 
 function drawWebcamVideo(
   ctx: CanvasRenderingContext2D,
-  video: HTMLVideoElement,
+  src: FrameSource,
   x: number,
   y: number,
   w: number,
@@ -387,7 +372,7 @@ function drawWebcamVideo(
     roundedRectPath(ctx, x, y, w, h, Math.min(roundness, Math.min(w, h) / 2));
   }
   ctx.clip();
-  drawCover(ctx, video, x, y, w, h);
+  drawCover(ctx, src, x, y, w, h);
   ctx.restore();
   ctx.save();
   if (circle) {
@@ -471,52 +456,45 @@ function roundedRectPath(
 
 function drawCover(
   ctx: CanvasRenderingContext2D,
-  src: HTMLVideoElement | HTMLImageElement,
+  src: CanvasImageSource,
   dx: number,
   dy: number,
   dw: number,
   dh: number
 ) {
-  const sw = (src as HTMLVideoElement).videoWidth || (src as HTMLImageElement).naturalWidth;
-  const sh = (src as HTMLVideoElement).videoHeight || (src as HTMLImageElement).naturalHeight;
+  const { w: sw, h: sh } = srcDims(src);
   if (!sw || !sh) return;
   const scale = Math.max(dw / sw, dh / sh);
   const w = sw * scale;
   const h = sh * scale;
   const ox = dx + (dw - w) / 2;
   const oy = dy + (dh - h) / 2;
-  ctx.drawImage(src as CanvasImageSource, ox, oy, w, h);
+  ctx.drawImage(src, ox, oy, w, h);
 }
 
-// Cover-fit a CROPPED region of the source into the destination box. The
-// crop rect is normalized 0..1 against the source's intrinsic dimensions;
-// {x:0,y:0,width:1,height:1} reduces this to plain drawCover. Cover-overflow
-// (when crop aspect != dest aspect) is centered and trimmed by reducing the
-// source rect we sample, never by overdrawing past the dest clip.
+// Cover-fit a CROPPED region of the source into the destination box. The crop
+// rect is normalized 0..1 against the source's intrinsic dimensions;
+// {x:0,y:0,width:1,height:1} reduces this to plain drawCover.
 function drawCoverWithCrop(
   ctx: CanvasRenderingContext2D,
-  video: HTMLVideoElement,
+  src: FrameSource,
   crop: CropRegion,
   dx: number,
   dy: number,
   dw: number,
   dh: number
 ) {
-  const sw = video.videoWidth;
-  const sh = video.videoHeight;
+  const { w: sw, h: sh } = srcDims(src);
   if (!sw || !sh) return;
 
   const cropPxW = crop.width * sw;
   const cropPxH = crop.height * sh;
   if (cropPxW <= 0 || cropPxH <= 0) return;
 
-  // Cover scale based on cropped source.
   const scale = Math.max(dw / cropPxW, dh / cropPxH);
   const drawnW = cropPxW * scale;
   const drawnH = cropPxH * scale;
 
-  // Pixels of the crop region that overflow the destination — trim from the
-  // source rect symmetrically.
   const overflowSrcW = (drawnW - dw) / scale;
   const overflowSrcH = (drawnH - dh) / scale;
   const sx = crop.x * sw + overflowSrcW / 2;
@@ -524,7 +502,7 @@ function drawCoverWithCrop(
   const sWidth = cropPxW - overflowSrcW;
   const sHeight = cropPxH - overflowSrcH;
 
-  ctx.drawImage(video, sx, sy, sWidth, sHeight, dx, dy, dw, dh);
+  ctx.drawImage(src, sx, sy, sWidth, sHeight, dx, dy, dw, dh);
 }
 
 function parseLinearGradient(
@@ -533,15 +511,12 @@ function parseLinearGradient(
   w: number,
   h: number
 ): CanvasGradient | null {
-  // Supports `linear-gradient(<deg>deg, c1, c2[, c3...])`. Degrees follow CSS convention
-  // (0deg = up, 90deg = right). Default 180deg if missing.
   const m = css.match(/^linear-gradient\(\s*(?:(\-?\d+(?:\.\d+)?)deg\s*,)?\s*(.+)\)$/i);
   if (!m) return null;
   const deg = m[1] != null ? Number(m[1]) : 180;
   const stopsRaw = m[2].split(/,(?![^()]*\))/).map((s) => s.trim()).filter(Boolean);
   if (stopsRaw.length < 2) return null;
-  // Convert CSS degrees to a vector across the box.
-  const rad = ((deg - 90) * Math.PI) / 180; // CSS 0deg = up, canvas 0rad = right; rotate -90.
+  const rad = ((deg - 90) * Math.PI) / 180;
   const cx = w / 2;
   const cy = h / 2;
   const len = (Math.abs(Math.cos(rad)) * w + Math.abs(Math.sin(rad)) * h) / 2;
