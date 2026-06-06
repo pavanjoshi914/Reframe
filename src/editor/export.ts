@@ -55,6 +55,62 @@ const LAYOUT_COORDS: Record<
   'side-by-side': { x: 0.5, y: 0.5, size: 0.4, sideBySide: true }
 };
 
+// Match the editor preview's CSS `transition-transform duration-[400ms] ease-out`
+// on the zoom container — the preview ramps zoomLevel smoothly when a zoom
+// item starts/ends; the export needs the same easing or the cut between
+// zoomed/un-zoomed shows up as an abrupt jump in the rendered video. Keep
+// this constant in sync with the Preview's CSS class.
+const ZOOM_TRANSITION_MS = 400;
+function easeOutCubic(t: number): number {
+  const x = Math.max(0, Math.min(1, t));
+  return 1 - Math.pow(1 - x, 3);
+}
+
+type ZoomItem = { startMs: number; endMs: number; zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number };
+
+// Returns the effective zoom (level + target) at `ms`, with the zoomLevel
+// eased in over the first ZOOM_TRANSITION_MS of the active zoom item and
+// eased out over the ZOOM_TRANSITION_MS following its end. Returns null when
+// no zoom is active and we're past any recently-ended one.
+function computeEasedZoom(
+  items: ReturnType<typeof useEditor.getState>['items'],
+  ms: number
+): ZoomItem | null {
+  // Inside an active zoom item — easing in (or fully zoomed).
+  const active = items.find(
+    (it) => it.kind === 'zoom' && ms >= it.startMs && ms <= it.endMs
+  );
+  if (active) {
+    const target = active.zoomLevel ?? 1.5;
+    const elapsed = ms - active.startMs;
+    const progress = elapsed < ZOOM_TRANSITION_MS ? easeOutCubic(elapsed / ZOOM_TRANSITION_MS) : 1;
+    return {
+      startMs: active.startMs,
+      endMs: active.endMs,
+      zoomLevel: 1 + (target - 1) * progress,
+      zoomTargetX: active.zoomTargetX,
+      zoomTargetY: active.zoomTargetY
+    };
+  }
+  // Otherwise check the most-recently-ended zoom — if we're within the ease-
+  // out window, ramp back down toward 1.
+  const justEnded = items
+    .filter((it) => it.kind === 'zoom' && ms > it.endMs && ms <= it.endMs + ZOOM_TRANSITION_MS)
+    .sort((a, b) => b.endMs - a.endMs)[0];
+  if (justEnded) {
+    const target = justEnded.zoomLevel ?? 1.5;
+    const progress = 1 - easeOutCubic((ms - justEnded.endMs) / ZOOM_TRANSITION_MS);
+    return {
+      startMs: justEnded.startMs,
+      endMs: justEnded.endMs,
+      zoomLevel: 1 + (target - 1) * progress,
+      zoomTargetX: justEnded.zoomTargetX,
+      zoomTargetY: justEnded.zoomTargetY
+    };
+  }
+  return null;
+}
+
 function srcDims(s: CanvasImageSource): { w: number; h: number } {
   const anyS = s as unknown as {
     videoWidth?: number; videoHeight?: number;
@@ -263,7 +319,7 @@ function drawFrame(
   const padding = effects.paddingPct / 100;
   const innerScale = 1 - padding * 0.5;
 
-  const activeZoom = items.find((it) => it.kind === 'zoom' && ms >= it.startMs && ms <= it.endMs);
+  const activeZoom = computeEasedZoom(items, ms);
   const activeAnnotation = items.find(
     (it) => it.kind === 'annotation' && ms >= it.startMs && ms <= it.endMs
   );
@@ -276,7 +332,7 @@ function drawFrame(
     const innerY = (outH - innerH) / 2;
     const wcW = innerW * 0.4;
     const vidW = innerW - wcW - 12;
-    drawVideoBox(ctx, srcCanvas, innerX, innerY, vidW, innerH, effects.roundnessPx, cropRegion, activeZoom);
+    drawVideoBox(ctx, srcCanvas, innerX, innerY, vidW, innerH, effects.roundnessPx, cropRegion, activeZoom ?? undefined);
     if (webcamCanvas) {
       drawWebcamVideo(ctx, webcamCanvas, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx, false);
     } else {
@@ -287,7 +343,7 @@ function drawFrame(
     const innerH = outH * innerScale;
     const innerX = (outW - innerW) / 2;
     const innerY = (outH - innerH) / 2;
-    drawVideoBox(ctx, srcCanvas, innerX, innerY, innerW, innerH, effects.roundnessPx, cropRegion, activeZoom);
+    drawVideoBox(ctx, srcCanvas, innerX, innerY, innerW, innerH, effects.roundnessPx, cropRegion, activeZoom ?? undefined);
     if (webcam.enabled) {
       const wcH = outH * webcam.size;
       const wcW = wcH * (webcam.shape === 'rectangle' ? 16 / 9 : 1);
