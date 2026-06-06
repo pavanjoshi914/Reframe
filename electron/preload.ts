@@ -26,6 +26,7 @@ const api: Api = {
   getRecordingFileUrl: (filePath) => ipcRenderer.invoke('recording:fileUrl', filePath),
   minimizeHud: () => ipcRenderer.invoke('hud:minimize'),
   closeHud: () => ipcRenderer.invoke('hud:close'),
+  setHudExpanded: (expanded) => ipcRenderer.invoke('hud:setExpanded', expanded),
   saveProject: (project) => ipcRenderer.invoke('project:save', project),
   loadProject: () => ipcRenderer.invoke('project:load'),
   initialProjectPath: (startedAt) => ipcRenderer.invoke('project:initialPath', startedAt),

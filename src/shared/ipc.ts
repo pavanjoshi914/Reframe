@@ -80,6 +80,7 @@ export type Api = {
   getRecordingFileUrl: (filePath: string) => Promise<string>;
   minimizeHud: () => Promise<void>;
   closeHud: () => Promise<void>;
+  setHudExpanded: (expanded: boolean) => Promise<void>;
   // "Save As" dialog — used for an explicit copy. Auto-save is the normal flow.
   saveProject: (project: ProjectFile) => Promise<{ saved: boolean; path?: string }>;
   // Returns the loaded project plus the on-disk path so the editor knows where

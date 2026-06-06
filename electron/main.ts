@@ -413,6 +413,22 @@ ipcMain.handle('recording:fileUrl', (_evt, filePath: string) => {
 ipcMain.handle('hud:minimize', () => hudWindow?.minimize());
 ipcMain.handle('hud:close', () => hudWindow?.close());
 
+// Resize the HUD window taller (or back to its compact size) so popover
+// device menus opening above the pill have room without the window having to
+// permanently sit there blocking desktop clicks. The pill is rendered at the
+// bottom of its window via CSS, so we grow upward by shifting the window's Y
+// up by the height delta — that way the pill's screen position never moves.
+const HUD_COMPACT_HEIGHT = 56;
+const HUD_EXPANDED_HEIGHT = 340;
+ipcMain.handle('hud:setExpanded', (_evt, expanded: boolean) => {
+  if (!hudWindow || hudWindow.isDestroyed()) return;
+  const target = expanded ? HUD_EXPANDED_HEIGHT : HUD_COMPACT_HEIGHT;
+  const b = hudWindow.getBounds();
+  if (b.height === target) return;
+  const delta = target - b.height;
+  hudWindow.setBounds({ x: b.x, y: b.y - delta, width: b.width, height: target });
+});
+
 let isRecording = false;
 
 ipcMain.handle('hud:setRecording', (_evt, recording: boolean) => {
