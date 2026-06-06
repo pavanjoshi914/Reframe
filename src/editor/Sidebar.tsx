@@ -286,13 +286,58 @@ function CompositionSection() {
           <BgTab active={background.mode === 'gradient'} onClick={() => setBackground({ mode: 'gradient', value: background.mode === 'gradient' ? background.value : 'linear-gradient(135deg,#fb923c,#ec4899)' })}>Gradient</BgTab>
         </div>
         {background.mode === 'color' && (
-          <input
-            type="color"
-            value={background.value}
-            onChange={(e) => setBackground({ mode: 'color', value: e.target.value })}
-            className="h-8 w-full rounded border border-white/10 bg-transparent"
-            aria-label="Background color"
-          />
+          <div className="space-y-2">
+            {/* Live preview tile — large, shows the current hex prominently */}
+            <div
+              className="flex h-16 w-full items-center justify-center rounded-md border border-white/10 font-mono text-xs"
+              style={{
+                backgroundColor: background.value,
+                color: pickReadableTextColor(background.value)
+              }}
+            >
+              {background.value.toUpperCase()}
+            </div>
+            {/* Swatch grid */}
+            <div className="grid grid-cols-8 gap-1.5">
+              {COLOR_SWATCHES.map((c) => (
+                <button
+                  key={c}
+                  aria-label={`Color ${c}`}
+                  title={c}
+                  onClick={() => setBackground({ mode: 'color', value: c })}
+                  className={
+                    'aspect-square rounded transition ' +
+                    (background.value.toLowerCase() === c.toLowerCase()
+                      ? 'ring-2 ring-emerald-400'
+                      : 'ring-1 ring-white/10 hover:ring-white/30')
+                  }
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+            {/* Hex input + native picker */}
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={background.value}
+                onChange={(e) => setBackground({ mode: 'color', value: e.target.value })}
+                className="h-8 w-8 shrink-0 cursor-pointer rounded border border-white/10 bg-transparent"
+                aria-label="Pick color"
+              />
+              <input
+                type="text"
+                value={background.value}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (/^#?[0-9a-f]{0,8}$/i.test(v)) {
+                    setBackground({ mode: 'color', value: v.startsWith('#') ? v : '#' + v });
+                  }
+                }}
+                placeholder="#RRGGBB"
+                className="h-8 flex-1 rounded border border-white/10 bg-black/30 px-2 font-mono text-xs uppercase outline-none focus:border-emerald-400/50"
+              />
+            </div>
+          </div>
         )}
         {background.mode === 'gradient' && (
           <div className="grid grid-cols-4 gap-1.5">
@@ -316,11 +361,29 @@ function CompositionSection() {
               onClick={handleUploadImage}
               className="flex w-full items-center justify-center gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm hover:bg-white/5"
             >
-              <Upload size={14} /> {background.value ? 'Replace Image' : 'Upload Custom'}
+              <Upload size={14} /> Upload Custom
             </button>
-            {background.value && (
+            <div className="grid grid-cols-4 gap-1.5">
+              {WALLPAPER_URLS.map((url, i) => (
+                <button
+                  key={url}
+                  aria-label={`Wallpaper ${i + 1}`}
+                  title={`Wallpaper ${i + 1}`}
+                  onClick={() => setBackground({ mode: 'image', value: url })}
+                  className={
+                    'aspect-square overflow-hidden rounded transition ' +
+                    (background.value === url
+                      ? 'ring-2 ring-emerald-400'
+                      : 'ring-1 ring-white/10 hover:ring-white/30')
+                  }
+                >
+                  <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                </button>
+              ))}
+            </div>
+            {background.value && !WALLPAPER_URLS.includes(background.value) && (
               <div className="relative h-20 w-full overflow-hidden rounded border border-white/10">
-                <img src={background.value} alt="background preview" className="h-full w-full object-cover" />
+                <img src={background.value} alt="custom background preview" className="h-full w-full object-cover" />
                 <button
                   onClick={() => setBackground({ mode: 'image', value: '' })}
                   className="absolute right-1 top-1 rounded bg-black/60 p-0.5 text-white/80 hover:bg-black/80"
@@ -575,13 +638,81 @@ function BgTab({ active, onClick, children }: { active: boolean; onClick: () => 
   );
 }
 
+// Curated from uigradients.com and similar free CSS gradient libraries — these
+// are public CSS strings, not bundled images, so no licensing or asset-size
+// considerations. Mix of warm/cool/duotone/photographic-feel and a few moody
+// darks so dark UI screenshots have a tonal home.
 const GRADIENTS = [
+  // Warm sunsets
   'linear-gradient(135deg,#fb923c,#ec4899)',
+  'linear-gradient(111.6deg,rgba(114,167,232,1) 9.4%,rgba(253,129,82,1) 43.9%,rgba(253,129,82,1) 54.8%,rgba(249,202,86,1) 86.3%)',
+  'linear-gradient(135deg,#f59e0b,#ef4444)',
+  'linear-gradient(107.7deg,rgba(235,230,44,0.7) 8.4%,rgba(252,152,15,1) 90.3%)',
+  'linear-gradient(to right,#fa709a,#fee140)',
+  'linear-gradient(to right,#ff8177,#ff8c7f 21%,#f99185 52%,#cf556c 78%,#b12a5b)',
+  'linear-gradient(45deg,#ff9a9e,#fad0c4 99%,#fad0c4)',
+  // Cool blues / purples
   'linear-gradient(135deg,#3b82f6,#8b5cf6)',
   'linear-gradient(135deg,#10b981,#3b82f6)',
-  'linear-gradient(135deg,#f59e0b,#ef4444)',
+  'linear-gradient(120deg,#84fab0,#8fd3f4)',
+  'linear-gradient(to right,#4facfe,#00f2fe)',
+  'linear-gradient(to top,#30cfd0,#330867)',
+  'linear-gradient(to right,#0acffe,#495aff)',
+  'linear-gradient(to top,#48c6ef,#6f86d6)',
+  // Vibrant / playful
+  'linear-gradient(135deg,#a78bfa,#f472b6)',
+  'linear-gradient(109.6deg,#F635A6,#36D860)',
+  'linear-gradient(to top,#c471f5,#fa71cd)',
+  'linear-gradient(to top,#a18cd1,#fbc2eb)',
+  'linear-gradient(135deg,#FBC8B4,#2447B1)',
+  // Greens
+  'linear-gradient(120deg,#d4fc79,#96e6a1)',
+  'linear-gradient(91deg,rgba(72,154,78,1) 5.2%,rgba(251,206,70,1) 95.9%)',
+  // Moody / dark — good for dark-themed screen recordings
   'linear-gradient(135deg,#1e3a8a,#0c4a6e)',
   'linear-gradient(135deg,#0f172a,#334155)',
+  'linear-gradient(109.6deg,rgba(15,2,2,1) 11.2%,rgba(36,163,190,1) 91.1%)',
+  'linear-gradient(315deg,#EC0101,#5044A9)',
+  'linear-gradient(to top,#fcc5e4,#fda34b 15%,#ff7882 35%,#c8699e 52%,#7046aa 71%,#0c1db8 87%,#020f75)',
+  // Pastels
   'linear-gradient(135deg,#fde68a,#fca5a5)',
-  'linear-gradient(135deg,#a78bfa,#f472b6)'
+  'linear-gradient(to right,#f78ca0,#f9748f 19%,#fd868c 60%,#fe9a8b)',
+  // Radial pops
+  'radial-gradient(circle farthest-corner at 3.2% 49.6%,rgba(80,12,139,0.87) 0%,rgba(161,10,144,0.72) 83.6%)',
+  'radial-gradient(circle farthest-corner at 10% 20%,rgba(2,37,78,1) 0%,rgba(4,56,126,1) 19.7%,rgba(85,245,221,1) 100.2%)'
+];
+
+// Bundled wallpapers — Vite resolves these to hashed URLs at build time, so
+// the resulting `background.value` is a regular http/https/file URL that the
+// canvas exporter can load via `new Image()` exactly like a user-uploaded one.
+// Sources + licences are listed in CREDITS.md alongside the asset folder.
+const wallpaperModules = import.meta.glob('../../assets/wallpapers/wallpaper-*.jpg', {
+  eager: true,
+  query: '?url',
+  import: 'default'
+});
+const WALLPAPER_URLS: string[] = Object.entries(wallpaperModules)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([, url]) => url as string);
+
+// Returns black or white depending on which contrasts better with the given
+// hex colour — used so the hex preview label stays legible on any swatch.
+function pickReadableTextColor(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return '#ffffff';
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  // Perceptual luminance per WCAG.
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.55 ? '#0a0b0e' : '#ffffff';
+}
+
+// Curated color swatches — modern flat palette covering a good range of hues
+// + dark/neutral options. Hex strings flow straight into background.value.
+const COLOR_SWATCHES = [
+  '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',
+  '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',
+  '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#78716c',
+  '#0a0b0e', '#1f2937', '#475569', '#ffffff'
 ];
