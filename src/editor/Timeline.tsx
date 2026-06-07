@@ -302,7 +302,7 @@ export function Timeline() {
                     onPointerCancel={onScrubUp}
                   >
                     {laneItems.length === 0 && (
-                      <div className="pointer-events-none flex h-full items-center pl-3 text-[11px] text-white/25">
+                      <div className="pointer-events-none flex h-full items-center justify-center text-[11px] text-white/25">
                         Press {lane.key} to add {lane.label.toLowerCase()}
                       </div>
                     )}
@@ -394,13 +394,27 @@ function ItemChip({
   const labelText =
     item.kind === 'zoom' ? `${item.zoomLevel?.toFixed(1)}×` :
     item.kind === 'speed' ? `${item.speed?.toFixed(2)}×` :
-    item.kind === 'annotation' ? (item.text || 'note') :
     'cut';
+
+  // Auto-focus the text input the first time an annotation is created so the
+  // user can start typing immediately — addresses "annotation added but no way
+  // to enter text" (the inspector strip's input was too easy to miss).
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (item.kind === 'annotation' && selected && !item.text) {
+      inputRef.current?.focus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, selected]);
 
   return (
     <div
       onClick={(e) => { e.stopPropagation(); selectItem(item.id); }}
-      onPointerDown={(e) => onDragStart('move', e)}
+      onPointerDown={(e) => {
+        // Don't start a window-drag when the user clicks the text input.
+        if ((e.target as HTMLElement).tagName === 'INPUT') return;
+        onDragStart('move', e);
+      }}
       onPointerMove={onDragMove}
       onPointerUp={onDragEnd}
       className={
@@ -410,9 +424,22 @@ function ItemChip({
       style={{ left, width }}
       title="Drag to move; drag edges to resize; click to select"
     >
-      <div className="truncate px-1.5 pt-1 text-[10px] uppercase tracking-wide text-white/80">
-        {labelText}
-      </div>
+      {item.kind === 'annotation' ? (
+        <input
+          ref={inputRef}
+          value={item.text ?? ''}
+          onChange={(e) => updateItem(item.id, { text: e.target.value })}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); selectItem(item.id); }}
+          placeholder="Enter text…"
+          spellCheck={false}
+          className="w-full cursor-text truncate bg-transparent px-1.5 pt-1 text-[10px] tracking-wide text-white/90 placeholder:text-white/40 focus:outline-none"
+        />
+      ) : (
+        <div className="truncate px-1.5 pt-1 text-[10px] uppercase tracking-wide text-white/80">
+          {labelText}
+        </div>
+      )}
       {/* resize handles */}
       <div
         onPointerDown={(e) => onDragStart('left', e)}
