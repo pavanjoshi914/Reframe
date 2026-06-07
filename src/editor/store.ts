@@ -4,6 +4,23 @@ import type { RecordingMeta } from '@shared/ipc';
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
 export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed';
 
+export type AnnotationStyle = {
+  // Visual styling for an annotation. All fields optional so older projects
+  // load with sensible defaults.
+  fontFamily?: string;
+  fontSize?: number;          // pixels in source space (scales with output)
+  bold?: boolean;
+  italic?: boolean;
+  textColor?: string;         // any CSS color
+  backgroundColor?: string | null; // null/undefined → transparent (no chip)
+  textAlign?: 'left' | 'center' | 'right';
+  // Position on the canvas as fractions 0..1 (centre of the text). Matches
+  // how the webcam overlay is positioned, so the existing drag handling
+  // pattern carries over.
+  posX?: number;
+  posY?: number;
+};
+
 export type LaneItem = {
   id: string;
   kind: LaneKind;
@@ -15,6 +32,21 @@ export type LaneItem = {
   zoomTargetY?: number;
   text?: string;
   speed?: number;
+} & AnnotationStyle;
+
+// Defaults applied when an annotation has no explicit value for a field.
+// Kept here (not inlined) so preview, export, and the sidebar selection panel
+// all read from the same source of truth.
+export const ANNOTATION_DEFAULTS: Required<AnnotationStyle> = {
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: 32,
+  bold: true,
+  italic: false,
+  textColor: '#ffffff',
+  backgroundColor: 'rgba(0,0,0,0.7)',
+  textAlign: 'center',
+  posX: 0.5,
+  posY: 0.85
 };
 
 export type BackgroundMode = 'image' | 'color' | 'gradient';
@@ -286,7 +318,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       endMs: Math.min(dur, atMs + len),
       ...(kind === 'zoom' ? { zoomLevel: 1.5, zoomTargetX: 0.5, zoomTargetY: 0.5 } : {}),
       ...(kind === 'speed' ? { speed: 1.5 } : {}),
-      ...(kind === 'annotation' ? { text: 'Note' } : {})
+      // Empty default so the placeholder ("Enter text…") is visible on the
+      // newly-added chip and the inline input auto-focuses immediately.
+      ...(kind === 'annotation' ? { text: '' } : {})
     };
     set((s) => ({ items: [...s.items, item], selectedItemId: item.id }));
   },

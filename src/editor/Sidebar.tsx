@@ -1,15 +1,19 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop } from 'lucide-react';
-import { useEditor, type PolishPreset, DEFAULT_CROP_REGION } from './store';
+import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type } from 'lucide-react';
+import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem } from './store';
 import { runExport } from './export';
 import { CropModal } from './CropModal';
 
 const ZOOM_PRESETS = [1.25, 1.5, 1.8, 2.2, 3.5, 5];
-const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2];
+const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 3, 5];
 
 export function Sidebar() {
   const selectedItem = useEditor((s) => s.items.find((it) => it.id === s.selectedItemId) ?? null);
-  const showSelection = selectedItem && (selectedItem.kind === 'zoom' || selectedItem.kind === 'speed');
+  const showSelection = selectedItem && (
+    selectedItem.kind === 'zoom' ||
+    selectedItem.kind === 'speed' ||
+    selectedItem.kind === 'annotation'
+  );
 
   return (
     <div className="flex h-full w-[380px] flex-col overflow-hidden rounded-xl border border-white/5 bg-[#0e0f12]">
@@ -93,6 +97,10 @@ function SelectionSection() {
     );
   }
 
+  if (item.kind === 'annotation') {
+    return <AnnotationEditor item={item} />;
+  }
+
   if (item.kind === 'speed') {
     const rate = item.speed ?? 1.5;
     return (
@@ -126,6 +134,195 @@ function SelectionSection() {
   }
 
   return null;
+}
+
+const ANNOTATION_FONT_FAMILIES = [
+  { label: 'System Sans', value: 'system-ui, sans-serif' },
+  { label: 'Inter', value: 'Inter, system-ui, sans-serif' },
+  { label: 'Serif', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Mono', value: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
+  { label: 'Rounded', value: '"SF Pro Rounded", "Avenir Next", "Trebuchet MS", sans-serif' }
+];
+
+const ANNOTATION_BG_PRESETS: { label: string; value: string | null }[] = [
+  { label: 'Dark', value: 'rgba(0,0,0,0.75)' },
+  { label: 'Light', value: 'rgba(255,255,255,0.9)' },
+  { label: 'Brand', value: 'rgba(16,185,129,0.85)' },
+  { label: 'Warning', value: 'rgba(234,88,12,0.85)' },
+  { label: 'None', value: null }
+];
+
+function AnnotationEditor({ item }: { item: LaneItem }) {
+  const updateItem = useEditor((s) => s.updateItem);
+  const removeItem = useEditor((s) => s.removeItem);
+  const selectItem = useEditor((s) => s.selectItem);
+
+  const set = <K extends keyof LaneItem>(patch: Partial<Pick<LaneItem, K>>) =>
+    updateItem(item.id, patch);
+
+  const text = item.text ?? '';
+  const fontFamily = item.fontFamily ?? ANNOTATION_DEFAULTS.fontFamily;
+  const fontSize = item.fontSize ?? ANNOTATION_DEFAULTS.fontSize;
+  const bold = item.bold ?? ANNOTATION_DEFAULTS.bold;
+  const italic = item.italic ?? ANNOTATION_DEFAULTS.italic;
+  const textColor = item.textColor ?? ANNOTATION_DEFAULTS.textColor;
+  const backgroundColor = item.backgroundColor === null ? null : (item.backgroundColor ?? ANNOTATION_DEFAULTS.backgroundColor);
+  const textAlign = item.textAlign ?? ANNOTATION_DEFAULTS.textAlign;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-xs text-white/70">
+          <Type size={12} /> Annotation
+        </span>
+        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[11px] text-amber-300">
+          {((item.endMs - item.startMs) / 1000).toFixed(1)}s
+        </span>
+      </div>
+
+      <textarea
+        value={text}
+        onChange={(e) => set({ text: e.target.value })}
+        placeholder="Enter text…"
+        rows={3}
+        className="w-full resize-none rounded border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-white/90 placeholder:text-white/30 focus:border-emerald-400/40 focus:outline-none"
+      />
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label>Font</Label>
+          <select
+            value={fontFamily}
+            onChange={(e) => set({ fontFamily: e.target.value })}
+            className="h-7 w-full rounded border border-white/10 bg-black/30 px-1.5 text-xs text-white/80 focus:outline-none"
+          >
+            {ANNOTATION_FONT_FAMILIES.map((f) => (
+              <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <NumberInput
+          label="Size"
+          value={fontSize}
+          min={12}
+          max={200}
+          step={1}
+          suffix="px"
+          onChange={(v) => set({ fontSize: v })}
+        />
+      </div>
+
+      <div className="flex items-center gap-1">
+        <IconToggleBtn active={bold} onClick={() => set({ bold: !bold })} title="Bold">
+          <Bold size={13} />
+        </IconToggleBtn>
+        <IconToggleBtn active={italic} onClick={() => set({ italic: !italic })} title="Italic">
+          <Italic size={13} />
+        </IconToggleBtn>
+        <span className="mx-1 h-4 w-px bg-white/10" />
+        <IconToggleBtn active={textAlign === 'left'} onClick={() => set({ textAlign: 'left' })} title="Align left">
+          <AlignLeft size={13} />
+        </IconToggleBtn>
+        <IconToggleBtn active={textAlign === 'center'} onClick={() => set({ textAlign: 'center' })} title="Align centre">
+          <AlignCenter size={13} />
+        </IconToggleBtn>
+        <IconToggleBtn active={textAlign === 'right'} onClick={() => set({ textAlign: 'right' })} title="Align right">
+          <AlignRight size={13} />
+        </IconToggleBtn>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label>Text colour</Label>
+          <ColorPickRow
+            value={textColor}
+            onChange={(v) => set({ textColor: v })}
+          />
+        </div>
+        <div>
+          <Label>Background</Label>
+          <div className="flex flex-wrap gap-1">
+            {ANNOTATION_BG_PRESETS.map((p) => {
+              const active = (backgroundColor ?? null) === p.value;
+              return (
+                <button
+                  key={p.label}
+                  onClick={() => set({ backgroundColor: p.value })}
+                  title={p.label}
+                  className={
+                    'h-6 w-6 rounded ring-1 transition ' +
+                    (active ? 'ring-emerald-400 ring-2' : 'ring-white/15 hover:ring-white/30')
+                  }
+                  style={{
+                    background: p.value ?? 'repeating-conic-gradient(rgba(255,255,255,0.1) 0deg 90deg, rgba(255,255,255,0.02) 90deg 180deg) 0 0 / 8px 8px'
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <p className="text-[11px] text-white/40">Tip: drag the annotation on the preview to reposition it.</p>
+      <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label="Delete Annotation" />
+    </div>
+  );
+}
+
+function IconToggleBtn({
+  active,
+  onClick,
+  title,
+  children
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={
+        'flex h-7 w-7 items-center justify-center rounded border transition ' +
+        (active
+          ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-300'
+          : 'border-white/10 bg-black/20 text-white/70 hover:bg-white/5')
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function ColorPickRow({
+  value,
+  onChange
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <input
+        type="color"
+        value={value.startsWith('#') ? value : '#ffffff'}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-7 w-7 shrink-0 cursor-pointer rounded border border-white/10 bg-transparent"
+        aria-label="Pick colour"
+      />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        spellCheck={false}
+        className="h-7 flex-1 rounded border border-white/10 bg-black/30 px-1.5 font-mono text-[11px] text-white/80 focus:border-emerald-400/40 focus:outline-none"
+      />
+    </div>
+  );
 }
 
 function PresetGrid({

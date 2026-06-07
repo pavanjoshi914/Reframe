@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Camera } from 'lucide-react';
-import { useEditor } from './store';
+import { useEditor, ANNOTATION_DEFAULTS } from './store';
 import { primeVideo } from './videoPrime';
 
 const aspectMap: Record<string, number | null> = {
@@ -32,6 +32,7 @@ export function Preview() {
   const setWebcam = useEditor((s) => s.setWebcam);
   const selectedItemId = useEditor((s) => s.selectedItemId);
   const updateItem = useEditor((s) => s.updateItem);
+  const selectItem = useEditor((s) => s.selectItem);
   const selectedZoom = useMemo(() => {
     if (!selectedItemId) return null;
     const it = items.find((i) => i.id === selectedItemId);
@@ -184,6 +185,24 @@ export function Preview() {
     // currentMs intentionally omitted — we only want to prime once per src.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [webcamFileUrl, recording]);
+
+  // Sync playbackRate against the active speed item on every playhead move
+  // (not only on the native `timeupdate` event, which fires ~every 250ms and
+  // missed short speed regions entirely). Runs whenever `items` or
+  // `currentMs` changes, so adjusting a speed item from the sidebar takes
+  // effect immediately rather than waiting for the next timeupdate.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const ms = currentMs;
+    const active = items.find(
+      (it) => it.kind === 'speed' && ms >= it.startMs && ms <= it.endMs
+    );
+    const targetRate = active?.speed ?? 1;
+    if (Math.abs(v.playbackRate - targetRate) > 0.01) {
+      v.playbackRate = targetRate;
+    }
+  }, [currentMs, items]);
 
   // Sync time + handle trim skip + apply speed via playbackRate.
   useEffect(() => {
@@ -348,6 +367,42 @@ export function Preview() {
       y: Math.max(0, Math.min(maxY, d.baseY + dy))
     });
   }
+  // Annotation dragging — same coord system as webcam (normalised 0..1 of the
+  // stage). We track centre-of-text positions so the annotation reads "at
+  // (posX, posY)" intuitively, matching how the exporter places it.
+  const annDragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; id: string } | null>(null);
+  function onAnnotationDown(e: React.PointerEvent, item: NonNullable<typeof activeAnnotation>) {
+    if (!stageRef.current) return;
+    e.stopPropagation();
+    e.preventDefault();
+    selectItem(item.id);
+    annDragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      baseX: item.posX ?? ANNOTATION_DEFAULTS.posX,
+      baseY: item.posY ?? ANNOTATION_DEFAULTS.posY,
+      id: item.id
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function onAnnotationMove(e: React.PointerEvent) {
+    const d = annDragRef.current;
+    const stage = stageRef.current;
+    if (!d || !stage) return;
+    const r = stage.getBoundingClientRect();
+    const dx = (e.clientX - d.startX) / r.width;
+    const dy = (e.clientY - d.startY) / r.height;
+    updateItem(d.id, {
+      posX: Math.max(0.05, Math.min(0.95, d.baseX + dx)),
+      posY: Math.max(0.05, Math.min(0.95, d.baseY + dy))
+    });
+  }
+  function onAnnotationUp(e: React.PointerEvent) {
+    if (!annDragRef.current) return;
+    annDragRef.current = null;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  }
+
   function onWebcamUp(e: React.PointerEvent) {
     if (!dragRef.current) return;
     dragRef.current = null;
@@ -499,13 +554,54 @@ export function Preview() {
           <div className="relative text-sm text-white/60">No recording loaded.</div>
         )}
 
-        {activeAnnotation && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 flex justify-center">
-            <div className="max-w-[80%] rounded-lg bg-black/70 px-4 py-2 text-center text-sm font-medium text-white shadow-lg ring-1 ring-white/10 backdrop-blur-sm">
-              {activeAnnotation.text || ''}
+        {activeAnnotation && (() => {
+          const item = activeAnnotation;
+          const posX = item.posX ?? ANNOTATION_DEFAULTS.posX;
+          const posY = item.posY ?? ANNOTATION_DEFAULTS.posY;
+          const bg = item.backgroundColor === null ? null : (item.backgroundColor ?? ANNOTATION_DEFAULTS.backgroundColor);
+          const textColor = item.textColor ?? ANNOTATION_DEFAULTS.textColor;
+          const fontFamily = item.fontFamily ?? ANNOTATION_DEFAULTS.fontFamily;
+          const bold = item.bold ?? ANNOTATION_DEFAULTS.bold;
+          const italic = item.italic ?? ANNOTATION_DEFAULTS.italic;
+          const textAlign = item.textAlign ?? ANNOTATION_DEFAULTS.textAlign;
+          // Scale the px size against the rendered stage so what the user
+          // sees in the preview matches the export (which scales against the
+          // output height). Stage height ≈ stageRef.current?.clientHeight,
+          // but vmin-based unit (%) keeps it simple and good enough visually.
+          const fontSizeFrac = (item.fontSize ?? ANNOTATION_DEFAULTS.fontSize) / 1080;
+          const selected = selectedItemId === item.id;
+          return (
+            <div
+              onPointerDown={(e) => onAnnotationDown(e, item)}
+              onPointerMove={onAnnotationMove}
+              onPointerUp={onAnnotationUp}
+              onPointerCancel={onAnnotationUp}
+              className="absolute z-10 cursor-grab select-none active:cursor-grabbing"
+              style={{
+                left: `${posX * 100}%`,
+                top: `${posY * 100}%`,
+                transform: 'translate(-50%, -50%)',
+                maxWidth: '80%',
+                fontFamily,
+                fontWeight: bold ? 700 : 400,
+                fontStyle: italic ? 'italic' : 'normal',
+                fontSize: `calc(${fontSizeFrac * 100}vh)`,
+                lineHeight: 1.25,
+                color: textColor,
+                textAlign,
+                backgroundColor: bg ?? 'transparent',
+                padding: bg ? '0.4em 0.7em' : '0',
+                borderRadius: bg ? '10px' : '0',
+                outline: selected ? '2px dashed rgba(110,231,183,0.7)' : 'none',
+                outlineOffset: '2px',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word'
+              }}
+            >
+              {item.text || ''}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {selectedZoom && fileUrl && (
           <div

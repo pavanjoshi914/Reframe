@@ -11,7 +11,7 @@ import {
   getFirstEncodableVideoCodec,
   type VideoCodec
 } from 'mediabunny';
-import { useEditor, type CropRegion } from './store';
+import { useEditor, type CropRegion, ANNOTATION_DEFAULTS } from './store';
 
 // Export pipeline — frame-accurate, NOT real-time.
 //
@@ -212,14 +212,23 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
 
   // ── Composite every source frame ────────────────────────────────────────
   // outTs accumulates the OUTPUT timeline position (seconds). For untouched
-  // footage it tracks the source timestamp 1:1; trim regions are skipped and
-  // speed regions stretch/compress each frame's duration.
+  // footage we emit one output frame per source frame with the source's own
+  // duration. Trim regions drop frames; speed regions skip (fast-forward) or
+  // duplicate (slow-motion) frames, keeping a constant output frame rate so
+  // the muxer + every downstream player handles the file the same way.
   let outTs = 0;
   let lastProgress = 0;
+  // Accumulator used in fast-forward regions: each source frame contributes
+  // (1 / speedFactor) toward emitting one output frame; we emit + decrement
+  // when the accumulator crosses 1. Reset on region change so the cadence
+  // doesn't leak between regions.
+  let fastForwardDebt = 0;
+  let prevSpeedFactor = 1;
 
   for await (const wrapped of screenSink.canvases()) {
     const { canvas: srcCanvas, timestamp, duration } = wrapped;
     const ms = timestamp * 1000;
+    const frameDuration = duration || 1 / 30;
 
     // Trim: drop frames inside any trim region entirely.
     const inTrim = items.some(
@@ -227,13 +236,31 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
     );
     if (inTrim) continue;
 
-    // Speed: a speed region stretches (slow) or compresses (fast) the frame's
-    // contribution to the output timeline.
+    // Speed region containing this source frame, if any.
     const speed = items.find(
       (it) => it.kind === 'speed' && ms >= it.startMs && ms <= it.endMs
     );
     const speedFactor = speed?.speed ?? 1;
-    const outDuration = Math.max(1 / 240, (duration || 1 / 30) / speedFactor);
+    if (speedFactor !== prevSpeedFactor) {
+      fastForwardDebt = 0;
+      prevSpeedFactor = speedFactor;
+    }
+
+    // How many times should this source frame appear in the output?
+    //   speedFactor = 1   → exactly one frame
+    //   speedFactor > 1   → fractional emit via accumulator (skips frames)
+    //   speedFactor < 1   → 1/speedFactor copies (duplicates for slow-mo)
+    let emitCount: number;
+    if (speedFactor === 1) {
+      emitCount = 1;
+    } else if (speedFactor > 1) {
+      fastForwardDebt += 1 / speedFactor;
+      emitCount = fastForwardDebt >= 1 ? 1 : 0;
+      if (emitCount === 1) fastForwardDebt -= 1;
+    } else {
+      emitCount = Math.max(1, Math.round(1 / speedFactor));
+    }
+    if (emitCount === 0) continue;
 
     // Webcam frame for this timestamp (random-access; mediabunny caches).
     let webcamCanvas: FrameSource | null = null;
@@ -246,8 +273,10 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
       items, background, effects, webcam, layoutPreset, cropRegion, bgImage
     });
 
-    await videoSource.add(outTs, outDuration);
-    outTs += outDuration;
+    for (let i = 0; i < emitCount; i++) {
+      await videoSource.add(outTs, frameDuration);
+      outTs += frameDuration;
+    }
 
     if (sourceDurationSec > 0) {
       const pct = Math.min(99, (timestamp / sourceDurationSec) * 100);
@@ -361,7 +390,7 @@ function drawFrame(
   }
 
   if (activeAnnotation && activeAnnotation.text) {
-    drawAnnotation(ctx, activeAnnotation.text, outW, outH);
+    drawAnnotation(ctx, activeAnnotation, outW, outH);
   }
 
   ctx.restore();
@@ -467,25 +496,77 @@ function drawWebcamPlaceholder(
   ctx.restore();
 }
 
-function drawAnnotation(ctx: CanvasRenderingContext2D, text: string, outW: number, outH: number) {
+// Renders an annotation honouring its styling fields. Positioned at the
+// item's posX/posY (0..1 fractions of the canvas), with optional rounded
+// background chip. Font size scales relative to a 1080-tall reference frame
+// so a 32px choice looks the same regardless of export quality preset.
+function drawAnnotation(
+  ctx: CanvasRenderingContext2D,
+  item: ReturnType<typeof useEditor.getState>['items'][number],
+  outW: number,
+  outH: number
+) {
+  const text = item.text ?? '';
+  if (!text) return;
+
+  const fontFamily = item.fontFamily ?? ANNOTATION_DEFAULTS.fontFamily;
+  const fontSizeSrc = item.fontSize ?? ANNOTATION_DEFAULTS.fontSize;
+  // Scale the chosen px size against the output height so a "32px" annotation
+  // looks the same at 1080p, 720p, or 4K.
+  const fontSize = Math.max(10, Math.round(fontSizeSrc * (outH / 1080)));
+  const bold = item.bold ?? ANNOTATION_DEFAULTS.bold;
+  const italic = item.italic ?? ANNOTATION_DEFAULTS.italic;
+  const textColor = item.textColor ?? ANNOTATION_DEFAULTS.textColor;
+  const bg = item.backgroundColor === null ? null : (item.backgroundColor ?? ANNOTATION_DEFAULTS.backgroundColor);
+  const textAlign = item.textAlign ?? ANNOTATION_DEFAULTS.textAlign;
+  const posX = item.posX ?? ANNOTATION_DEFAULTS.posX;
+  const posY = item.posY ?? ANNOTATION_DEFAULTS.posY;
+
   ctx.save();
-  const fontSize = Math.max(18, Math.floor(outH * 0.035));
-  ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
-  const padding = fontSize * 0.6;
-  const metrics = ctx.measureText(text);
-  const tw = Math.min(outW * 0.8, metrics.width);
-  const th = fontSize * 1.4;
-  const bx = (outW - tw) / 2 - padding;
-  const by = outH - th - padding * 2 - outH * 0.06;
-  const bw = tw + padding * 2;
-  const bh = th + padding;
-  ctx.fillStyle = 'rgba(0,0,0,0.7)';
-  roundedRectPath(ctx, bx, by, bw, bh, 10);
-  ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.textAlign = 'center';
+  ctx.font = `${italic ? 'italic ' : ''}${bold ? '700 ' : '400 '}${fontSize}px ${fontFamily}`;
+  ctx.textAlign = textAlign;
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, outW / 2, by + bh / 2);
+
+  // Wrap if the text is too wide to fit 80% of the canvas — split on word
+  // boundaries and stack lines vertically.
+  const maxLineW = outW * 0.8;
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let line = '';
+  for (const w of words) {
+    const trial = line ? line + ' ' + w : w;
+    if (ctx.measureText(trial).width > maxLineW && line) {
+      lines.push(line);
+      line = w;
+    } else {
+      line = trial;
+    }
+  }
+  if (line) lines.push(line);
+
+  const lineHeight = fontSize * 1.25;
+  const totalH = lineHeight * lines.length;
+  const cx = posX * outW;
+  const cy = posY * outH;
+  const padding = fontSize * 0.5;
+
+  if (bg) {
+    const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    const bw = Math.min(maxLineW + padding * 2, widest + padding * 2);
+    const bh = totalH + padding;
+    const bx = cx - bw / 2;
+    const by = cy - bh / 2;
+    ctx.fillStyle = bg;
+    roundedRectPath(ctx, bx, by, bw, bh, 10);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = textColor;
+  lines.forEach((l, i) => {
+    const y = cy - totalH / 2 + lineHeight * (i + 0.5);
+    ctx.fillText(l, cx, y);
+  });
+
   ctx.restore();
 }
 
