@@ -340,6 +340,7 @@ export function HudApp() {
           fallbackDeviceLabel="Microphone"
           menuOpen={openMenu === 'mic'}
           onMenuOpenChange={(o) => setOpenMenu(o ? 'mic' : null)}
+          hideChevron={recording}
         />
         <ToggleWithMenu
           active={cam}
@@ -354,6 +355,7 @@ export function HudApp() {
           fallbackDeviceLabel="Camera"
           menuOpen={openMenu === 'cam'}
           onMenuOpenChange={(o) => setOpenMenu(o ? 'cam' : null)}
+          hideChevron={recording}
         />
 
         <Divider />
@@ -479,7 +481,8 @@ function ToggleWithMenu({
   menuLabel,
   fallbackDeviceLabel,
   menuOpen,
-  onMenuOpenChange
+  onMenuOpenChange,
+  hideChevron = false
 }: {
   active: boolean;
   onToggle: () => void;
@@ -493,6 +496,7 @@ function ToggleWithMenu({
   fallbackDeviceLabel: string;
   menuOpen: boolean;
   onMenuOpenChange: (open: boolean) => void;
+  hideChevron?: boolean;
 }) {
   const open = menuOpen;
   const setOpen = onMenuOpenChange;
@@ -521,21 +525,27 @@ function ToggleWithMenu({
       <button
         title={title}
         onClick={onToggle}
-        className={'flex h-9 w-9 items-center justify-center rounded-l-full transition ' + chipBase}
-      >
-        {active ? icon : iconOff}
-      </button>
-      <button
-        title={`${menuLabel} device`}
-        onClick={() => setOpen(!open)}
         className={
-          'flex h-9 w-4 items-center justify-center rounded-r-full border-l border-black/20 transition ' +
+          'flex h-9 w-9 items-center justify-center transition ' +
+          (hideChevron ? 'rounded-full ' : 'rounded-l-full ') +
           chipBase
         }
       >
-        <MdKeyboardArrowUp size={12} className={open ? 'rotate-180' : ''} />
+        {active ? icon : iconOff}
       </button>
-      {open && (
+      {!hideChevron && (
+        <button
+          title={`${menuLabel} device`}
+          onClick={() => setOpen(!open)}
+          className={
+            'flex h-9 w-4 items-center justify-center rounded-r-full border-l border-black/20 transition ' +
+            chipBase
+          }
+        >
+          <MdKeyboardArrowUp size={12} className={open ? 'rotate-180' : ''} />
+        </button>
+      )}
+      {open && !hideChevron && (
         <DeviceMenu
           label={menuLabel}
           devices={devices}
