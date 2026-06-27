@@ -1,4 +1,5 @@
 export default {
+  'side.selection': 'Seleção',
   // Generic
   'common.cancel': 'Cancelar',
   'common.delete': 'Excluir',
@@ -155,5 +156,31 @@ export default {
   'tl.cut': 'cortar',
   'tl.deleteDel': 'Excluir (Del)',
   'tl.adjustHint': 'Ajuste nível e foco na barra lateral direita →',
-  'tl.annotationText': 'Texto da anotação'
+  'tl.annotationText': 'Texto da anotação',
+
+  // Newly added UI keys
+  'common.close': 'Fechar',
+  'hud.dragMove': 'Arraste para mover',
+  'side.custom': 'Personalizado',
+  'side.pickColor': 'Escolher cor',
+  'side.focusTip': 'Dica: arraste a cruz verde na prévia para definir o foco.',
+  'side.fontSystem': 'Sans do sistema',
+  'side.fontInter': 'Inter',
+  'side.fontSerif': 'Serif',
+  'side.fontMono': 'Monoespaçada',
+  'side.fontRounded': 'Arredondada',
+  'side.bgDark': 'Escuro',
+  'side.bgLight': 'Claro',
+  'side.bgBrand': 'Marca',
+  'side.bgWarning': 'Aviso',
+  'side.bgNone': 'Nenhum',
+  'crop.free': 'Livre',
+  'crop.aspect': 'Proporção',
+  'crop.aspectLocked': 'Proporção bloqueada',
+  'crop.aspectUnlocked': 'Proporção desbloqueada',
+  'crop.lockAspect': 'Bloquear proporção',
+  'crop.unlockAspect': 'Desbloquear proporção',
+  'crop.dragHint': 'Arraste qualquer borda para ajustar a área de corte',
+  'picker.loading': 'Carregando fontes…',
+  'picker.noneAvailable': 'Nada disponível aqui.'
 } as Record<string, string>;

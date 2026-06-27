@@ -237,12 +237,12 @@ export function CropModal({ onClose }: { onClose: () => void }) {
         <div className="flex shrink-0 items-start justify-between border-b border-white/5 px-6 py-4">
           <div>
             <h2 className="text-base font-semibold text-white">{t('side.cropVideo')}</h2>
-            <p className="mt-0.5 text-xs text-white/50">Drag any edge to adjust the crop area</p>
+            <p className="mt-0.5 text-xs text-white/50">{t('crop.dragHint')}</p>
           </div>
           <button
             onClick={onClose}
             className="flex h-7 w-7 items-center justify-center rounded hover:bg-white/10"
-            aria-label="Close"
+            aria-label={t('common.close')}
           >
             <X size={16} />
           </button>
@@ -323,7 +323,7 @@ export function CropModal({ onClose }: { onClose: () => void }) {
             <NumericField label="H" value={px.h} onChange={(v) => handleNumericChange('h', v)} disabled={!intrinsic} />
 
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] uppercase tracking-wider text-white/50">Aspect</span>
+              <span className="text-[11px] uppercase tracking-wider text-white/50">{t('crop.aspect')}</span>
               <select
                 value={aspectValue == null ? '' : String(aspectValue)}
                 onChange={(e) => {
@@ -333,7 +333,7 @@ export function CropModal({ onClose }: { onClose: () => void }) {
                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm"
               >
                 {ASPECT_PRESETS.map((p) => (
-                  <option key={p.label} value={p.value == null ? '' : String(p.value)}>{p.label}</option>
+                  <option key={p.label} value={p.value == null ? '' : String(p.value)}>{p.value == null ? t('crop.free') : p.label}</option>
                 ))}
               </select>
             </label>
@@ -348,8 +348,8 @@ export function CropModal({ onClose }: { onClose: () => void }) {
                   : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10') +
                 ' disabled:opacity-40 disabled:cursor-not-allowed'
               }
-              title={aspectLocked ? 'Aspect locked' : 'Aspect unlocked'}
-              aria-label={aspectLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}
+              title={aspectLocked ? t('crop.aspectLocked') : t('crop.aspectUnlocked')}
+              aria-label={aspectLocked ? t('crop.unlockAspect') : t('crop.lockAspect')}
             >
               {aspectLocked ? <Lock size={13} /> : <Unlock size={13} />}
             </button>

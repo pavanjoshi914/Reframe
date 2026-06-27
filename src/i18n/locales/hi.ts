@@ -1,4 +1,5 @@
 export default {
+  'side.selection': 'चयन',
   // Generic
   'common.cancel': 'रद्द करें',
   'common.delete': 'हटाएं',
@@ -155,5 +156,31 @@ export default {
   'tl.cut': 'कट',
   'tl.deleteDel': 'हटाएं (Del)',
   'tl.adjustHint': 'दाईं साइडबार में स्तर और फ़ोकस समायोजित करें →',
-  'tl.annotationText': 'एनोटेशन टेक्स्ट'
+  'tl.annotationText': 'एनोटेशन टेक्स्ट',
+
+  // Newly added UI keys
+  'common.close': 'बंद करें',
+  'hud.dragMove': 'खिसकाने के लिए खींचें',
+  'side.custom': 'कस्टम',
+  'side.pickColor': 'रंग चुनें',
+  'side.focusTip': 'सुझाव: फ़ोकस सेट करने के लिए प्रीव्यू पर हरे क्रॉसहेयर को खींचें।',
+  'side.fontSystem': 'सिस्टम सैन्स',
+  'side.fontInter': 'Inter',
+  'side.fontSerif': 'सेरिफ़',
+  'side.fontMono': 'मोनो',
+  'side.fontRounded': 'राउंडेड',
+  'side.bgDark': 'गहरा',
+  'side.bgLight': 'हल्का',
+  'side.bgBrand': 'ब्रांड',
+  'side.bgWarning': 'चेतावनी',
+  'side.bgNone': 'कोई नहीं',
+  'crop.free': 'फ़्री',
+  'crop.aspect': 'आस्पेक्ट',
+  'crop.aspectLocked': 'आस्पेक्ट लॉक है',
+  'crop.aspectUnlocked': 'आस्पेक्ट अनलॉक है',
+  'crop.lockAspect': 'आस्पेक्ट अनुपात लॉक करें',
+  'crop.unlockAspect': 'आस्पेक्ट अनुपात अनलॉक करें',
+  'crop.dragHint': 'क्रॉप क्षेत्र समायोजित करने के लिए किसी भी किनारे को खींचें',
+  'picker.loading': 'स्रोत लोड हो रहे हैं…',
+  'picker.noneAvailable': 'यहां कुछ भी उपलब्ध नहीं है।'
 } as Record<string, string>;

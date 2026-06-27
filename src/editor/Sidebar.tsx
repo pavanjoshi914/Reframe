@@ -68,7 +68,7 @@ function SelectionSection() {
           onPick={(v) => updateItem(item.id, { zoomLevel: v })}
         />
         <NumberInput
-          label="Custom"
+          label={t('side.custom')}
           value={zoom}
           min={1}
           max={10}
@@ -94,7 +94,7 @@ function SelectionSection() {
             onChange={(v) => updateItem(item.id, { zoomTargetY: v })}
           />
         </div>
-        <p className="text-[11px] text-white/40">Tip: drag the green crosshair on the preview to set focus.</p>
+        <p className="text-[11px] text-white/40">{t('side.focusTip')}</p>
         <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label={t('side.deleteZoom')} />
       </div>
     );
@@ -123,7 +123,7 @@ function SelectionSection() {
           onPick={(v) => updateItem(item.id, { speed: v })}
         />
         <NumberInput
-          label="Custom"
+          label={t('side.custom')}
           value={rate}
           min={0.1}
           max={10}
@@ -140,19 +140,19 @@ function SelectionSection() {
 }
 
 const ANNOTATION_FONT_FAMILIES = [
-  { label: 'System Sans', value: 'system-ui, sans-serif' },
-  { label: 'Inter', value: 'Inter, system-ui, sans-serif' },
-  { label: 'Serif', value: 'Georgia, "Times New Roman", serif' },
-  { label: 'Mono', value: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
-  { label: 'Rounded', value: '"SF Pro Rounded", "Avenir Next", "Trebuchet MS", sans-serif' }
+  { key: 'side.fontSystem', label: 'System Sans', value: 'system-ui, sans-serif' },
+  { key: 'side.fontInter', label: 'Inter', value: 'Inter, system-ui, sans-serif' },
+  { key: 'side.fontSerif', label: 'Serif', value: 'Georgia, "Times New Roman", serif' },
+  { key: 'side.fontMono', label: 'Mono', value: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
+  { key: 'side.fontRounded', label: 'Rounded', value: '"SF Pro Rounded", "Avenir Next", "Trebuchet MS", sans-serif' }
 ];
 
-const ANNOTATION_BG_PRESETS: { label: string; value: string | null }[] = [
-  { label: 'Dark', value: 'rgba(0,0,0,0.75)' },
-  { label: 'Light', value: 'rgba(255,255,255,0.9)' },
-  { label: 'Brand', value: 'rgba(16,185,129,0.85)' },
-  { label: 'Warning', value: 'rgba(234,88,12,0.85)' },
-  { label: 'None', value: null }
+const ANNOTATION_BG_PRESETS: { key: string; label: string; value: string | null }[] = [
+  { key: 'side.bgDark', label: 'Dark', value: 'rgba(0,0,0,0.75)' },
+  { key: 'side.bgLight', label: 'Light', value: 'rgba(255,255,255,0.9)' },
+  { key: 'side.bgBrand', label: 'Brand', value: 'rgba(16,185,129,0.85)' },
+  { key: 'side.bgWarning', label: 'Warning', value: 'rgba(234,88,12,0.85)' },
+  { key: 'side.bgNone', label: 'None', value: null }
 ];
 
 function AnnotationEditor({ item }: { item: LaneItem }) {
@@ -177,7 +177,7 @@ function AnnotationEditor({ item }: { item: LaneItem }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-xs text-white/70">
-          <Type size={12} /> Annotation
+          <Type size={12} /> {t('tl.annotation')}
         </span>
         <span className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[11px] text-amber-300">
           {((item.endMs - item.startMs) / 1000).toFixed(1)}s
@@ -202,7 +202,7 @@ function AnnotationEditor({ item }: { item: LaneItem }) {
           >
             {ANNOTATION_FONT_FAMILIES.map((f) => (
               <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
-                {f.label}
+                {t(f.key)}
               </option>
             ))}
           </select>
@@ -246,7 +246,7 @@ function AnnotationEditor({ item }: { item: LaneItem }) {
           />
         </div>
         <div>
-          <Label>Background</Label>
+          <Label>{t('side.background')}</Label>
           <div className="flex flex-wrap gap-1">
             {ANNOTATION_BG_PRESETS.map((p) => {
               const active = (backgroundColor ?? null) === p.value;
@@ -254,7 +254,7 @@ function AnnotationEditor({ item }: { item: LaneItem }) {
                 <button
                   key={p.label}
                   onClick={() => set({ backgroundColor: p.value })}
-                  title={p.label}
+                  title={t(p.key)}
                   className={
                     'h-6 w-6 rounded ring-1 transition ' +
                     (active ? 'ring-emerald-400 ring-2' : 'ring-white/15 hover:ring-white/30')

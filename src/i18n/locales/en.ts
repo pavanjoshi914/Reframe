@@ -158,5 +158,31 @@ export default {
   'tl.cut': 'cut',
   'tl.deleteDel': 'Delete (Del)',
   'tl.adjustHint': 'Adjust level + focus in the right sidebar →',
-  'tl.annotationText': 'Annotation text'
+  'tl.annotationText': 'Annotation text',
+
+  // Edge labels (completeness)
+  'common.close': 'Close',
+  'hud.dragMove': 'Drag to move',
+  'side.custom': 'Custom',
+  'side.pickColor': 'Pick color',
+  'side.focusTip': 'Tip: drag the green crosshair on the preview to set focus.',
+  'side.fontSystem': 'System Sans',
+  'side.fontInter': 'Inter',
+  'side.fontSerif': 'Serif',
+  'side.fontMono': 'Mono',
+  'side.fontRounded': 'Rounded',
+  'side.bgDark': 'Dark',
+  'side.bgLight': 'Light',
+  'side.bgBrand': 'Brand',
+  'side.bgWarning': 'Warning',
+  'side.bgNone': 'None',
+  'crop.free': 'Free',
+  'crop.aspect': 'Aspect',
+  'crop.aspectLocked': 'Aspect locked',
+  'crop.aspectUnlocked': 'Aspect unlocked',
+  'crop.lockAspect': 'Lock aspect ratio',
+  'crop.unlockAspect': 'Unlock aspect ratio',
+  'crop.dragHint': 'Drag any edge to adjust the crop area',
+  'picker.loading': 'Loading sources…',
+  'picker.noneAvailable': 'Nothing available here.'
 } as Record<string, string>;

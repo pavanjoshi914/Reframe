@@ -288,7 +288,7 @@ export function HudApp() {
     <div className="flex h-screen w-screen items-end justify-center px-1 pb-0.5">
       <div
         className="draggable relative flex h-12 items-center gap-0.5 rounded-full px-2"
-        title="Drag to move"
+        title={t('hud.dragMove')}
         style={{
           background:
             'linear-gradient(180deg, rgba(32,34,40,0.94) 0%, rgba(20,22,26,0.94) 60%, rgba(14,15,18,0.94) 100%)',

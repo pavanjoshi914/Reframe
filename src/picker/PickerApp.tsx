@@ -71,11 +71,11 @@ export function PickerApp() {
         {/* Grid */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {loading ? (
-            <div className="flex h-full items-center justify-center text-sm text-white/40">Loading sources…</div>
+            <div className="flex h-full items-center justify-center text-sm text-white/40">{t('picker.loading')}</div>
           ) : tab === 'area' ? (
             <AreaTab displays={displays} onPickDisplay={handlePickDisplay} />
           ) : visible.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-white/40">No {tab}s available.</div>
+            <div className="flex h-full items-center justify-center text-sm text-white/40">{t('picker.noneAvailable')}</div>
           ) : (
             <div className={tab === 'screen' ? 'grid grid-cols-1 gap-4 sm:grid-cols-2' : 'grid grid-cols-2 gap-4 sm:grid-cols-3'}>
               {visible.map((s) => (

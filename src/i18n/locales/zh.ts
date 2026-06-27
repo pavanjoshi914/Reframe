@@ -1,4 +1,5 @@
 export default {
+  'side.selection': '所选项',
   // Generic
   'common.cancel': '取消',
   'common.delete': '删除',
@@ -155,5 +156,31 @@ export default {
   'tl.cut': '剪切',
   'tl.deleteDel': '删除（Del）',
   'tl.adjustHint': '在右侧栏调整级别和焦点 →',
-  'tl.annotationText': '注释文本'
+  'tl.annotationText': '注释文本',
+
+  // Newly added UI keys
+  'common.close': '关闭',
+  'hud.dragMove': '拖动以移动',
+  'side.custom': '自定义',
+  'side.pickColor': '选取颜色',
+  'side.focusTip': '提示：拖动预览上的绿色十字准星以设置焦点。',
+  'side.fontSystem': '系统无衬线',
+  'side.fontInter': 'Inter',
+  'side.fontSerif': '衬线',
+  'side.fontMono': '等宽',
+  'side.fontRounded': '圆体',
+  'side.bgDark': '深色',
+  'side.bgLight': '浅色',
+  'side.bgBrand': '品牌色',
+  'side.bgWarning': '警告',
+  'side.bgNone': '无',
+  'crop.free': '自由',
+  'crop.aspect': '宽高比',
+  'crop.aspectLocked': '宽高比已锁定',
+  'crop.aspectUnlocked': '宽高比已解锁',
+  'crop.lockAspect': '锁定宽高比',
+  'crop.unlockAspect': '解锁宽高比',
+  'crop.dragHint': '拖动任意边缘以调整裁剪区域',
+  'picker.loading': '正在加载来源…',
+  'picker.noneAvailable': '此处没有可用项。'
 } as Record<string, string>;

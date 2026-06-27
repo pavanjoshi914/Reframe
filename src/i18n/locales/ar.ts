@@ -1,4 +1,5 @@
 export default {
+  'side.selection': 'التحديد',
   // Generic
   'common.cancel': 'إلغاء',
   'common.delete': 'حذف',
@@ -155,5 +156,31 @@ export default {
   'tl.cut': 'قص',
   'tl.deleteDel': 'حذف (Del)',
   'tl.adjustHint': 'اضبط المستوى والبؤرة في الشريط الجانبي الأيمن ←',
-  'tl.annotationText': 'نص التعليق'
+  'tl.annotationText': 'نص التعليق',
+
+  // Newly added UI keys
+  'common.close': 'إغلاق',
+  'hud.dragMove': 'اسحب للتحريك',
+  'side.custom': 'مخصص',
+  'side.pickColor': 'اختر اللون',
+  'side.focusTip': 'تلميح: اسحب علامة التصويب الخضراء في المعاينة لتحديد البؤرة.',
+  'side.fontSystem': 'خط النظام',
+  'side.fontInter': 'Inter',
+  'side.fontSerif': 'خط مذيّل',
+  'side.fontMono': 'خط أحادي المسافة',
+  'side.fontRounded': 'خط مدوّر',
+  'side.bgDark': 'داكن',
+  'side.bgLight': 'فاتح',
+  'side.bgBrand': 'العلامة التجارية',
+  'side.bgWarning': 'تحذير',
+  'side.bgNone': 'بلا',
+  'crop.free': 'حر',
+  'crop.aspect': 'النسبة',
+  'crop.aspectLocked': 'النسبة مقفلة',
+  'crop.aspectUnlocked': 'النسبة غير مقفلة',
+  'crop.lockAspect': 'قفل نسبة العرض إلى الارتفاع',
+  'crop.unlockAspect': 'إلغاء قفل نسبة العرض إلى الارتفاع',
+  'crop.dragHint': 'اسحب أي حافة لضبط منطقة الاقتصاص',
+  'picker.loading': 'جارٍ تحميل المصادر…',
+  'picker.noneAvailable': 'لا يوجد شيء متاح هنا.'
 } as Record<string, string>;
