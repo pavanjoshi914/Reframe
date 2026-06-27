@@ -15,6 +15,7 @@ import {
 } from 'mediabunny';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
 import { useEditor, type CropRegion, ANNOTATION_DEFAULTS } from './store';
+import type { CursorSample } from '@shared/ipc';
 
 // Export pipeline — frame-accurate, NOT real-time.
 //
@@ -196,7 +197,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
   const ctx = canvas.getContext('2d', { willReadFrequently: isGif });
   if (!ctx) throw new Error('2D canvas unavailable');
 
-  const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, bgImage };
+  const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, bgImage, cursorSamples: state.cursorSamples };
 
   // Motion blur: composite each frame onto a scratch canvas, then blend it onto
   // the output at alpha (1-k) so the output is an exponential frame average
@@ -525,7 +526,61 @@ export type DrawCtx = {
   layoutPreset: ReturnType<typeof useEditor.getState>['layoutPreset'];
   cropRegion: CropRegion;
   bgImage: HTMLImageElement | null;
+  cursorSamples?: CursorSample[];
 };
+
+// Interpolated cursor position (normalized 0..1 of the source frame) at `ms`,
+// or null if there are no samples. Used by the cursor spotlight/magnifier.
+function cursorAt(samples: CursorSample[] | undefined, ms: number): { x: number; y: number } | null {
+  if (!samples || samples.length === 0) return null;
+  if (ms <= samples[0].t) return { x: samples[0].x, y: samples[0].y };
+  const last = samples[samples.length - 1];
+  if (ms >= last.t) return { x: last.x, y: last.y };
+  // binary search for the bracketing pair
+  let lo = 0, hi = samples.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (samples[mid].t <= ms) lo = mid; else hi = mid;
+  }
+  const a = samples[lo], b = samples[hi];
+  const f = b.t === a.t ? 0 : (ms - a.t) / (b.t - a.t);
+  return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+}
+
+// Map a cursor (normalized source coords) to output-canvas pixels, mirroring
+// drawCoverWithCrop's crop+cover fit and then drawVideoBox's zoom transform, so
+// the spotlight/magnifier track exactly where the cursor appears on screen.
+// Returns null if the cursor falls outside the visible (cropped) region.
+function cursorToOutput(
+  cur: { x: number; y: number },
+  srcW: number, srcH: number,
+  crop: CropRegion,
+  bx: number, by: number, bw: number, bh: number,
+  zoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number }
+): { x: number; y: number } | null {
+  if (!srcW || !srcH) return null;
+  const sxp = cur.x * srcW, syp = cur.y * srcH;
+  const cropPxW = crop.width * srcW, cropPxH = crop.height * srcH;
+  if (cropPxW <= 0 || cropPxH <= 0) return null;
+  const scale = Math.max(bw / cropPxW, bh / cropPxH);
+  const overflowSrcW = (cropPxW * scale - bw) / scale;
+  const overflowSrcH = (cropPxH * scale - bh) / scale;
+  const sxStart = crop.x * srcW + overflowSrcW / 2;
+  const syStart = crop.y * srcH + overflowSrcH / 2;
+  const sW = cropPxW - overflowSrcW, sH = cropPxH - overflowSrcH;
+  if (sxp < sxStart || sxp > sxStart + sW || syp < syStart || syp > syStart + sH) return null;
+  let px = bx + ((sxp - sxStart) / sW) * bw;
+  let py = by + ((syp - syStart) / sH) * bh;
+  const z = zoom?.zoomLevel ?? 1;
+  if (z !== 1) {
+    const cx0 = bx + bw / 2, cy0 = by + bh / 2;
+    const tx = (0.5 - (zoom?.zoomTargetX ?? 0.5)) * (z - 1) * bw;
+    const ty = (0.5 - (zoom?.zoomTargetY ?? 0.5)) * (z - 1) * bh;
+    px = z * px + cx0 * (1 - z) + z * tx;
+    py = z * py + cy0 * (1 - z) + z * ty;
+  }
+  return { x: px, y: py };
+}
 
 // Composite one fully-rendered frame onto `ctx`. Shared by the export encoder
 // (one call per output frame) and the live editor preview (one call per rAF,
@@ -604,6 +659,15 @@ export function drawFrame(
         drawWebcamVideo(ctx, webcamCanvas, wx, wy, wcW, wcH, cornerRadius, webcam.shape === 'circle');
       } else {
         drawWebcamPlaceholder(ctx, wx, wy, wcW, wcH, cornerRadius);
+      }
+    }
+    // Cursor spotlight — dim everything but a soft halo around the cursor.
+    if (effects.cursorSpotlight > 0 && d.cursorSamples) {
+      const cur = cursorAt(d.cursorSamples, ms);
+      if (cur) {
+        const { w: sw, h: sh } = srcDims(srcCanvas);
+        const pos = cursorToOutput(cur, sw, sh, cropRegion, innerX, innerY, innerW, innerH, activeZoom ?? undefined);
+        if (pos) drawCursorSpotlight(ctx, outW, outH, pos.x, pos.y, effects.cursorSpotlight);
       }
     }
   }
@@ -710,6 +774,30 @@ function drawWebcamVideo(
   ctx.strokeStyle = 'rgba(255,255,255,0.3)';
   ctx.lineWidth = 2;
   ctx.stroke();
+  ctx.restore();
+}
+
+// Cursor spotlight: a full-frame darkening with a transparent soft circle at
+// the cursor, so attention is pulled to where the user is pointing. `strength`
+// (0..1) scales the max darkness at the edges.
+function drawCursorSpotlight(
+  ctx: CanvasRenderingContext2D,
+  outW: number,
+  outH: number,
+  cx: number,
+  cy: number,
+  strength: number
+) {
+  const radius = Math.min(outW, outH) * 0.16;
+  const inner = radius * 0.6;
+  const outer = radius * 2.4;
+  const alpha = Math.max(0, Math.min(0.85, strength * 0.85));
+  const g = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, `rgba(0,0,0,${alpha})`);
+  ctx.save();
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, outW, outH);
   ctx.restore();
 }
 

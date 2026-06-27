@@ -298,7 +298,8 @@ export function Preview() {
         webcam: st.webcam,
         layoutPreset: st.layoutPreset,
         cropRegion: st.cropRegion,
-        bgImage: bgImageRef.current
+        bgImage: bgImageRef.current,
+        cursorSamples: st.cursorSamples
       });
       const k = Math.max(0, Math.min(0.9, st.effects.motionBlur || 0));
       ctx.globalAlpha = 1 - k;
