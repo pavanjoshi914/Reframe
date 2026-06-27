@@ -382,9 +382,21 @@ ipcMain.handle('recording:save', async (_evt, data: ArrayBuffer, meta: import('.
     webcamFilePath = path.join(recordingsTempDir, `${ts}-webcam.webm`);
     fs.writeFileSync(webcamFilePath, Buffer.from(meta.webcamData));
   }
+  // Persist cursor samples captured during this recording as a sidecar JSON.
+  let cursorFilePath: string | undefined;
+  if (cursorSamples.length > 0) {
+    cursorFilePath = path.join(recordingsTempDir, `${ts}.cursor.json`);
+    try {
+      fs.writeFileSync(cursorFilePath, JSON.stringify(cursorSamples));
+    } catch (err) {
+      console.warn('[main] failed to write cursor sidecar', err);
+      cursorFilePath = undefined;
+    }
+  }
+  cursorSamples = [];
   const { webcamData, ...rest } = meta;
   void webcamData;
-  const result: import('../src/shared/ipc.js').RecordingMeta = { ...rest, filePath, webcamFilePath };
+  const result: import('../src/shared/ipc.js').RecordingMeta = { ...rest, filePath, webcamFilePath, cursorFilePath };
   lastRecording = result;
   return result;
 });
@@ -431,8 +443,45 @@ ipcMain.handle('hud:setExpanded', (_evt, expanded: boolean) => {
 
 let isRecording = false;
 
+// ── Cursor tracking ─────────────────────────────────────────────────────────
+// While recording we poll the global cursor position (~25Hz) and normalize it
+// against the primary display's bounds. The samples are saved as a sidecar
+// `.cursor.json` next to the recording so the editor's "Suggest Zooms" can
+// auto-place zoom regions where the user was actually pointing. v1 assumes a
+// full-screen recording of the primary display.
+type CursorPt = { t: number; x: number; y: number };
+let cursorSamples: CursorPt[] = [];
+let cursorTimer: ReturnType<typeof setInterval> | null = null;
+let cursorStart = 0;
+let cursorBounds: { x: number; y: number; width: number; height: number } | null = null;
+
+function startCursorTracking() {
+  stopCursorTracking();
+  cursorSamples = [];
+  cursorStart = Date.now();
+  cursorBounds = screen.getPrimaryDisplay().bounds;
+  cursorTimer = setInterval(() => {
+    if (!cursorBounds) return;
+    const p = screen.getCursorScreenPoint();
+    const x = (p.x - cursorBounds.x) / Math.max(1, cursorBounds.width);
+    const y = (p.y - cursorBounds.y) / Math.max(1, cursorBounds.height);
+    // Skip points outside the recorded display (e.g. cursor on another monitor).
+    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+    cursorSamples.push({ t: Date.now() - cursorStart, x, y });
+  }, 40);
+}
+
+function stopCursorTracking() {
+  if (cursorTimer) {
+    clearInterval(cursorTimer);
+    cursorTimer = null;
+  }
+}
+
 ipcMain.handle('hud:setRecording', (_evt, recording: boolean) => {
   isRecording = !!recording;
+  if (isRecording) startCursorTracking();
+  else stopCursorTracking();
   if (hudWindow) {
     // Keep setContentProtection on — excludes the HUD from screen capture on
     // macOS/Windows. On Linux it's a no-op (the HUD will be visible in the
@@ -441,6 +490,18 @@ ipcMain.handle('hud:setRecording', (_evt, recording: boolean) => {
     hudWindow.setContentProtection(true);
   }
   updateTrayMenu();
+});
+
+ipcMain.handle('cursor:load', async (_evt, filePath: string) => {
+  try {
+    const resolved = path.resolve(filePath);
+    if (!recordingsTempDir || !resolved.startsWith(recordingsTempDir + path.sep)) return null;
+    const raw = await fs.promises.readFile(resolved, 'utf-8');
+    const data = JSON.parse(raw);
+    return Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  }
 });
 
 // Generate a unique on-disk path for a brand-new auto-saved project. Called
@@ -706,9 +767,10 @@ async function sweepOrphanRecordings() {
       try {
         const raw = await fs.promises.readFile(path.join(projectsDir, pf), 'utf-8');
         const parsed = JSON.parse(raw);
-        const rec = parsed?.recording as { filePath?: string; webcamFilePath?: string } | undefined;
+        const rec = parsed?.recording as { filePath?: string; webcamFilePath?: string; cursorFilePath?: string } | undefined;
         if (rec?.filePath) referenced.add(path.resolve(rec.filePath));
         if (rec?.webcamFilePath) referenced.add(path.resolve(rec.webcamFilePath));
+        if (rec?.cursorFilePath) referenced.add(path.resolve(rec.cursorFilePath));
       } catch {
         // Malformed project file — ignore, don't crash startup.
       }

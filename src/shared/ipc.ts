@@ -27,6 +27,12 @@ export type DisplayInfo = {
   thumbnailDataUrl: string;
 };
 
+// One sampled cursor position during a recording. `t` is ms since recording
+// start; `x`/`y` are normalized 0..1 fractions of the captured frame. Used by
+// the editor's "Suggest Zooms" to auto-place zoom regions where the user was
+// pointing.
+export type CursorSample = { t: number; x: number; y: number };
+
 export type RecordingMeta = {
   filePath: string;
   webcamFilePath?: string;
@@ -38,6 +44,9 @@ export type RecordingMeta = {
   // chosen rectangle as normalized fractions (0..1) of the captured frame.
   // The editor uses it directly to pre-fill cropRegion.
   region?: Region;
+  // Path to the sidecar .cursor.json (array of CursorSample) captured during
+  // recording, if cursor tracking produced any samples.
+  cursorFilePath?: string;
 };
 
 export type SaveRecordingMeta = Omit<RecordingMeta, 'filePath' | 'webcamFilePath'> & {
@@ -106,6 +115,8 @@ export type Api = {
   saveExport: (req: ExportRequest) => Promise<{ saved: boolean; path?: string }>;
   setRecordingState: (recording: boolean) => Promise<void>;
   onStopShortcut: (cb: () => void) => () => void;
+  // Load the sidecar cursor samples for a recording (returns null if none).
+  getCursorData: (filePath: string) => Promise<CursorSample[] | null>;
 };
 
 declare global {
