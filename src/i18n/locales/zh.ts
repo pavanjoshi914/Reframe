@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': '聚光',
   'tl.magnify': '放大',
   'side.selection': '所选项',
   // Generic

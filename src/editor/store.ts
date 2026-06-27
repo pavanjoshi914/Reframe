@@ -3,7 +3,7 @@ import type { RecordingMeta, CursorSample } from '@shared/ipc';
 import { suggestZoomsFromCursor } from './autoZoom';
 
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
-export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed' | 'magnify';
+export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed' | 'magnify' | 'spotlight';
 
 export type AnnotationStyle = {
   // Visual styling for an annotation. All fields optional so older projects

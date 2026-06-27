@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'स्पॉटलाइट',
   'tl.magnify': 'आवर्धक',
   'side.selection': 'चयन',
   // Generic

@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'نورافکن',
   'tl.magnify': 'ذره‌بین',
   'side.selection': 'انتخاب',
   'common.cancel': 'لغو',

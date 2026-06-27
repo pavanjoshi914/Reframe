@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'Spot',
   'tl.magnify': 'Büyüteç',
   'side.selection': 'Seçim',
   'common.cancel': 'İptal',

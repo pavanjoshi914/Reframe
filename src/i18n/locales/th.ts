@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'สปอตไลต์',
   'tl.magnify': 'แว่นขยาย',
   'side.selection': 'ส่วนที่เลือก',
   'common.cancel': 'ยกเลิก',

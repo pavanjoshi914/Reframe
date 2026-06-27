@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'Faretto',
   'tl.magnify': 'Lente',
   'side.selection': 'Selezione',
   'common.cancel': 'Annulla',

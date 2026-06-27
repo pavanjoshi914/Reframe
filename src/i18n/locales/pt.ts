@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'Holofote',
   'tl.magnify': 'Ampliar',
   'side.selection': 'Seleção',
   // Generic

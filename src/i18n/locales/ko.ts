@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': '스포트라이트',
   'tl.magnify': '확대',
   'side.selection': '선택',
   'common.cancel': '취소',

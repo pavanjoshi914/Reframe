@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'Đèn rọi',
   'tl.magnify': 'Phóng to',
   'side.selection': 'Lựa chọn',
   'common.cancel': 'Hủy',

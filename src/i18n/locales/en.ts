@@ -145,6 +145,7 @@ export default {
   'tl.annotation': 'Annotation',
   'tl.speed': 'Speed',
   'tl.magnify': 'Magnify',
+  'tl.spotlight': 'Spotlight',
   'tl.add': 'Add {label}',
   'tl.suggestZooms': 'Suggest zooms from cursor movement',
   'tl.noCursorData': 'No cursor data for this recording',

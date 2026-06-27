@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'Reflektor',
   'tl.magnify': 'Lupa',
   'side.selection': 'Zaznaczenie',
   'common.cancel': 'Anuluj',

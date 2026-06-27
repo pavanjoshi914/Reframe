@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'Sorot',
   'tl.magnify': 'Perbesar',
   'side.selection': 'Pilihan',
   'common.cancel': 'Batal',

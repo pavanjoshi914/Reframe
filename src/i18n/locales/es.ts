@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'Foco',
   'tl.magnify': 'Ampliar',
   'side.selection': 'Selección',
   // Generic

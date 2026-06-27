@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'Прожектор',
   'tl.magnify': 'Лупа',
   'side.selection': 'Вибір',
   'common.cancel': 'Скасувати',

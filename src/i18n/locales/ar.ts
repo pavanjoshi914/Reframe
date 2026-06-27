@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'تسليط الضوء',
   'tl.magnify': 'تكبير',
   'side.selection': 'التحديد',
   // Generic

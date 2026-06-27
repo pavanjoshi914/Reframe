@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'Projecteur',
   'tl.magnify': 'Loupe',
   'side.selection': 'Sélection',
   'common.cancel': 'Annuler',

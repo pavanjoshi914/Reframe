@@ -1,4 +1,5 @@
 export default {
+  'tl.spotlight': 'Spotlight',
   'tl.magnify': 'Lupe',
   'side.selection': 'Auswahl',
   'common.cancel': 'Abbrechen',
