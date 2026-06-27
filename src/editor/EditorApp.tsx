@@ -6,6 +6,8 @@ import { Timeline } from './Timeline';
 import { useEditor, type SerializedProject } from './store';
 import type { ProjectFile } from '@shared/ipc';
 import wordmarkUrl from '../../assets/logo-wordmark-transparent.png';
+import { useT } from '../i18n';
+import { LanguageSelector } from '../i18n/LanguageSelector';
 
 declare global {
   interface Window {
@@ -24,6 +26,7 @@ export function EditorApp() {
   const setPlaying = useEditor((s) => s.setPlaying);
   const currentMs = useEditor((s) => s.currentMs);
   const durationMs = useEditor((s) => s.durationMs);
+  const t = useT();
   const aspect = useEditor((s) => s.aspect);
   const setAspect = useEditor((s) => s.setAspect);
   const videoVolume = useEditor((s) => s.videoVolume);
@@ -208,7 +211,9 @@ export function EditorApp() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs text-white/60">Aspect</label>
+          <LanguageSelector />
+          <Divider />
+          <label className="text-xs text-white/60">{t('editor.aspect')}</label>
           <select
             value={aspect}
             onChange={(e) => setAspect(e.target.value as any)}
@@ -221,8 +226,8 @@ export function EditorApp() {
             <option value="auto">Auto</option>
           </select>
           <Divider />
-          <button onClick={handleLoadProject} className="rounded-md border border-white/10 px-3 py-1 text-xs hover:bg-white/5">Load Project</button>
-          <button onClick={handleSaveProject} className="rounded-md border border-white/10 px-3 py-1 text-xs hover:bg-white/5">Save Project</button>
+          <button onClick={handleLoadProject} className="rounded-md border border-white/10 px-3 py-1 text-xs hover:bg-white/5">{t('editor.loadProject')}</button>
+          <button onClick={handleSaveProject} className="rounded-md border border-white/10 px-3 py-1 text-xs hover:bg-white/5">{t('editor.saveProjectBtn')}</button>
         </div>
       </div>
 

@@ -3,11 +3,13 @@ import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem } from './store';
 import { runExport } from './export';
 import { CropModal } from './CropModal';
+import { useT } from '../i18n';
 
 const ZOOM_PRESETS = [1.25, 1.5, 1.8, 2.2, 3.5, 5];
 const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 3, 5];
 
 export function Sidebar() {
+  const t = useT();
   const selectedItem = useEditor((s) => s.items.find((it) => it.id === s.selectedItemId) ?? null);
   const showSelection = selectedItem && (
     selectedItem.kind === 'zoom' ||
@@ -19,17 +21,17 @@ export function Sidebar() {
     <div className="flex h-full w-[380px] flex-col overflow-hidden rounded-xl border border-white/5 bg-[#0e0f12]">
       <div className="flex-1 overflow-y-auto">
         {showSelection && (
-          <Section title="Selection" defaultOpen>
+          <Section title={t('side.selection')} defaultOpen>
             <SelectionSection />
           </Section>
         )}
-        <Section title="Composition" defaultOpen>
+        <Section title={t('side.composition')} defaultOpen>
           <CompositionSection />
         </Section>
-        <Section title="Style" defaultOpen>
+        <Section title={t('side.style')} defaultOpen>
           <StyleSection />
         </Section>
-        <Section title="Video Effects" defaultOpen>
+        <Section title={t('side.videoEffects')} defaultOpen>
           <VideoEffectsSection />
         </Section>
       </div>
@@ -599,24 +601,25 @@ function CompositionSection() {
 }
 
 function StyleSection() {
+  const t = useT();
   const polish = useEditor((s) => s.polish);
   const setPolish = useEditor((s) => s.setPolish);
 
   return (
     <div className="space-y-4">
       <div>
-        <Label>Polish Preset</Label>
+        <Label>{t('side.style')}</Label>
         <div className="grid grid-cols-3 gap-1.5">
           {(['subtle', 'soft', 'dramatic'] as PolishPreset[]).map((p) => (
             <button
               key={p}
               onClick={() => setPolish(p)}
               className={
-                'rounded-md px-2 py-1.5 text-xs font-medium capitalize ' +
+                'rounded-md px-2 py-1.5 text-xs font-medium ' +
                 (polish === p ? 'bg-emerald-500 text-black' : 'bg-white/5 text-white/70 hover:bg-white/10')
               }
             >
-              {p}
+              {t('side.' + p)}
             </button>
           ))}
         </div>
@@ -629,6 +632,7 @@ function StyleSection() {
 // Promoted to its own section with a 2-col slider grid for parity with the
 // openscreen reference, plus a Crop Video entry point.
 function VideoEffectsSection() {
+  const t = useT();
   const effects = useEditor((s) => s.effects);
   const setEffect = useEditor((s) => s.setEffect);
   const cropRegion = useEditor((s) => s.cropRegion);
@@ -641,14 +645,14 @@ function VideoEffectsSection() {
 
   return (
     <div className="space-y-3">
-      <ToggleRow label="Blur BG" checked={effects.blurBg} onChange={(v) => setEffect('blurBg', v)} />
+      <ToggleRow label={t('side.blurBg')} checked={effects.blurBg} onChange={(v) => setEffect('blurBg', v)} />
       <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-        <RangeRow label="Shadow" value={effects.shadowPct} min={0} max={100} step={1} onChange={(v) => setEffect('shadowPct', v)} fmt={(v) => `${v}%`} />
-        <RangeRow label="Roundness" value={effects.roundnessPx} min={0} max={40} step={1} onChange={(v) => setEffect('roundnessPx', v)} fmt={(v) => `${v}px`} />
-        <RangeRow label="Padding" value={effects.paddingPct} min={0} max={100} step={1} onChange={(v) => setEffect('paddingPct', v)} fmt={(v) => `${v}%`} />
-        <RangeRow label="Motion Blur" value={Math.round(effects.motionBlur * 100)} min={0} max={80} step={1} onChange={(v) => setEffect('motionBlur', v / 100)} fmt={(v) => `${v}%`} />
-        <RangeRow label="Spotlight" value={Math.round((effects.cursorSpotlight ?? 0) * 100)} min={0} max={100} step={1} onChange={(v) => setEffect('cursorSpotlight', v / 100)} fmt={(v) => `${v}%`} />
-        <RangeRow label="Magnifier" value={Math.round((effects.cursorMagnifier ?? 0) * 100)} min={0} max={100} step={1} onChange={(v) => setEffect('cursorMagnifier', v / 100)} fmt={(v) => `${v}%`} />
+        <RangeRow label={t('side.shadow')} value={effects.shadowPct} min={0} max={100} step={1} onChange={(v) => setEffect('shadowPct', v)} fmt={(v) => `${v}%`} />
+        <RangeRow label={t('side.roundness')} value={effects.roundnessPx} min={0} max={40} step={1} onChange={(v) => setEffect('roundnessPx', v)} fmt={(v) => `${v}px`} />
+        <RangeRow label={t('side.padding')} value={effects.paddingPct} min={0} max={100} step={1} onChange={(v) => setEffect('paddingPct', v)} fmt={(v) => `${v}%`} />
+        <RangeRow label={t('side.motionBlur')} value={Math.round(effects.motionBlur * 100)} min={0} max={80} step={1} onChange={(v) => setEffect('motionBlur', v / 100)} fmt={(v) => `${v}%`} />
+        <RangeRow label={t('side.spotlight')} value={Math.round((effects.cursorSpotlight ?? 0) * 100)} min={0} max={100} step={1} onChange={(v) => setEffect('cursorSpotlight', v / 100)} fmt={(v) => `${v}%`} />
+        <RangeRow label={t('side.magnifier')} value={Math.round((effects.cursorMagnifier ?? 0) * 100)} min={0} max={100} step={1} onChange={(v) => setEffect('cursorMagnifier', v / 100)} fmt={(v) => `${v}%`} />
       </div>
       <div className="flex gap-2">
         <button
@@ -656,15 +660,15 @@ function VideoEffectsSection() {
           disabled={!fileUrl}
           className="flex flex-1 items-center justify-center gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <Crop size={14} /> {cropActive ? 'Edit Crop' : 'Crop Video'}
+          <Crop size={14} /> {cropActive ? t('side.editCrop') : t('side.cropVideo')}
         </button>
         {cropActive && (
           <button
             onClick={() => setCropRegion(DEFAULT_CROP_REGION)}
             className="rounded-md border border-white/10 bg-white/5 px-2 text-xs text-white/70 hover:bg-white/10"
-            title="Clear crop"
+            title={t('side.clearCrop')}
           >
-            Reset
+            {t('common.reset')}
           </button>
         )}
       </div>
@@ -674,6 +678,7 @@ function VideoEffectsSection() {
 }
 
 function ExportSection() {
+  const t = useT();
   const fmt = useEditor((s) => s.exportFormat);
   const setFmt = useEditor((s) => s.setExportFormat);
   const q = useEditor((s) => s.exportQuality);
@@ -683,18 +688,18 @@ function ExportSection() {
 
   async function handleExport() {
     if (!fileUrl) {
-      alert('No recording loaded.');
+      alert(t('editor.noRecording'));
       return;
     }
     if (busy) return;
     try {
-      setBusy({ phase: 'Preparing…', pct: 0 });
+      setBusy({ phase: t('export.preparing'), pct: 0 });
       await runExport({
         onProgress: (phase, pct) => setBusy({ phase, pct })
       });
     } catch (err) {
       console.error('export failed', err);
-      alert('Export failed: ' + (err as Error).message);
+      alert(t('editor.exportFailed', { msg: (err as Error).message }));
     } finally {
       setBusy(null);
     }
@@ -702,17 +707,17 @@ function ExportSection() {
 
   return (
     <div className="border-t border-white/5 bg-black/30 p-4">
-      <Label>Format</Label>
+      <Label>{t('side.format')}</Label>
       <div className="mb-3 grid grid-cols-3 gap-1.5">
         <ChipBtn active={fmt === 'mp4'} onClick={() => setFmt('mp4')}>MP4</ChipBtn>
         <ChipBtn active={fmt === 'webm'} onClick={() => setFmt('webm')}>WebM</ChipBtn>
         <ChipBtn active={fmt === 'gif'} onClick={() => setFmt('gif')}>GIF</ChipBtn>
       </div>
-      <Label>Quality</Label>
+      <Label>{t('side.quality')}</Label>
       <div className="mb-4 grid grid-cols-3 gap-1.5">
-        <ChipBtn active={q === 'low'} onClick={() => setQ('low')}>Low</ChipBtn>
-        <ChipBtn active={q === 'medium'} onClick={() => setQ('medium')}>Medium</ChipBtn>
-        <ChipBtn active={q === 'high'} onClick={() => setQ('high')}>High</ChipBtn>
+        <ChipBtn active={q === 'low'} onClick={() => setQ('low')}>{t('side.low')}</ChipBtn>
+        <ChipBtn active={q === 'medium'} onClick={() => setQ('medium')}>{t('side.medium')}</ChipBtn>
+        <ChipBtn active={q === 'high'} onClick={() => setQ('high')}>{t('side.high')}</ChipBtn>
       </div>
       <button
         onClick={handleExport}
@@ -720,7 +725,7 @@ function ExportSection() {
         className="flex w-full items-center justify-center gap-2 rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-        {busy ? `${busy.phase} ${Math.round(busy.pct)}%` : 'Export Video'}
+        {busy ? `${busy.phase} ${Math.round(busy.pct)}%` : t('side.exportVideo')}
       </button>
     </div>
   );
