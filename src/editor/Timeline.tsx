@@ -152,7 +152,9 @@ export function Timeline() {
 
   // Smooth scrubbing — pointer-down/move/up across the ruler or any empty
   // lane area. Captures the pointer so the playhead tracks the cursor even
-  // when it leaves the original element.
+  // when it leaves the original element. Trim regions are skipped by the
+  // store's setCurrent (see store.ts) — dropping a scrub inside a cut snaps
+  // the playhead to whichever edge of the cut is closer.
   const scrubbingRef = useRef(false);
   function onScrubDown(e: React.PointerEvent) {
     e.preventDefault();

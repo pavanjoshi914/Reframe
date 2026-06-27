@@ -242,7 +242,23 @@ export const useEditor = create<EditorState>((set, get) => ({
     })),
   setVideoIntrinsicSize: (size) => set({ videoIntrinsicSize: size }),
   setMainVideoEl: (el) => set({ mainVideoEl: el }),
-  setCurrent: (ms) => set({ currentMs: ms }),
+  setCurrent: (ms) => set((s) => {
+    // Snap the playhead out of any trim region — when scrubbing or clicking
+    // into a cut, jump to whichever edge of the cut is closest (midpoint
+    // split). Keeps the preview from flashing trimmed content during a drag
+    // and matches the way playback already skips trims at runtime. Snap is a
+    // no-op when ms lands outside every trim region, so call sites that
+    // already handled trim (e.g. Preview's onTime which sets ms to endMs+1)
+    // pass through unchanged.
+    const trim = s.items.find(
+      (it) => it.kind === 'trim' && ms > it.startMs && ms < it.endMs
+    );
+    if (trim) {
+      const midpoint = (trim.startMs + trim.endMs) / 2;
+      return { currentMs: ms < midpoint ? trim.startMs : trim.endMs };
+    }
+    return { currentMs: ms };
+  }),
   setPlaying: (p) => set({ playing: p }),
   setAspect: (a) => set({ aspect: a }),
   setBackground: (b) => set({ background: b }),
