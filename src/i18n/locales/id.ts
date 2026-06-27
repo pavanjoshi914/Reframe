@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': 'Perbesar',
   'side.selection': 'Pilihan',
   'common.cancel': 'Batal',
   'common.delete': 'Hapus',

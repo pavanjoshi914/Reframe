@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': 'แว่นขยาย',
   'side.selection': 'ส่วนที่เลือก',
   'common.cancel': 'ยกเลิก',
   'common.delete': 'ลบ',

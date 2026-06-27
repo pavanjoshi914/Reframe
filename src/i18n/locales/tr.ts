@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': 'Büyüteç',
   'side.selection': 'Seçim',
   'common.cancel': 'İptal',
   'common.delete': 'Sil',

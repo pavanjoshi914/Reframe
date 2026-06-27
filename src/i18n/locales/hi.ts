@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': 'आवर्धक',
   'side.selection': 'चयन',
   // Generic
   'common.cancel': 'रद्द करें',

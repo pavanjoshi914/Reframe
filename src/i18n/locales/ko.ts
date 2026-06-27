@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': '확대',
   'side.selection': '선택',
   'common.cancel': '취소',
   'common.delete': '삭제',

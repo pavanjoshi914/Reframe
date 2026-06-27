@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': 'Phóng to',
   'side.selection': 'Lựa chọn',
   'common.cancel': 'Hủy',
   'common.delete': 'Xóa',

@@ -662,14 +662,19 @@ export function drawFrame(
       }
     }
     // Cursor spotlight + magnifier — both track the recorded cursor position.
-    if ((effects.cursorSpotlight > 0 || effects.cursorMagnifier > 0) && d.cursorSamples) {
+    // The magnifier is active either globally (the slider, applied to the whole
+    // video) OR only inside a "magnify" timeline region the user placed; a
+    // region with the slider off uses a sensible default strength.
+    const magItem = items.find((it) => it.kind === 'magnify' && ms >= it.startMs && ms <= it.endMs);
+    const magStrength = effects.cursorMagnifier > 0 ? effects.cursorMagnifier : (magItem ? 0.7 : 0);
+    if ((effects.cursorSpotlight > 0 || magStrength > 0) && d.cursorSamples) {
       const cur = cursorAt(d.cursorSamples, ms);
       if (cur) {
         const { w: sw, h: sh } = srcDims(srcCanvas);
         const pos = cursorToOutput(cur, sw, sh, cropRegion, innerX, innerY, innerW, innerH, activeZoom ?? undefined);
         if (pos) {
           if (effects.cursorSpotlight > 0) drawCursorSpotlight(ctx, outW, outH, pos.x, pos.y, effects.cursorSpotlight);
-          if (effects.cursorMagnifier > 0) drawCursorMagnifier(ctx, outW, outH, pos.x, pos.y, effects.cursorMagnifier);
+          if (magStrength > 0) drawCursorMagnifier(ctx, outW, outH, pos.x, pos.y, magStrength);
         }
       }
     }

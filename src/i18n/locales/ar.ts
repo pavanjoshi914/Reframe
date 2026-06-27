@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': 'تكبير',
   'side.selection': 'التحديد',
   // Generic
   'common.cancel': 'إلغاء',

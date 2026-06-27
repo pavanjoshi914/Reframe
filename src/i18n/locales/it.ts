@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': 'Lente',
   'side.selection': 'Selezione',
   'common.cancel': 'Annulla',
   'common.delete': 'Elimina',

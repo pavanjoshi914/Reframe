@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': 'Лупа',
   'side.selection': 'Вибір',
   'common.cancel': 'Скасувати',
   'common.delete': 'Видалити',

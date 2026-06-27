@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': 'Ampliar',
   'side.selection': 'Seleção',
   // Generic
   'common.cancel': 'Cancelar',

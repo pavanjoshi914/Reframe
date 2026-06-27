@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': '放大',
   'side.selection': '所选项',
   // Generic
   'common.cancel': '取消',

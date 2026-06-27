@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': 'ذره‌بین',
   'side.selection': 'انتخاب',
   'common.cancel': 'لغو',
   'common.delete': 'حذف',

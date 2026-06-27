@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': 'Lupe',
   'side.selection': 'Auswahl',
   'common.cancel': 'Abbrechen',
   'common.delete': 'Löschen',

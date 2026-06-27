@@ -1,4 +1,5 @@
 export default {
+  'tl.magnify': 'Vergroten',
   'side.selection': 'Selectie',
   'common.cancel': 'Annuleren',
   'common.delete': 'Verwijderen',
