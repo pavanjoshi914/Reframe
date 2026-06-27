@@ -105,7 +105,7 @@ export type EditorState = {
   videoMuted: boolean;
 
   // Export
-  exportFormat: 'mp4' | 'gif';
+  exportFormat: 'mp4' | 'webm' | 'gif';
   exportQuality: 'low' | 'medium' | 'high';
 
   // Timeline
@@ -129,7 +129,7 @@ export type EditorState = {
   setPolish: (p: PolishPreset) => void;
   setShowAdvanced: (v: boolean) => void;
   setEffect: <K extends keyof EditorState['effects']>(key: K, value: EditorState['effects'][K]) => void;
-  setExportFormat: (f: 'mp4' | 'gif') => void;
+  setExportFormat: (f: 'mp4' | 'webm' | 'gif') => void;
   setExportQuality: (q: 'low' | 'medium' | 'high') => void;
   setVideoVolume: (v: number) => void;
   setVideoMuted: (m: boolean) => void;

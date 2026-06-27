@@ -700,8 +700,9 @@ function ExportSection() {
   return (
     <div className="border-t border-white/5 bg-black/30 p-4">
       <Label>Format</Label>
-      <div className="mb-3 grid grid-cols-2 gap-1.5">
+      <div className="mb-3 grid grid-cols-3 gap-1.5">
         <ChipBtn active={fmt === 'mp4'} onClick={() => setFmt('mp4')}>MP4</ChipBtn>
+        <ChipBtn active={fmt === 'webm'} onClick={() => setFmt('webm')}>WebM</ChipBtn>
         <ChipBtn active={fmt === 'gif'} onClick={() => setFmt('gif')}>GIF</ChipBtn>
       </div>
       <Label>Quality</Label>

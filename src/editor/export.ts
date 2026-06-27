@@ -255,9 +255,10 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
     return;
   }
 
-  // Prefer H.264/MP4; fall back to VP9/VP8 in WebM if the system can't encode
-  // H.264 via WebCodecs.
-  const codec = await getFirstEncodableVideoCodec(['avc', 'vp9', 'vp8'], {
+  // WebM was requested → VP9/VP8 only. Otherwise prefer H.264/MP4 and fall
+  // back to VP9/VP8 in WebM if the system can't encode H.264 via WebCodecs.
+  const codecPrefs: VideoCodec[] = exportFormat === 'webm' ? ['vp9', 'vp8'] : ['avc', 'vp9', 'vp8'];
+  const codec = await getFirstEncodableVideoCodec(codecPrefs, {
     width: outW,
     height: outH
   });
