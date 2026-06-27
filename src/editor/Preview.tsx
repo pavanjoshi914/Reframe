@@ -506,7 +506,7 @@ export function Preview() {
             <>
               <div
                 ref={innerRef}
-                className="relative flex items-center justify-center transition-transform duration-[400ms] ease-out"
+                className="relative flex items-center justify-center transition-transform duration-[450ms] ease-[cubic-bezier(0.65,0,0.35,1)]"
                 style={{
                   width: `${innerScale * 100}%`,
                   height: `${innerScale * 100}%`,

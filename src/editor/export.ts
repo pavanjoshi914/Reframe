@@ -58,15 +58,16 @@ const LAYOUT_COORDS: Record<
   'side-by-side': { x: 0.5, y: 0.5, size: 0.4, sideBySide: true }
 };
 
-// Match the editor preview's CSS `transition-transform duration-[400ms] ease-out`
-// on the zoom container — the preview ramps zoomLevel smoothly when a zoom
-// item starts/ends; the export needs the same easing or the cut between
-// zoomed/un-zoomed shows up as an abrupt jump in the rendered video. Keep
-// this constant in sync with the Preview's CSS class.
-const ZOOM_TRANSITION_MS = 400;
-function easeOutCubic(t: number): number {
+// Must stay in sync with the editor preview's zoom-container CSS transition
+// (Preview.tsx: `transition-transform duration-[450ms] ease-[cubic-bezier(0.65,0,0.35,1)]`).
+// easeInOutCubic ≈ that bezier — a gentle accelerate-then-decelerate ramp that
+// reads as more cinematic than the old easeOutCubic punch-in, and identical
+// between preview and export so the zoom looks the same in both. Keep the
+// duration + curve matched on both sides.
+const ZOOM_TRANSITION_MS = 450;
+function easeInOutCubic(t: number): number {
   const x = Math.max(0, Math.min(1, t));
-  return 1 - Math.pow(1 - x, 3);
+  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 }
 
 type ZoomItem = { startMs: number; endMs: number; zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number };
@@ -86,7 +87,7 @@ function computeEasedZoom(
   if (active) {
     const target = active.zoomLevel ?? 1.5;
     const elapsed = ms - active.startMs;
-    const progress = elapsed < ZOOM_TRANSITION_MS ? easeOutCubic(elapsed / ZOOM_TRANSITION_MS) : 1;
+    const progress = elapsed < ZOOM_TRANSITION_MS ? easeInOutCubic(elapsed / ZOOM_TRANSITION_MS) : 1;
     return {
       startMs: active.startMs,
       endMs: active.endMs,
@@ -102,7 +103,7 @@ function computeEasedZoom(
     .sort((a, b) => b.endMs - a.endMs)[0];
   if (justEnded) {
     const target = justEnded.zoomLevel ?? 1.5;
-    const progress = 1 - easeOutCubic((ms - justEnded.endMs) / ZOOM_TRANSITION_MS);
+    const progress = 1 - easeInOutCubic((ms - justEnded.endMs) / ZOOM_TRANSITION_MS);
     return {
       startMs: justEnded.startMs,
       endMs: justEnded.endMs,
