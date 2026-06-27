@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { RecordingMeta } from '@shared/ipc';
+import type { RecordingMeta, CursorSample } from '@shared/ipc';
+import { suggestZoomsFromCursor } from './autoZoom';
 
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
 export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed';
@@ -113,6 +114,10 @@ export type EditorState = {
   selectedItemId: string | null;
   pixelsPerSecond: number;
 
+  // Cursor samples captured during recording (for auto-zoom). Not serialized;
+  // reloaded from the recording's sidecar on open.
+  cursorSamples: CursorSample[];
+
   // Actions
   setRecording: (r: RecordingMeta, fileUrl: string, webcamFileUrl?: string | null) => void;
   setCurrentProjectPath: (p: string | null) => void;
@@ -138,6 +143,10 @@ export type EditorState = {
   removeItem: (id: string) => void;
   selectItem: (id: string | null) => void;
   setPixelsPerSecond: (pps: number) => void;
+  setCursorSamples: (s: CursorSample[]) => void;
+  // Replace existing zoom items with auto-suggested ones derived from the
+  // captured cursor movement. Returns how many were added.
+  suggestZooms: () => number;
   serialize: () => SerializedProject;
   hydrate: (data: SerializedProject) => void;
 };
@@ -215,6 +224,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   items: [],
   selectedItemId: null,
   pixelsPerSecond: 60,
+  cursorSamples: [],
 
   setCurrentProjectPath: (p) => set({ currentProjectPath: p }),
   setLastSavedAt: (t) => set({ lastSavedAt: t }),
@@ -349,6 +359,27 @@ export const useEditor = create<EditorState>((set, get) => ({
     })),
   selectItem: (id) => set({ selectedItemId: id }),
   setPixelsPerSecond: (pps) => set({ pixelsPerSecond: Math.max(10, Math.min(800, pps)) }),
+  setCursorSamples: (s) => set({ cursorSamples: s }),
+  suggestZooms: () => {
+    const s = get();
+    const suggestions = suggestZoomsFromCursor(s.cursorSamples, s.durationMs);
+    const zooms: LaneItem[] = suggestions.map((z) => ({
+      id: crypto.randomUUID(),
+      kind: 'zoom',
+      startMs: z.startMs,
+      endMs: z.endMs,
+      zoomLevel: z.zoomLevel,
+      zoomTargetX: z.zoomTargetX,
+      zoomTargetY: z.zoomTargetY
+    }));
+    // Replace any existing zoom items with the fresh suggestions; leave other
+    // lanes (trim/annotation/speed) untouched.
+    set((st) => ({
+      items: [...st.items.filter((it) => it.kind !== 'zoom'), ...zooms],
+      selectedItemId: null
+    }));
+    return zooms.length;
+  },
   serialize: () => {
     const s = get();
     return {

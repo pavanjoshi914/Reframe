@@ -39,11 +39,18 @@ export function EditorApp() {
   useEffect(() => {
     let cancelled = false;
 
+    // Load the recording's cursor sidecar (if any) so "Suggest Zooms" works.
+    async function loadCursor(rec: import('@shared/ipc').RecordingMeta) {
+      const samples = rec.cursorFilePath ? await window.api.getCursorData(rec.cursorFilePath) : null;
+      if (!cancelled) useEditor.getState().setCursorSamples(samples ?? []);
+    }
+
     async function hydrateForRecording(rec: import('@shared/ipc').RecordingMeta) {
       const url = await window.api.getRecordingFileUrl(rec.filePath);
       const webcamUrl = rec.webcamFilePath ? await window.api.getRecordingFileUrl(rec.webcamFilePath) : null;
       if (cancelled) return;
       setRecording(rec, url, webcamUrl);
+      void loadCursor(rec);
 
       // Initial project file for a freshly-captured recording.
       const projectPath = await window.api.initialProjectPath(rec.startedAt);
@@ -64,6 +71,7 @@ export function EditorApp() {
       const webcamUrl = p.recording.webcamFilePath ? await window.api.getRecordingFileUrl(p.recording.webcamFilePath) : null;
       if (cancelled) return;
       setRecording(p.recording, url, webcamUrl);
+      void loadCursor(p.recording);
       useEditor.getState().setCurrentProjectPath(p.path);
     }
 

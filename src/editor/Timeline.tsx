@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Minus, ZoomIn, Scissors, MessageSquare, Gauge, Trash2, Maximize2, type LucideIcon } from 'lucide-react';
+import { Plus, Minus, ZoomIn, Scissors, MessageSquare, Gauge, Trash2, Maximize2, Sparkles, type LucideIcon } from 'lucide-react';
 import { useEditor, type LaneItem, type LaneKind } from './store';
 
 const LANES: { kind: LaneKind; label: string; key: string; icon: LucideIcon; color: string; chip: string }[] = [
@@ -59,6 +59,8 @@ export function Timeline() {
   const selectedItemId = useEditor((s) => s.selectedItemId);
   const pixelsPerSecond = useEditor((s) => s.pixelsPerSecond);
   const setPixelsPerSecond = useEditor((s) => s.setPixelsPerSecond);
+  const cursorSamples = useEditor((s) => s.cursorSamples);
+  const suggestZooms = useEditor((s) => s.suggestZooms);
 
   const trackRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -283,14 +285,27 @@ export function Timeline() {
                       <lane.icon size={12} />
                       {lane.label}
                     </span>
-                    <button
-                      onClick={() => addItem(lane.kind, currentMs)}
-                      className="flex h-5 w-5 items-center justify-center rounded bg-white/5 hover:bg-white/15"
-                      title={`Add ${lane.label} (${lane.key})`}
-                      aria-label={`Add ${lane.label}`}
-                    >
-                      <Plus size={10} />
-                    </button>
+                    <span className="flex items-center gap-1">
+                      {lane.kind === 'zoom' && (
+                        <button
+                          onClick={() => suggestZooms()}
+                          disabled={cursorSamples.length === 0}
+                          className="flex h-5 w-5 items-center justify-center rounded bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-30"
+                          title={cursorSamples.length ? 'Suggest zooms from cursor movement' : 'No cursor data for this recording'}
+                          aria-label="Suggest zooms from cursor"
+                        >
+                          <Sparkles size={10} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => addItem(lane.kind, currentMs)}
+                        className="flex h-5 w-5 items-center justify-center rounded bg-white/5 hover:bg-white/15"
+                        title={`Add ${lane.label} (${lane.key})`}
+                        aria-label={`Add ${lane.label}`}
+                      >
+                        <Plus size={10} />
+                      </button>
+                    </span>
                   </div>
                   <div
                     className="relative cursor-pointer touch-none select-none"
