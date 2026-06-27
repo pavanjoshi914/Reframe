@@ -31,7 +31,9 @@ import { useEditor, type CropRegion, ANNOTATION_DEFAULTS } from './store';
 
 type ProgressFn = (phase: string, pct: number) => void;
 
-type FrameSource = HTMLCanvasElement | OffscreenCanvas | HTMLImageElement;
+// A source frame the compositor can draw: an export decode canvas, a still
+// image, or — in the live preview — a <video> element.
+export type FrameSource = HTMLCanvasElement | OffscreenCanvas | HTMLImageElement | HTMLVideoElement;
 
 const QUALITY_PRESETS = {
   low: { maxHeight: 720, bitrate: 2_000_000 },
@@ -500,7 +502,7 @@ async function buildTimelineAudio(
 // Draws one fully-composited output frame: background, the (cropped, possibly
 // zoomed) screen recording, the webcam overlay, and any active annotation.
 
-type DrawCtx = {
+export type DrawCtx = {
   items: ReturnType<typeof useEditor.getState>['items'];
   background: ReturnType<typeof useEditor.getState>['background'];
   effects: ReturnType<typeof useEditor.getState>['effects'];
@@ -510,7 +512,10 @@ type DrawCtx = {
   bgImage: HTMLImageElement | null;
 };
 
-function drawFrame(
+// Composite one fully-rendered frame onto `ctx`. Shared by the export encoder
+// (one call per output frame) and the live editor preview (one call per rAF,
+// with <video> elements as the frame sources) so the two render identically.
+export function drawFrame(
   ctx: CanvasRenderingContext2D,
   outW: number,
   outH: number,
