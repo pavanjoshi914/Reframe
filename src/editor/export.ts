@@ -661,13 +661,16 @@ export function drawFrame(
         drawWebcamPlaceholder(ctx, wx, wy, wcW, wcH, cornerRadius);
       }
     }
-    // Cursor spotlight — dim everything but a soft halo around the cursor.
-    if (effects.cursorSpotlight > 0 && d.cursorSamples) {
+    // Cursor spotlight + magnifier — both track the recorded cursor position.
+    if ((effects.cursorSpotlight > 0 || effects.cursorMagnifier > 0) && d.cursorSamples) {
       const cur = cursorAt(d.cursorSamples, ms);
       if (cur) {
         const { w: sw, h: sh } = srcDims(srcCanvas);
         const pos = cursorToOutput(cur, sw, sh, cropRegion, innerX, innerY, innerW, innerH, activeZoom ?? undefined);
-        if (pos) drawCursorSpotlight(ctx, outW, outH, pos.x, pos.y, effects.cursorSpotlight);
+        if (pos) {
+          if (effects.cursorSpotlight > 0) drawCursorSpotlight(ctx, outW, outH, pos.x, pos.y, effects.cursorSpotlight);
+          if (effects.cursorMagnifier > 0) drawCursorMagnifier(ctx, outW, outH, pos.x, pos.y, effects.cursorMagnifier);
+        }
       }
     }
   }
@@ -798,6 +801,39 @@ function drawCursorSpotlight(
   ctx.save();
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, outW, outH);
+  ctx.restore();
+}
+
+// Cursor magnifier: a circular lens at the cursor showing the surrounding
+// content scaled up. `strength` (0..1) maps to ~1.4×–3× magnification. Reads
+// back from the canvas region around the cursor (already composited) and draws
+// it enlarged into a clipped circle, with a soft ring.
+function drawCursorMagnifier(
+  ctx: CanvasRenderingContext2D,
+  outW: number,
+  outH: number,
+  cx: number,
+  cy: number,
+  strength: number
+) {
+  const R = Math.min(outW, outH) * 0.12;
+  const mag = 1.4 + Math.max(0, Math.min(1, strength)) * 1.6; // 1.4×..3×
+  const sr = R / mag; // half-size of the source square to magnify
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.clip();
+  // Draw the surrounding region (from the canvas itself) enlarged into the lens.
+  ctx.drawImage(ctx.canvas, cx - sr, cy - sr, sr * 2, sr * 2, cx - R, cy - R, R * 2, R * 2);
+  ctx.restore();
+  // Lens ring.
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.lineWidth = Math.max(2, R * 0.05);
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.stroke();
   ctx.restore();
 }
 

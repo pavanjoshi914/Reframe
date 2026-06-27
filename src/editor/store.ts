@@ -89,7 +89,7 @@ export type EditorState = {
   // Style
   polish: PolishPreset;
   showAdvanced: boolean;
-  effects: { roundnessPx: number; paddingPct: number; shadowPct: number; motionBlur: number; blurBg: boolean; cursorSpotlight: number };
+  effects: { roundnessPx: number; paddingPct: number; shadowPct: number; motionBlur: number; blurBg: boolean; cursorSpotlight: number; cursorMagnifier: number };
 
   // On-disk path of the auto-saved project file (set when a recording is
   // first loaded, kept stable for the rest of the session). Used by the editor
@@ -181,9 +181,9 @@ function aspectToRatio(a: AspectRatio, fallback: number): number {
 }
 
 const presetEffects: Record<PolishPreset, EditorState['effects']> = {
-  subtle: { roundnessPx: 6, paddingPct: 25, shadowPct: 6, motionBlur: 0, blurBg: false, cursorSpotlight: 0 },
-  soft: { roundnessPx: 14, paddingPct: 50, shadowPct: 16, motionBlur: 0, blurBg: false, cursorSpotlight: 0 },
-  dramatic: { roundnessPx: 22, paddingPct: 70, shadowPct: 32, motionBlur: 0.5, blurBg: true, cursorSpotlight: 0 }
+  subtle: { roundnessPx: 6, paddingPct: 25, shadowPct: 6, motionBlur: 0, blurBg: false, cursorSpotlight: 0, cursorMagnifier: 0 },
+  soft: { roundnessPx: 14, paddingPct: 50, shadowPct: 16, motionBlur: 0, blurBg: false, cursorSpotlight: 0, cursorMagnifier: 0 },
+  dramatic: { roundnessPx: 22, paddingPct: 70, shadowPct: 32, motionBlur: 0.5, blurBg: true, cursorSpotlight: 0, cursorMagnifier: 0 }
 };
 
 export const useEditor = create<EditorState>((set, get) => ({

@@ -648,6 +648,7 @@ function VideoEffectsSection() {
         <RangeRow label="Padding" value={effects.paddingPct} min={0} max={100} step={1} onChange={(v) => setEffect('paddingPct', v)} fmt={(v) => `${v}%`} />
         <RangeRow label="Motion Blur" value={Math.round(effects.motionBlur * 100)} min={0} max={80} step={1} onChange={(v) => setEffect('motionBlur', v / 100)} fmt={(v) => `${v}%`} />
         <RangeRow label="Spotlight" value={Math.round((effects.cursorSpotlight ?? 0) * 100)} min={0} max={100} step={1} onChange={(v) => setEffect('cursorSpotlight', v / 100)} fmt={(v) => `${v}%`} />
+        <RangeRow label="Magnifier" value={Math.round((effects.cursorMagnifier ?? 0) * 100)} min={0} max={100} step={1} onChange={(v) => setEffect('cursorMagnifier', v / 100)} fmt={(v) => `${v}%`} />
       </div>
       <div className="flex gap-2">
         <button
