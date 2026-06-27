@@ -13,6 +13,7 @@ import {
   getFirstEncodableAudioCodec,
   type VideoCodec
 } from 'mediabunny';
+import { GIFEncoder, quantize, applyPalette } from 'gifenc';
 import { useEditor, type CropRegion, ANNOTATION_DEFAULTS } from './store';
 
 // Export pipeline — frame-accurate, NOT real-time.
@@ -128,13 +129,10 @@ function srcDims(s: CanvasImageSource): { w: number; h: number } {
 export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
   const state = useEditor.getState();
   if (!state.fileUrl) throw new Error('No recording loaded.');
-  if (state.exportFormat === 'gif') {
-    throw new Error('GIF export requires ffmpeg post-processing — coming in a future update. For now, please pick MP4.');
-  }
 
   const {
     fileUrl, webcamFileUrl, items, background, effects, webcam,
-    layoutPreset, aspect, exportQuality, cropRegion, videoMuted, videoVolume
+    layoutPreset, aspect, exportQuality, exportFormat, cropRegion, videoMuted, videoVolume
   } = state;
 
   onProgress('Preparing', 0);
@@ -168,7 +166,11 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
   const ratio =
     aspect === 'auto' ? intrinsic.w / intrinsic.h : ASPECT_RATIOS[aspect] ?? intrinsic.w / intrinsic.h;
   const preset = QUALITY_PRESETS[exportQuality];
-  let outH = Math.min(intrinsic.h, preset.maxHeight);
+  const isGif = exportFormat === 'gif';
+  // GIFs balloon at high resolutions (palette-indexed, one frame per delay),
+  // so cap their height well below the video presets.
+  const maxH = isGif ? Math.min(preset.maxHeight, 600) : preset.maxHeight;
+  let outH = Math.min(intrinsic.h, maxH);
   outH = Math.max(2, Math.floor(outH / 2) * 2);
   let outW = Math.floor(outH * ratio);
   outW = Math.max(2, Math.floor(outW / 2) * 2);
@@ -188,8 +190,70 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
   const canvas = document.createElement('canvas');
   canvas.width = outW;
   canvas.height = outH;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: isGif });
   if (!ctx) throw new Error('2D canvas unavailable');
+
+  const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, bgImage };
+
+  // ── GIF path ──────────────────────────────────────────────────────────────
+  // GIFs have no audio and a small palette, so we composite each frame the same
+  // way (drawFrame) but encode with gifenc at a reduced, fixed frame rate. We
+  // walk the source frames with the SAME trim/speed timeline math as the video
+  // path, sampling one GIF frame per output 1/GIF_FPS slice.
+  if (isGif) {
+    const GIF_FPS = 15;
+    const gifFrameMs = 1000 / GIF_FPS;
+    const enc = GIFEncoder();
+    let outMs = 0;
+    let nextEmitMs = 0;
+    let lastProgress = 0;
+    for await (const wrapped of screenSink.canvases()) {
+      const { canvas: srcCanvas, timestamp, duration } = wrapped;
+      const ms = timestamp * 1000;
+      const frameDuration = duration || 1 / 30;
+      if (items.some((it) => it.kind === 'trim' && ms >= it.startMs && ms < it.endMs)) continue;
+      const speed = items.find((it) => it.kind === 'speed' && ms >= it.startMs && ms <= it.endMs);
+      const speedFactor = speed?.speed ?? 1;
+      const endOut = outMs + (frameDuration / speedFactor) * 1000;
+      if (endOut >= nextEmitMs) {
+        let webcamCanvas: FrameSource | null = null;
+        if (webcamSink) {
+          const wc = await webcamSink.getCanvas(timestamp).catch(() => null);
+          webcamCanvas = wc?.canvas ?? null;
+        }
+        drawFrame(ctx, outW, outH, srcCanvas, webcamCanvas, ms, drawCtx);
+        let pixels: Uint8ClampedArray;
+        try {
+          pixels = ctx.getImageData(0, 0, outW, outH).data;
+        } catch {
+          throw new Error('GIF export can’t read a cross-origin background image. Use a solid colour, gradient, or an uploaded image.');
+        }
+        const palette = quantize(pixels, 256);
+        const index = applyPalette(pixels, palette);
+        // Emit one (or more, for slow-mo) GIF frame(s) for each elapsed slice.
+        while (endOut >= nextEmitMs) {
+          enc.writeFrame(index, outW, outH, { palette, delay: gifFrameMs });
+          nextEmitMs += gifFrameMs;
+        }
+      }
+      outMs = endOut;
+      if (sourceDurationSec > 0) {
+        const pct = Math.min(99, (timestamp / sourceDurationSec) * 100);
+        if (pct - lastProgress >= 1) { lastProgress = pct; onProgress('Encoding GIF', pct); }
+      }
+    }
+    onProgress('Saving', 99);
+    enc.finish();
+    const gifBytes = enc.bytes();
+    const gifStamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const gifRes = await window.api.saveExport({
+      defaultName: `reframe-${gifStamp}`,
+      data: gifBytes.slice().buffer,
+      format: 'gif'
+    });
+    onProgress(gifRes.saved ? 'Done' : 'Cancelled', 100);
+    return;
+  }
 
   // Prefer H.264/MP4; fall back to VP9/VP8 in WebM if the system can't encode
   // H.264 via WebCodecs.
