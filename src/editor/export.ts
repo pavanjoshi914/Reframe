@@ -198,6 +198,23 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
 
   const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, bgImage };
 
+  // Motion blur: composite each frame onto a scratch canvas, then blend it onto
+  // the output at alpha (1-k) so the output is an exponential frame average
+  // (out = (1-k)·frame + k·out). k=0 ⇒ alpha 1 ⇒ exact frame (no blur). Matches
+  // the preview's identical blend in Preview.tsx.
+  const motionBlur = Math.max(0, Math.min(0.9, effects.motionBlur || 0));
+  const work = document.createElement('canvas');
+  work.width = outW;
+  work.height = outH;
+  const workCtx = work.getContext('2d');
+  if (!workCtx) throw new Error('2D canvas unavailable');
+  const composite = (srcF: FrameSource, wcF: FrameSource | null, ms: number) => {
+    drawFrame(workCtx, outW, outH, srcF, wcF, ms, drawCtx);
+    ctx.globalAlpha = 1 - motionBlur;
+    ctx.drawImage(work, 0, 0);
+    ctx.globalAlpha = 1;
+  };
+
   // ── GIF path ──────────────────────────────────────────────────────────────
   // GIFs have no audio and a small palette, so we composite each frame the same
   // way (drawFrame) but encode with gifenc at a reduced, fixed frame rate. We
@@ -224,7 +241,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
           const wc = await webcamSink.getCanvas(timestamp).catch(() => null);
           webcamCanvas = wc?.canvas ?? null;
         }
-        drawFrame(ctx, outW, outH, srcCanvas, webcamCanvas, ms, drawCtx);
+        composite(srcCanvas, webcamCanvas, ms);
         let pixels: Uint8ClampedArray;
         try {
           pixels = ctx.getImageData(0, 0, outW, outH).data;
@@ -375,9 +392,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
       webcamCanvas = wc?.canvas ?? null;
     }
 
-    drawFrame(ctx, outW, outH, srcCanvas, webcamCanvas, ms, {
-      items, background, effects, webcam, layoutPreset, cropRegion, bgImage
-    });
+    composite(srcCanvas, webcamCanvas, ms);
 
     for (let i = 0; i < emitCount; i++) {
       await videoSource.add(outTs, frameDuration);

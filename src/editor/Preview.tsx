@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Camera } from 'lucide-react';
 import { useEditor, ANNOTATION_DEFAULTS } from './store';
 import { primeVideo } from './videoPrime';
+import { drawFrame } from './export';
 
 const aspectMap: Record<string, number | null> = {
   '16:9': 16 / 9,
@@ -41,30 +41,18 @@ export function Preview() {
 
   const videoVolume = useEditor((s) => s.videoVolume);
   const videoMuted = useEditor((s) => s.videoMuted);
-  const cropRegion = useEditor((s) => s.cropRegion);
-
-  // Crop is implemented as: oversize the video element so the cropped region
-  // fills its overflow:hidden parent, then translate the rest off-frame. The
-  // math maps each source pixel to a fraction of the parent box and assumes
-  // the parent has the *crop's* aspect ratio (see cropFrameStyle below),
-  // hence object-fit:fill — cover would re-crop and break the mapping.
-  const cropStyle: React.CSSProperties = {
-    position: 'absolute',
-    left: `${-(cropRegion.x / cropRegion.width) * 100}%`,
-    top: `${-(cropRegion.y / cropRegion.height) * 100}%`,
-    width: `${100 / cropRegion.width}%`,
-    height: `${100 / cropRegion.height}%`,
-    // Tailwind preflight applies `video { max-width: 100% }` globally, which
-    // silently clamps a >100% width and breaks the crop math — undo it.
-    maxWidth: 'none',
-    maxHeight: 'none',
-    objectFit: 'fill'
-  };
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const webcamRef = useRef<HTMLVideoElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const innerRef = useRef<HTMLDivElement>(null);
+  // Canvas preview: a single <canvas> composited every rAF by the SAME
+  // drawFrame the exporter uses (true WYSIWYG), with the <video>s as hidden
+  // decode sources. `work` is the per-frame scratch canvas; blending it onto
+  // the visible canvas at alpha (1-motionBlur) yields an exponential frame
+  // average = motion blur. `bgImage` holds a preloaded image background.
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const workRef = useRef<HTMLCanvasElement | null>(null);
+  const bgImageRef = useRef<HTMLImageElement | null>(null);
 
   // Play / pause for the main video. Webcam play/pause + drift correction is
   // handled by the dedicated webcam-sync effect below — one effect owns the
@@ -260,11 +248,69 @@ export function Preview() {
     };
   }, [recording, fileUrl, webcamFileUrl, setRecording, setCurrent, setPlaying, setVideoIntrinsicSize, items]);
 
-  // Active overlays.
-  const activeZoom = useMemo(() => {
-    return items.find((it) => it.kind === 'zoom' && currentMs >= it.startMs && currentMs <= it.endMs);
-  }, [items, currentMs]);
+  // Preload an image background for the canvas compositor (mirrors export.ts).
+  useEffect(() => {
+    if (background.mode === 'image' && background.value) {
+      const img = new Image();
+      img.onload = () => { bgImageRef.current = img; };
+      img.onerror = () => { bgImageRef.current = null; };
+      img.src = background.value;
+    } else {
+      bgImageRef.current = null;
+    }
+  }, [background.mode, background.value]);
 
+  // Canvas render loop — composite the current frame with the shared drawFrame
+  // every animation frame, reading live state via getState() (so it needs no
+  // deps and never tears down mid-playback). Annotations are excluded here and
+  // drawn as a DOM overlay so they stay directly draggable. Motion blur is an
+  // exponential blend: drawing the fresh frame onto the visible canvas at
+  // alpha (1-k) gives canvas = (1-k)·frame + k·canvas. k=0 ⇒ exact frame.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const stage = stageRef.current;
+    if (!canvas || !stage) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    if (!workRef.current) workRef.current = document.createElement('canvas');
+    const work = workRef.current;
+    const wctx = work.getContext('2d');
+    if (!wctx) return;
+    let raf = 0;
+    const render = () => {
+      raf = requestAnimationFrame(render);
+      const st = useEditor.getState();
+      const v = videoRef.current;
+      const rect = stage.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const bw = Math.max(2, Math.round(rect.width * dpr));
+      const bh = Math.max(2, Math.round(rect.height * dpr));
+      if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
+      if (work.width !== bw || work.height !== bh) { work.width = bw; work.height = bh; }
+      if (!st.fileUrl || !v) { ctx.clearRect(0, 0, bw, bh); return; }
+      const ms = v.currentTime * 1000;
+      const itemsNoAnno = st.items.filter((it) => it.kind !== 'annotation');
+      const webcamSrc = st.webcam.enabled && st.webcamFileUrl ? webcamRef.current : null;
+      drawFrame(wctx, bw, bh, v, webcamSrc, ms, {
+        items: itemsNoAnno,
+        background: st.background,
+        effects: st.effects,
+        webcam: st.webcam,
+        layoutPreset: st.layoutPreset,
+        cropRegion: st.cropRegion,
+        bgImage: bgImageRef.current
+      });
+      const k = Math.max(0, Math.min(0.9, st.effects.motionBlur || 0));
+      ctx.globalAlpha = 1 - k;
+      ctx.drawImage(work, 0, 0);
+      ctx.globalAlpha = 1;
+    };
+    raf = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  // The annotation is the one overlay still drawn in the DOM (so it stays
+  // directly editable/draggable); everything else is composited on the canvas.
   const activeAnnotation = useMemo(() => {
     return items.find((it) => it.kind === 'annotation' && currentMs >= it.startMs && currentMs <= it.endMs);
   }, [items, currentMs]);
@@ -277,47 +323,10 @@ export function Preview() {
     return aspectMap[aspect] ?? 16 / 9;
   }, [aspect, videoIntrinsicSize]);
 
-  const bgStyle: React.CSSProperties =
-    background.mode === 'image' && background.value
-      ? { backgroundImage: `url(${background.value})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-      : background.mode === 'color'
-      ? { backgroundColor: background.value }
-      : background.mode === 'gradient'
-      ? { backgroundImage: background.value }
-      : { backgroundColor: '#0a0b0e' };
-
-  if (effects.blurBg) {
-    bgStyle.filter = 'blur(20px)';
-    bgStyle.transform = 'scale(1.05)';
-  }
-
-  const padding = effects.paddingPct / 100;
-  const innerScale = 1 - padding * 0.5;
-
-  // Aspect ratio of the cropped sub-rectangle in source pixels. The rounded
-  // clipping frame is sized to this ratio and centered inside the project
-  // frame (letterbox/pillarbox), matching openscreen's PixiJS mask layout —
-  // the crop reshapes the visible content area, it doesn't stretch to fill.
-  const cropAspect = videoIntrinsicSize
-    ? (cropRegion.width * videoIntrinsicSize.width) /
-      (cropRegion.height * videoIntrinsicSize.height)
-    : ratio;
-  // Pick the constraining axis: wider crop than project → fit width;
-  // taller crop than project → fit height. `aspect-ratio` then derives
-  // the other dimension.
-  const cropFrameStyle: React.CSSProperties = {
-    aspectRatio: String(cropAspect),
-    width: cropAspect >= ratio ? '100%' : 'auto',
-    height: cropAspect >= ratio ? 'auto' : '100%',
-    maxWidth: '100%',
-    maxHeight: '100%',
-    borderRadius: `${effects.roundnessPx}px`,
-    boxShadow: `0 ${4 + effects.shadowPct / 2}px ${20 + effects.shadowPct}px rgba(0,0,0,${effects.shadowPct / 100})`
-  };
-
-  const zoomScale = activeZoom?.zoomLevel ?? 1;
-  const zoomTx = activeZoom ? (0.5 - (activeZoom.zoomTargetX ?? 0.5)) * 100 * (zoomScale - 1) : 0;
-  const zoomTy = activeZoom ? (0.5 - (activeZoom.zoomTargetY ?? 0.5)) * 100 * (zoomScale - 1) : 0;
+  // Padding only affects the zoom-focus crosshair placement now (the canvas
+  // applies the actual padding via drawFrame). Keep innerScale in sync with
+  // export's `1 - paddingPct/100 * 0.5`.
+  const innerScale = 1 - (effects.paddingPct / 100) * 0.5;
 
   const isSideBySide = layoutPreset === 'side-by-side';
 
@@ -465,93 +474,53 @@ export function Preview() {
           maxHeight: '100%'
         }}
       >
-        {/* Background — separate layer so blur doesn't touch the video. */}
-        <div className="absolute inset-0" style={bgStyle} />
+        {/* Hidden decode sources. Kept in the DOM (opacity 0) so they keep
+            decoding; the main <video> still drives playback/audio/timing while
+            the canvas composites its frames. */}
+        <video
+          ref={videoRef}
+          src={fileUrl ?? undefined}
+          className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+          playsInline
+          muted={false}
+        />
+        {webcamFileUrl && (
+          <video
+            ref={webcamRef}
+            src={webcamFileUrl}
+            className="pointer-events-none absolute opacity-0"
+            style={{ width: 2, height: 2 }}
+            playsInline
+            muted
+          />
+        )}
 
-        {fileUrl ? (
-          isSideBySide && webcam.enabled ? (
-            <div
-              className="relative flex items-stretch gap-3"
-              style={{ width: `${innerScale * 100}%`, height: `${innerScale * 100}%` }}
-            >
-              <div
-                className="relative flex flex-1 items-center justify-center"
-                style={{
-                  transform: `scale(${zoomScale}) translate(${zoomTx}%, ${zoomTy}%)`,
-                  transformOrigin: 'center center'
-                }}
-              >
-                {/* Crop frame — see comment on the standard-layout branch. */}
-                <div className="relative overflow-hidden" style={cropFrameStyle}>
-                  <video ref={videoRef} src={fileUrl} style={cropStyle} playsInline muted={false} />
-                </div>
-              </div>
-              <div
-                className="relative flex shrink-0 items-center justify-center overflow-hidden bg-black/50"
-                style={{
-                  width: `${webcam.size * 200}%`,
-                  maxWidth: '40%',
-                  borderRadius: `${effects.roundnessPx}px`,
-                  boxShadow: `0 ${4 + effects.shadowPct / 2}px ${20 + effects.shadowPct}px rgba(0,0,0,${effects.shadowPct / 100})`
-                }}
-              >
-                {webcamFileUrl ? (
-                  <video ref={webcamRef} src={webcamFileUrl} className="h-full w-full object-cover" playsInline muted />
-                ) : (
-                  <Camera size={48} className="text-white/30" />
-                )}
-              </div>
-            </div>
-          ) : (
-            <>
-              <div
-                ref={innerRef}
-                className="relative flex items-center justify-center transition-transform duration-[450ms] ease-[cubic-bezier(0.65,0,0.35,1)]"
-                style={{
-                  width: `${innerScale * 100}%`,
-                  height: `${innerScale * 100}%`,
-                  transform: `scale(${zoomScale}) translate(${zoomTx}%, ${zoomTy}%)`,
-                  transformOrigin: 'center center'
-                }}
-              >
-                {/* Crop frame — sized to the crop's aspect ratio and
-                    centered inside the project frame (letterbox/pillarbox).
-                    Rounded corners and shadow live here so they hug the
-                    visible cropped content, not the unused background. */}
-                <div className="relative overflow-hidden" style={cropFrameStyle}>
-                  <video ref={videoRef} src={fileUrl} style={cropStyle} playsInline muted={false} />
-                </div>
-              </div>
-              {webcam.enabled && (
-                <div
-                  onPointerDown={onWebcamDown}
-                  onPointerMove={onWebcamMove}
-                  onPointerUp={onWebcamUp}
-                  onPointerCancel={onWebcamUp}
-                  className="absolute z-10 flex cursor-grab items-center justify-center overflow-hidden bg-black/70 ring-2 ring-white/30 active:cursor-grabbing"
-                  style={{
-                    left: `${webcam.x * 100}%`,
-                    top: `${webcam.y * 100}%`,
-                    height: `${webcam.size * 100}%`,
-                    aspectRatio: String(webcamAspect),
-                    // Circle = full pill; square + rectangle share the same
-                    // soft 16px corner so the only visual difference between
-                    // them is the aspect ratio.
-                    borderRadius: webcam.shape === 'circle' ? '9999px' : '16px'
-                  }}
-                  title="Drag to reposition"
-                >
-                  {webcamFileUrl ? (
-                    <video ref={webcamRef} src={webcamFileUrl} className="h-full w-full object-cover" playsInline muted />
-                  ) : (
-                    <Camera size={Math.max(20, 64 * webcam.size)} className="text-white/40" />
-                  )}
-                </div>
-              )}
-            </>
-          )
-        ) : (
+        {/* WYSIWYG composite — drawn every frame by the same drawFrame the
+            exporter uses, so the preview matches the export exactly (incl.
+            motion blur). */}
+        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+
+        {!fileUrl && (
           <div className="relative text-sm text-white/60">No recording loaded.</div>
+        )}
+
+        {/* Transparent drag handle over the canvas-drawn webcam PiP (standard
+            layout only — side-by-side is fixed). */}
+        {fileUrl && webcam.enabled && !isSideBySide && (
+          <div
+            onPointerDown={onWebcamDown}
+            onPointerMove={onWebcamMove}
+            onPointerUp={onWebcamUp}
+            onPointerCancel={onWebcamUp}
+            className="absolute z-10 cursor-grab active:cursor-grabbing"
+            style={{
+              left: `${webcam.x * 100}%`,
+              top: `${webcam.y * 100}%`,
+              height: `${webcam.size * 100}%`,
+              aspectRatio: String(webcamAspect)
+            }}
+            title="Drag to reposition"
+          />
         )}
 
         {activeAnnotation && (() => {
