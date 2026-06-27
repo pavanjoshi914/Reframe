@@ -7,8 +7,10 @@ import {
   WebMOutputFormat,
   CanvasSink,
   CanvasSource,
+  AudioBufferSource,
   ALL_FORMATS,
   getFirstEncodableVideoCodec,
+  getFirstEncodableAudioCodec,
   type VideoCodec
 } from 'mediabunny';
 import { useEditor, type CropRegion, ANNOTATION_DEFAULTS } from './store';
@@ -132,7 +134,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
 
   const {
     fileUrl, webcamFileUrl, items, background, effects, webcam,
-    layoutPreset, aspect, exportQuality, cropRegion
+    layoutPreset, aspect, exportQuality, cropRegion, videoMuted, videoVolume
   } = state;
 
   onProgress('Preparing', 0);
@@ -208,6 +210,42 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
     bitrate: preset.bitrate
   });
   output.addVideoTrack(videoSource);
+
+  // ── Audio track ─────────────────────────────────────────────────────────
+  // Earlier versions added NO audio track, so every export was silent. We now
+  // decode the source audio and rebuild it along the SAME timeline the video
+  // uses — dropping trim regions and resampling speed regions (which shifts
+  // pitch, the standard simple behaviour) so A/V stays in sync. Muted exports
+  // intentionally omit the track; volume scales the samples. Audio tracks must
+  // be added BEFORE output.start(), so we prepare the buffer up front.
+  let audioSource: AudioBufferSource | null = null;
+  let outAudioBuffer: AudioBuffer | null = null;
+  if (!videoMuted) {
+    try {
+      const audioTrack = await screenInput.getPrimaryAudioTrack();
+      if (audioTrack) {
+        outAudioBuffer = await buildTimelineAudio(screenBlob, items, videoVolume);
+        if (outAudioBuffer && outAudioBuffer.length > 0) {
+          const audioCodec = await getFirstEncodableAudioCodec(
+            isMp4 ? ['aac', 'opus'] : ['opus', 'vorbis'],
+            { numberOfChannels: outAudioBuffer.numberOfChannels, sampleRate: outAudioBuffer.sampleRate }
+          );
+          if (audioCodec) {
+            audioSource = new AudioBufferSource({ codec: audioCodec, bitrate: 192_000 });
+            output.addAudioTrack(audioSource);
+          } else {
+            console.warn('[export] no encodable audio codec; exporting without audio');
+            outAudioBuffer = null;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[export] audio passthrough failed; exporting without audio', err);
+      audioSource = null;
+      outAudioBuffer = null;
+    }
+  }
+
   await output.start();
 
   // ── Composite every source frame ────────────────────────────────────────
@@ -287,6 +325,12 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
     }
   }
 
+  // Mux the rebuilt audio buffer (timestamps start at 0, aligning with frame 0).
+  if (audioSource && outAudioBuffer) {
+    onProgress('Encoding audio', 99);
+    await audioSource.add(outAudioBuffer);
+  }
+
   onProgress('Saving', 99);
   await output.finalize();
   const buffer = output.target.buffer;
@@ -303,6 +347,87 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
     return;
   }
   onProgress('Done', 100);
+}
+
+// ── Audio timeline rebuild ───────────────────────────────────────────────────
+// Decodes the source recording's audio to PCM (Web Audio), then rebuilds it
+// applying the SAME timeline transforms the video loop uses so the two stay in
+// sync: frames inside a trim region are dropped; speed regions resample by
+// dropping samples (fast-forward, pitch up) or duplicating them (slow-mo, pitch
+// down) using the same accumulator cadence as the video. `volume` scales the
+// samples. Returns null when the source has no decodable audio.
+async function buildTimelineAudio(
+  screenBlob: Blob,
+  items: ReturnType<typeof useEditor.getState>['items'],
+  volume: number
+): Promise<AudioBuffer | null> {
+  const AC: typeof AudioContext =
+    window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!AC) return null;
+
+  const ac = new AC();
+  let decoded: AudioBuffer;
+  try {
+    decoded = await ac.decodeAudioData(await screenBlob.arrayBuffer());
+  } catch {
+    await ac.close().catch(() => {});
+    return null; // no audio track, or codec the decoder can't handle
+  }
+  await ac.close().catch(() => {});
+
+  const sr = decoded.sampleRate;
+  const ch = decoded.numberOfChannels;
+  const len = decoded.length;
+  const vol = Math.max(0, Math.min(1, volume ?? 1));
+  const inData: Float32Array[] = [];
+  for (let c = 0; c < ch; c++) inData.push(decoded.getChannelData(c));
+
+  const trims = items.filter((it) => it.kind === 'trim');
+  const speeds = items.filter((it) => it.kind === 'speed');
+  const speedAt = (ms: number) => speeds.find((s) => ms >= s.startMs && ms <= s.endMs)?.speed ?? 1;
+  const inTrim = (ms: number) => trims.some((t) => ms >= t.startMs && ms < t.endMs);
+
+  // Two passes: count output length, then fill preallocated buffers — avoids
+  // multi-million-element array growth on longer recordings.
+  const countEmit = (): number => {
+    let total = 0, ffDebt = 0, prevF = 1;
+    for (let i = 0; i < len; i++) {
+      const ms = (i / sr) * 1000;
+      if (inTrim(ms)) continue;
+      const f = speedAt(ms);
+      if (f !== prevF) { ffDebt = 0; prevF = f; }
+      if (f === 1) total += 1;
+      else if (f > 1) { ffDebt += 1 / f; if (ffDebt >= 1) { ffDebt -= 1; total += 1; } }
+      else total += Math.max(1, Math.round(1 / f));
+    }
+    return total;
+  };
+
+  const outLen = countEmit();
+  if (outLen === 0) return null;
+
+  const outCtx = new AC();
+  const outBuf = outCtx.createBuffer(ch, outLen, sr);
+  const outData: Float32Array[] = [];
+  for (let c = 0; c < ch; c++) outData.push(outBuf.getChannelData(c));
+
+  let w = 0, ffDebt = 0, prevF = 1;
+  for (let i = 0; i < len; i++) {
+    const ms = (i / sr) * 1000;
+    if (inTrim(ms)) continue;
+    const f = speedAt(ms);
+    if (f !== prevF) { ffDebt = 0; prevF = f; }
+    let emit: number;
+    if (f === 1) emit = 1;
+    else if (f > 1) { ffDebt += 1 / f; emit = ffDebt >= 1 ? 1 : 0; if (emit) ffDebt -= 1; }
+    else emit = Math.max(1, Math.round(1 / f));
+    for (let k = 0; k < emit; k++) {
+      for (let c = 0; c < ch; c++) outData[c][w] = inData[c][i] * vol;
+      w++;
+    }
+  }
+  await outCtx.close().catch(() => {});
+  return outBuf;
 }
 
 // ── Frame compositing ──────────────────────────────────────────────────────
@@ -334,16 +459,24 @@ function drawFrame(
   ctx.fillStyle = '#0a0b0e';
   ctx.fillRect(0, 0, outW, outH);
 
+  // Background. When blurBg is on, soften it to match the preview's CSS
+  // `filter: blur(20px) scale(1.05)` — draw through a blur filter and overscan
+  // ~5% so the blurred edges don't reveal the base fill underneath.
+  ctx.save();
+  if (effects.blurBg) ctx.filter = `blur(${Math.round(20 * (outH / 1080))}px)`;
+  const ov = effects.blurBg ? 0.05 : 0;
+  const bx = -outW * ov, by = -outH * ov, bw = outW * (1 + 2 * ov), bh = outH * (1 + 2 * ov);
   if (background.mode === 'color') {
     ctx.fillStyle = background.value;
-    ctx.fillRect(0, 0, outW, outH);
+    ctx.fillRect(bx, by, bw, bh);
   } else if (background.mode === 'gradient') {
     const grad = parseLinearGradient(ctx, background.value, outW, outH);
     ctx.fillStyle = grad ?? '#1a1d23';
-    ctx.fillRect(0, 0, outW, outH);
+    ctx.fillRect(bx, by, bw, bh);
   } else if (background.mode === 'image' && bgImage && bgImage.complete) {
-    drawCover(ctx, bgImage, 0, 0, outW, outH);
+    drawCover(ctx, bgImage, bx, by, bw, bh);
   }
+  ctx.restore();
 
   const padding = effects.paddingPct / 100;
   const innerScale = 1 - padding * 0.5;
@@ -361,7 +494,7 @@ function drawFrame(
     const innerY = (outH - innerH) / 2;
     const wcW = innerW * 0.4;
     const vidW = innerW - wcW - 12;
-    drawVideoBox(ctx, srcCanvas, innerX, innerY, vidW, innerH, effects.roundnessPx, cropRegion, activeZoom ?? undefined);
+    drawVideoBox(ctx, srcCanvas, innerX, innerY, vidW, innerH, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH);
     if (webcamCanvas) {
       drawWebcamVideo(ctx, webcamCanvas, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx, false);
     } else {
@@ -372,7 +505,7 @@ function drawFrame(
     const innerH = outH * innerScale;
     const innerX = (outW - innerW) / 2;
     const innerY = (outH - innerH) / 2;
-    drawVideoBox(ctx, srcCanvas, innerX, innerY, innerW, innerH, effects.roundnessPx, cropRegion, activeZoom ?? undefined);
+    drawVideoBox(ctx, srcCanvas, innerX, innerY, innerW, innerH, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH);
     if (webcam.enabled) {
       const wcH = outH * webcam.size;
       const wcW = wcH * (webcam.shape === 'rectangle' ? 16 / 9 : 1);
@@ -405,7 +538,9 @@ function drawVideoBox(
   h: number,
   roundness: number,
   crop: CropRegion,
-  activeZoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number }
+  activeZoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number },
+  shadowPct = 0,
+  outH = 1080
 ) {
   ctx.save();
 
@@ -428,6 +563,25 @@ function drawVideoBox(
     ctx.translate(cx, cy);
     ctx.scale(z, z);
     ctx.translate(-cx + tx, -cy + ty);
+  }
+
+  // Drop shadow behind the framed box — matches the preview's CSS
+  // `box-shadow: 0 (4+s/2)px (20+s)px rgba(0,0,0,s/100)` (Preview.tsx). Cast by
+  // filling the rounded rect (opaque) with a shadow set; the clipped image then
+  // paints over the fill, leaving only the shadow that spilled outside. Drawn
+  // inside the zoom transform so it scales with the box, like the preview.
+  const shadowAlpha = Math.max(0, shadowPct) / 100;
+  if (shadowAlpha > 0) {
+    const sc = outH / 1080;
+    ctx.save();
+    ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
+    ctx.shadowBlur = (20 + shadowPct) * sc;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = (4 + shadowPct / 2) * sc;
+    roundedRectPath(ctx, x, y, w, h, Math.min(roundness, Math.min(w, h) / 2));
+    ctx.fillStyle = '#000';
+    ctx.fill();
+    ctx.restore();
   }
 
   roundedRectPath(ctx, x, y, w, h, Math.min(roundness, Math.min(w, h) / 2));
