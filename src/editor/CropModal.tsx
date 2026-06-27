@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Lock, Unlock } from 'lucide-react';
 import { useEditor, DEFAULT_CROP_REGION, type CropRegion } from './store';
+import { useT } from '../i18n';
 
 // Aspect-ratio presets in the dropdown. Numeric value or null for Free. The
 // labels match the openscreen reference modal so users coming from there
@@ -20,6 +21,7 @@ const MIN_NORM = 0.05; // 5% minimum on each axis — matches the store clamp.
 type Handle = 'top' | 'right' | 'bottom' | 'left' | 'move';
 
 export function CropModal({ onClose }: { onClose: () => void }) {
+  const t = useT();
   const storeCrop = useEditor((s) => s.cropRegion);
   const setCropRegion = useEditor((s) => s.setCropRegion);
   // Live reference to the editor's already-primed <video> element. We draw
@@ -234,7 +236,7 @@ export function CropModal({ onClose }: { onClose: () => void }) {
         {/* Header */}
         <div className="flex shrink-0 items-start justify-between border-b border-white/5 px-6 py-4">
           <div>
-            <h2 className="text-base font-semibold text-white">Crop Video</h2>
+            <h2 className="text-base font-semibold text-white">{t('side.cropVideo')}</h2>
             <p className="mt-0.5 text-xs text-white/50">Drag any edge to adjust the crop area</p>
           </div>
           <button
@@ -362,19 +364,19 @@ export function CropModal({ onClose }: { onClose: () => void }) {
               onClick={() => { setCrop(DEFAULT_CROP_REGION); setAspectLocked(false); setAspectValue(null); }}
               className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10"
             >
-              Reset
+              {t('common.reset')}
             </button>
             <button
               onClick={onClose}
               className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               onClick={handleCommit}
               className="rounded-md bg-emerald-500 px-4 py-1.5 text-xs font-medium text-black hover:bg-emerald-400"
             >
-              Done
+              {t('common.done')}
             </button>
           </div>
         </div>

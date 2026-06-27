@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Minus, ZoomIn, Scissors, MessageSquare, Gauge, Trash2, Maximize2, Sparkles, type LucideIcon } from 'lucide-react';
 import { useEditor, type LaneItem, type LaneKind } from './store';
+import { useT } from '../i18n';
 
 const LANES: { kind: LaneKind; label: string; key: string; icon: LucideIcon; color: string; chip: string }[] = [
   { kind: 'zoom', label: 'Zoom', key: 'Z', icon: ZoomIn, color: 'border-emerald-400', chip: 'bg-emerald-500/30' },
@@ -49,6 +50,7 @@ function formatTickLabel(sec: number, step: number) {
 }
 
 export function Timeline() {
+  const t = useT();
   const durationMs = useEditor((s) => s.durationMs);
   const currentMs = useEditor((s) => s.currentMs);
   const setCurrent = useEditor((s) => s.setCurrent);
@@ -194,15 +196,15 @@ export function Timeline() {
         <div className="flex items-center gap-3">
           <span className="font-mono text-white/80">{formatTime(currentMs)} / {formatTime(durationMs)}</span>
           <AspectSelector />
-          <span className="text-[11px]">Press Z / T / A / S to add lane items</span>
+          <span className="text-[11px]">{t('tl.addHint')}</span>
         </div>
         <div className="flex items-center gap-2 text-[11px]">
           <button
             onClick={() => applyManualZoom(pixelsPerSecond / PPS_STEP)}
             disabled={pixelsPerSecond <= PPS_MIN + 0.01}
             className="flex h-5 w-5 items-center justify-center rounded border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-40"
-            title="Zoom out"
-            aria-label="Zoom out"
+            title={t('tl.zoomOut')}
+            aria-label={t('tl.zoomOut')}
           >
             <Minus size={11} />
           </button>
@@ -213,15 +215,15 @@ export function Timeline() {
             value={Math.round(ppsToSlider(pixelsPerSecond) * 1000)}
             onChange={(e) => applyManualZoom(sliderToPps(Number(e.target.value) / 1000))}
             className="h-1 w-28 cursor-pointer accent-emerald-500"
-            aria-label="Timeline zoom"
-            title="Timeline zoom"
+            aria-label={t('tl.timelineZoom')}
+            title={t('tl.timelineZoom')}
           />
           <button
             onClick={() => applyManualZoom(pixelsPerSecond * PPS_STEP)}
             disabled={pixelsPerSecond >= PPS_MAX - 0.01}
             className="flex h-5 w-5 items-center justify-center rounded border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-40"
-            title="Zoom in"
-            aria-label="Zoom in"
+            title={t('tl.zoomIn')}
+            aria-label={t('tl.zoomIn')}
           >
             <Plus size={11} />
           </button>
@@ -234,13 +236,13 @@ export function Timeline() {
                 ? 'bg-emerald-500/15 text-emerald-300'
                 : 'bg-white/5 text-white/70 hover:bg-white/10')
             }
-            title="Fit timeline to width"
+            title={t('tl.fitWidth')}
           >
             <Maximize2 size={11} />
-            Fit
+            {t('tl.fit')}
           </button>
           <span className="text-white/30">|</span>
-          <span>Pinch / Ctrl+Scroll Zoom</span>
+          <span>{t('tl.zoomHint')}</span>
         </div>
       </div>
 
@@ -283,7 +285,7 @@ export function Timeline() {
                   >
                     <span className="flex items-center gap-1.5">
                       <lane.icon size={12} />
-                      {lane.label}
+                      {t('tl.' + lane.kind)}
                     </span>
                     <span className="flex items-center gap-1">
                       {lane.kind === 'zoom' && (
@@ -291,8 +293,8 @@ export function Timeline() {
                           onClick={() => suggestZooms()}
                           disabled={cursorSamples.length === 0}
                           className="flex h-5 w-5 items-center justify-center rounded bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-30"
-                          title={cursorSamples.length ? 'Suggest zooms from cursor movement' : 'No cursor data for this recording'}
-                          aria-label="Suggest zooms from cursor"
+                          title={cursorSamples.length ? t('tl.suggestZooms') : t('tl.noCursorData')}
+                          aria-label={t('tl.suggestZooms')}
                         >
                           <Sparkles size={10} />
                         </button>
@@ -300,8 +302,8 @@ export function Timeline() {
                       <button
                         onClick={() => addItem(lane.kind, currentMs)}
                         className="flex h-5 w-5 items-center justify-center rounded bg-white/5 hover:bg-white/15"
-                        title={`Add ${lane.label} (${lane.key})`}
-                        aria-label={`Add ${lane.label}`}
+                        title={`${t('tl.add', { label: t('tl.' + lane.kind) })} (${lane.key})`}
+                        aria-label={t('tl.add', { label: t('tl.' + lane.kind) })}
                       >
                         <Plus size={10} />
                       </button>
@@ -320,7 +322,7 @@ export function Timeline() {
                   >
                     {laneItems.length === 0 && (
                       <div className="pointer-events-none flex h-full items-center justify-center text-[11px] text-white/25">
-                        Press {lane.key} to add {lane.label.toLowerCase()}
+                        {t('tl.pressToAdd', { key: lane.key, label: t('tl.' + lane.kind).toLowerCase() })}
                       </div>
                     )}
                     {laneItems.map((it) => (
@@ -368,6 +370,7 @@ function ItemChip({
   borderColor: string;
   selected: boolean;
 }) {
+  const t = useT();
   const updateItem = useEditor((s) => s.updateItem);
   const selectItem = useEditor((s) => s.selectItem);
 
@@ -411,7 +414,7 @@ function ItemChip({
   const labelText =
     item.kind === 'zoom' ? `${item.zoomLevel?.toFixed(1)}×` :
     item.kind === 'speed' ? `${item.speed?.toFixed(2)}×` :
-    'cut';
+    t('tl.cut');
 
   // Auto-focus the text input the first time an annotation is created so the
   // user can start typing immediately — addresses "annotation added but no way
@@ -475,6 +478,7 @@ function ItemChip({
 }
 
 function SelectedItemInspector() {
+  const t = useT();
   const id = useEditor((s) => s.selectedItemId);
   const item = useEditor((s) => s.items.find((it) => it.id === id) ?? null);
   const updateItem = useEditor((s) => s.updateItem);
@@ -499,28 +503,29 @@ function SelectedItemInspector() {
         <input
           value={item.text ?? ''}
           onChange={(e) => updateItem(item.id, { text: e.target.value })}
-          placeholder="Annotation text"
+          placeholder={t('tl.annotationText')}
           className="flex-1 rounded border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/80 placeholder:text-white/30"
         />
       )}
 
       {showSidebarHint && (
-        <span className="text-[11px] text-white/40">Adjust level + focus in the right sidebar →</span>
+        <span className="text-[11px] text-white/40">{t('tl.adjustHint')}</span>
       )}
 
       <div className="flex-1" />
       <button
         onClick={() => { removeItem(item.id); selectItem(null); }}
         className="flex items-center gap-1 rounded border border-white/10 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-300 hover:bg-rose-500/20"
-        title="Delete (Del)"
+        title={t('tl.deleteDel')}
       >
-        <Trash2 size={11} /> Delete
+        <Trash2 size={11} /> {t('common.delete')}
       </button>
     </div>
   );
 }
 
 function AspectSelector() {
+  const t = useT();
   const aspect = useEditor((s) => s.aspect);
   const setAspect = useEditor((s) => s.setAspect);
   return (
@@ -528,7 +533,7 @@ function AspectSelector() {
       value={aspect}
       onChange={(e) => setAspect(e.target.value as any)}
       className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-xs text-white/80"
-      aria-label="Aspect ratio"
+      aria-label={t('editor.aspect')}
     >
       <option value="16:9">16:9</option>
       <option value="4:3">4:3</option>

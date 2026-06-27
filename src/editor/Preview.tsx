@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useEditor, ANNOTATION_DEFAULTS } from './store';
 import { primeVideo } from './videoPrime';
 import { drawFrame } from './export';
+import { useT } from '../i18n';
 
 const aspectMap: Record<string, number | null> = {
   '16:9': 16 / 9,
@@ -12,6 +13,7 @@ const aspectMap: Record<string, number | null> = {
 };
 
 export function Preview() {
+  const t = useT();
   const fileUrl = useEditor((s) => s.fileUrl);
   const webcamFileUrl = useEditor((s) => s.webcamFileUrl);
   const aspect = useEditor((s) => s.aspect);
@@ -502,7 +504,7 @@ export function Preview() {
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
         {!fileUrl && (
-          <div className="relative text-sm text-white/60">No recording loaded.</div>
+          <div className="relative text-sm text-white/60">{t('editor.noRecording')}</div>
         )}
 
         {/* Transparent drag handle over the canvas-drawn webcam PiP (standard
@@ -520,7 +522,7 @@ export function Preview() {
               height: `${webcam.size * 100}%`,
               aspectRatio: String(webcamAspect)
             }}
-            title="Drag to reposition"
+            title={t('editor.dragReposition')}
           />
         )}
 
@@ -581,7 +583,7 @@ export function Preview() {
             onPointerCancel={onFocusUp}
             className="absolute z-20 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full bg-emerald-500/30 ring-2 ring-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.6)] active:cursor-grabbing"
             style={{ left: `${focusLeftPct}%`, top: `${focusTopPct}%` }}
-            title="Drag to set zoom focus"
+            title={t('editor.dragFocus')}
           >
             <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-emerald-300/80" />
             <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-emerald-300/80" />

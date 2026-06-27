@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Crop } from 'lucide-react';
 import type { DesktopSource, DisplayInfo } from '@shared/ipc';
+import { useT } from '../i18n';
 
 type Tab = 'screen' | 'window' | 'area';
 
 export function PickerApp() {
+  const t = useT();
   const [sources, setSources] = useState<DesktopSource[]>([]);
   const [displays, setDisplays] = useState<DisplayInfo[]>([]);
   const [tab, setTab] = useState<Tab>('screen');
@@ -55,13 +57,13 @@ export function PickerApp() {
         <div className="flex items-center justify-center px-4 pt-4">
           <div className="inline-flex items-center rounded-full bg-black/40 p-1 ring-1 ring-white/10">
             <PillTab active={tab === 'screen'} onClick={() => setTab('screen')}>
-              Screens <span className="text-white/40">({screens.length})</span>
+              {t('picker.screens')} <span className="text-white/40">({screens.length})</span>
             </PillTab>
             <PillTab active={tab === 'window'} onClick={() => setTab('window')}>
-              Windows <span className="text-white/40">({windows.length})</span>
+              {t('picker.windows')} <span className="text-white/40">({windows.length})</span>
             </PillTab>
             <PillTab active={tab === 'area'} onClick={() => setTab('area')}>
-              Area
+              {t('picker.area')}
             </PillTab>
           </div>
         </div>
@@ -95,7 +97,7 @@ export function PickerApp() {
             onClick={() => window.api.cancelSourcePicker()}
             className="rounded-full px-5 py-2 text-sm text-white/80 hover:bg-white/5"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           {tab !== 'area' && (
             <button
@@ -108,7 +110,7 @@ export function PickerApp() {
                   : 'bg-white/10 text-white/30 cursor-not-allowed')
               }
             >
-              Share
+              {t('picker.share')}
             </button>
           )}
         </div>
@@ -124,9 +126,10 @@ function AreaTab({
   displays: DisplayInfo[];
   onPickDisplay: (displayId: string) => void;
 }) {
+  const t = useT();
   if (displays.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-white/40">No displays detected.</div>
+      <div className="flex h-full items-center justify-center text-sm text-white/40">{t('picker.noDisplays')}</div>
     );
   }
   // One display → skip the chooser entirely and offer a single primary button.
@@ -136,20 +139,20 @@ function AreaTab({
       <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
         <Crop size={28} className="text-emerald-400" />
         <div className="max-w-sm text-sm text-white/70">
-          Click and drag on your screen to select the area you want to record. Press <kbd className="rounded bg-white/10 px-1 py-0.5 font-mono text-[11px]">Esc</kbd> to cancel.
+          {t('picker.areaHint')}
         </div>
         <button
           onClick={() => onPickDisplay(d.id)}
           className="rounded-full bg-emerald-500 px-6 py-2 text-sm font-medium text-black hover:bg-emerald-400"
         >
-          Select area
+          {t('picker.selectArea')}
         </button>
       </div>
     );
   }
   return (
     <div>
-      <div className="mb-3 px-1 text-xs text-white/60">Pick the display containing the area you want to record:</div>
+      <div className="mb-3 px-1 text-xs text-white/60">{t('picker.pickDisplay')}</div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {displays.map((d) => (
           <button
@@ -161,7 +164,7 @@ function AreaTab({
               {d.thumbnailDataUrl ? (
                 <img src={d.thumbnailDataUrl} alt={d.name} className="h-full w-full object-contain" />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-xs text-white/30">No preview</div>
+                <div className="flex h-full w-full items-center justify-center text-xs text-white/30">{t('picker.noPreview')}</div>
               )}
             </div>
             <div className="mt-2 flex items-center gap-2 truncate px-1 text-xs text-white/80">

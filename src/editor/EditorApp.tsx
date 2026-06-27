@@ -250,8 +250,8 @@ export function EditorApp() {
               <button
                 onClick={() => setPlaying(!playing)}
                 className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
-                aria-label={playing ? 'Pause' : 'Play'}
-                title={playing ? 'Pause' : 'Play'}
+                aria-label={playing ? t('editor.pause') : t('editor.play')}
+                title={playing ? t('editor.pause') : t('editor.play')}
               >
                 {playing ? <Pause size={14} /> : <Play size={14} />}
               </button>
@@ -265,14 +265,14 @@ export function EditorApp() {
                 value={currentMs}
                 onChange={(e) => useEditor.getState().setCurrent(Number(e.target.value))}
                 className="flex-1 accent-emerald-500"
-                aria-label="Scrubber"
+                aria-label={t('editor.scrubber')}
               />
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setVideoMuted(!videoMuted)}
                   className="flex h-7 w-7 items-center justify-center rounded hover:bg-white/10"
-                  aria-label={videoMuted ? 'Unmute' : 'Mute'}
-                  title={videoMuted ? 'Unmute (export will include audio)' : 'Mute (export will be silent)'}
+                  aria-label={videoMuted ? t('editor.unmute') : t('editor.mute')}
+                  title={videoMuted ? t('editor.unmuteHint') : t('editor.muteHint')}
                 >
                   {videoMuted || videoVolume === 0 ? (
                     <VolumeX size={14} className="text-white/60" />
@@ -292,15 +292,15 @@ export function EditorApp() {
                     if (v === 0 && !videoMuted) setVideoMuted(true);
                   }}
                   className="h-1 w-20 cursor-pointer accent-emerald-500"
-                  aria-label="Volume"
-                  title="Volume"
+                  aria-label={t('editor.volume')}
+                  title={t('editor.volume')}
                 />
               </div>
               <button
                 onClick={handleFullscreen}
                 className="flex h-7 w-7 items-center justify-center rounded hover:bg-white/10"
-                aria-label={isFullscreen ? 'Exit fullscreen preview' : 'Toggle fullscreen preview'}
-                title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Toggle fullscreen preview'}
+                aria-label={isFullscreen ? t('editor.exitFullscreen') : t('editor.fullscreen')}
+                title={isFullscreen ? 'Exit fullscreen (Esc)' : t('editor.fullscreen')}
               >
                 {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
               </button>
@@ -315,28 +315,29 @@ export function EditorApp() {
 }
 
 function FileMenu({ onSave, onLoad }: { onSave: () => void; onLoad: () => void }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-3 text-white/60">
       <MenuItem
-        label="File"
+        label={t('editor.file')}
         items={[
-          { label: 'Open Project…', onClick: onLoad, shortcut: 'Ctrl+O' },
-          { label: 'Save Project…', onClick: onSave, shortcut: 'Ctrl+S' }
+          { label: t('editor.openProject'), onClick: onLoad, shortcut: 'Ctrl+O' },
+          { label: t('editor.saveProject'), onClick: onSave, shortcut: 'Ctrl+S' }
         ]}
       />
       <MenuItem
-        label="Edit"
+        label={t('editor.edit')}
         items={[
-          { label: 'Delete Selected Item', onClick: () => {
+          { label: t('editor.deleteSelected'), onClick: () => {
               const id = useEditor.getState().selectedItemId;
               if (id) useEditor.getState().removeItem(id);
             }, shortcut: 'Del' }
         ]}
       />
       <MenuItem
-        label="View"
+        label={t('editor.view')}
         items={[
-          { label: 'Toggle Mute', onClick: () => {
+          { label: t('editor.toggleMute'), onClick: () => {
               const s = useEditor.getState();
               s.setVideoMuted(!s.videoMuted);
             }, shortcut: 'M' }
@@ -382,11 +383,11 @@ function projectDisplayName(filePath: string) {
   return base.replace(/\.reframe\.json$/i, '');
 }
 
-function formatSavedAgo(savedAt: number | null): string {
+function formatSavedAgo(savedAt: number | null, t: (key: string, vars?: Record<string, string | number>) => string): string {
   if (!savedAt) return 'auto-save pending';
   const seconds = Math.max(0, Math.floor((Date.now() - savedAt) / 1000));
-  if (seconds < 5) return 'saved just now';
-  if (seconds < 60) return `saved ${seconds}s ago`;
+  if (seconds < 5) return t('editor.savedJustNow');
+  if (seconds < 60) return t('editor.savedAgo', { n: seconds });
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `saved ${minutes}m ago`;
   // Anything older falls back to a wall-clock time so it doesn't keep ticking.
@@ -395,6 +396,7 @@ function formatSavedAgo(savedAt: number | null): string {
 }
 
 function ProjectNameField({ path }: { path: string }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -448,11 +450,11 @@ function ProjectNameField({ path }: { path: string }) {
     return (
       <button
         onClick={enterEdit}
-        title={`${path}\n\nClick to rename`}
+        title={`${path}\n\n${t('editor.clickToRename')}`}
         className="group flex max-w-[360px] items-center gap-2 truncate rounded px-1.5 py-0.5 text-xs text-white/55 hover:bg-white/[0.06] hover:text-white/80"
       >
         <span className="truncate">{projectDisplayName(path)}</span>
-        <span className="shrink-0 text-emerald-400/70">· {formatSavedAgo(lastSavedAt)}</span>
+        <span className="shrink-0 text-emerald-400/70">· {formatSavedAgo(lastSavedAt, t)}</span>
       </button>
     );
   }

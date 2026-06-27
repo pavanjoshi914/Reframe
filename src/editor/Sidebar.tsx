@@ -41,6 +41,7 @@ export function Sidebar() {
 }
 
 function SelectionSection() {
+  const t = useT();
   const item = useEditor((s) => s.items.find((it) => it.id === s.selectedItemId) ?? null);
   const updateItem = useEditor((s) => s.updateItem);
   const removeItem = useEditor((s) => s.removeItem);
@@ -54,7 +55,7 @@ function SelectionSection() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-1.5 text-xs text-white/70">
-            <ZoomIn size={12} /> Zoom Level
+            <ZoomIn size={12} /> {t('side.zoomLevel')}
           </span>
           <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[11px] text-emerald-300">
             {zoom.toFixed(2)}×
@@ -77,7 +78,7 @@ function SelectionSection() {
         />
         <div className="grid grid-cols-2 gap-2">
           <NumberInput
-            label="Focus X"
+            label={t('side.focusX')}
             value={item.zoomTargetX ?? 0.5}
             min={0}
             max={1}
@@ -85,7 +86,7 @@ function SelectionSection() {
             onChange={(v) => updateItem(item.id, { zoomTargetX: v })}
           />
           <NumberInput
-            label="Focus Y"
+            label={t('side.focusY')}
             value={item.zoomTargetY ?? 0.5}
             min={0}
             max={1}
@@ -94,7 +95,7 @@ function SelectionSection() {
           />
         </div>
         <p className="text-[11px] text-white/40">Tip: drag the green crosshair on the preview to set focus.</p>
-        <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label="Delete Zoom" />
+        <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label={t('side.deleteZoom')} />
       </div>
     );
   }
@@ -109,7 +110,7 @@ function SelectionSection() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-1.5 text-xs text-white/70">
-            <Gauge size={12} /> Playback Speed
+            <Gauge size={12} /> {t('side.playbackSpeed')}
           </span>
           <span className="rounded bg-sky-500/15 px-1.5 py-0.5 font-mono text-[11px] text-sky-300">
             {rate.toFixed(2)}×
@@ -130,7 +131,7 @@ function SelectionSection() {
           suffix="×"
           onChange={(v) => updateItem(item.id, { speed: v })}
         />
-        <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label="Delete Speed Region" />
+        <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label={t('side.deleteSpeed')} />
       </div>
     );
   }
@@ -155,6 +156,7 @@ const ANNOTATION_BG_PRESETS: { label: string; value: string | null }[] = [
 ];
 
 function AnnotationEditor({ item }: { item: LaneItem }) {
+  const t = useT();
   const updateItem = useEditor((s) => s.updateItem);
   const removeItem = useEditor((s) => s.removeItem);
   const selectItem = useEditor((s) => s.selectItem);
@@ -185,14 +187,14 @@ function AnnotationEditor({ item }: { item: LaneItem }) {
       <textarea
         value={text}
         onChange={(e) => set({ text: e.target.value })}
-        placeholder="Enter text…"
+        placeholder={t('side.enterText')}
         rows={3}
         className="w-full resize-none rounded border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-white/90 placeholder:text-white/30 focus:border-emerald-400/40 focus:outline-none"
       />
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <Label>Font</Label>
+          <Label>{t('side.font')}</Label>
           <select
             value={fontFamily}
             onChange={(e) => set({ fontFamily: e.target.value })}
@@ -206,7 +208,7 @@ function AnnotationEditor({ item }: { item: LaneItem }) {
           </select>
         </div>
         <NumberInput
-          label="Size"
+          label={t('side.fontSize')}
           value={fontSize}
           min={12}
           max={200}
@@ -217,27 +219,27 @@ function AnnotationEditor({ item }: { item: LaneItem }) {
       </div>
 
       <div className="flex items-center gap-1">
-        <IconToggleBtn active={bold} onClick={() => set({ bold: !bold })} title="Bold">
+        <IconToggleBtn active={bold} onClick={() => set({ bold: !bold })} title={t('side.bold')}>
           <Bold size={13} />
         </IconToggleBtn>
-        <IconToggleBtn active={italic} onClick={() => set({ italic: !italic })} title="Italic">
+        <IconToggleBtn active={italic} onClick={() => set({ italic: !italic })} title={t('side.italic')}>
           <Italic size={13} />
         </IconToggleBtn>
         <span className="mx-1 h-4 w-px bg-white/10" />
-        <IconToggleBtn active={textAlign === 'left'} onClick={() => set({ textAlign: 'left' })} title="Align left">
+        <IconToggleBtn active={textAlign === 'left'} onClick={() => set({ textAlign: 'left' })} title={t('side.alignLeft')}>
           <AlignLeft size={13} />
         </IconToggleBtn>
-        <IconToggleBtn active={textAlign === 'center'} onClick={() => set({ textAlign: 'center' })} title="Align centre">
+        <IconToggleBtn active={textAlign === 'center'} onClick={() => set({ textAlign: 'center' })} title={t('side.alignCenter')}>
           <AlignCenter size={13} />
         </IconToggleBtn>
-        <IconToggleBtn active={textAlign === 'right'} onClick={() => set({ textAlign: 'right' })} title="Align right">
+        <IconToggleBtn active={textAlign === 'right'} onClick={() => set({ textAlign: 'right' })} title={t('side.alignRight')}>
           <AlignRight size={13} />
         </IconToggleBtn>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <Label>Text colour</Label>
+          <Label>{t('side.textColor')}</Label>
           <ColorPickRow
             value={textColor}
             onChange={(v) => set({ textColor: v })}
@@ -268,7 +270,7 @@ function AnnotationEditor({ item }: { item: LaneItem }) {
       </div>
 
       <p className="text-[11px] text-white/40">Tip: drag the annotation on the preview to reposition it.</p>
-      <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label="Delete Annotation" />
+      <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label={t('side.deleteAnnotation')} />
     </div>
   );
 }
@@ -428,6 +430,7 @@ function Section({ title, defaultOpen, children }: { title: string; defaultOpen?
 }
 
 function CompositionSection() {
+  const t = useT();
   const layoutPreset = useEditor((s) => s.layoutPreset);
   const setLayoutPreset = useEditor((s) => s.setLayoutPreset);
   const webcam = useEditor((s) => s.webcam);
@@ -443,34 +446,34 @@ function CompositionSection() {
   return (
     <div className="space-y-4">
       <div>
-        <Label>Layout</Label>
+        <Label>{t('side.layout')}</Label>
         <select
           value={layoutPreset}
           onChange={(e) => setLayoutPreset(e.target.value as any)}
           className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm"
         >
-          <option value="pip-bottom-right">PiP — Bottom Right</option>
-          <option value="pip-bottom-left">PiP — Bottom Left</option>
-          <option value="pip-top-right">PiP — Top Right</option>
-          <option value="pip-top-left">PiP — Top Left</option>
-          <option value="side-by-side">Side by Side</option>
+          <option value="pip-bottom-right">{t('side.pipBottomRight')}</option>
+          <option value="pip-bottom-left">{t('side.pipBottomLeft')}</option>
+          <option value="pip-top-right">{t('side.pipTopRight')}</option>
+          <option value="pip-top-left">{t('side.pipTopLeft')}</option>
+          <option value="side-by-side">{t('side.sideBySide')}</option>
         </select>
       </div>
 
       <div>
-        <Label>Webcam</Label>
-        <ToggleRow label="Enable" checked={webcam.enabled} onChange={(v) => setWebcam({ enabled: v })} />
-        <RangeRow label="Size" value={webcam.size} min={0.08} max={0.6} step={0.01} onChange={(v) => setWebcam({ size: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
+        <Label>{t('side.webcam')}</Label>
+        <ToggleRow label={t('side.enable')} checked={webcam.enabled} onChange={(v) => setWebcam({ enabled: v })} />
+        <RangeRow label={t('side.size')} value={webcam.size} min={0.08} max={0.6} step={0.01} onChange={(v) => setWebcam({ size: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
         <div className="mt-2">
-          <div className="mb-1 text-xs text-white/70">Shape</div>
+          <div className="mb-1 text-xs text-white/70">{t('side.shape')}</div>
           <div className="grid grid-cols-3 gap-1.5">
-            <ShapeBtn active={webcam.shape === 'rectangle'} onClick={() => setWebcam({ shape: 'rectangle' })} label="Rectangle">
+            <ShapeBtn active={webcam.shape === 'rectangle'} onClick={() => setWebcam({ shape: 'rectangle' })} label={t('side.rectangle')}>
               <RectangleHorizontal size={14} />
             </ShapeBtn>
-            <ShapeBtn active={webcam.shape === 'square'} onClick={() => setWebcam({ shape: 'square' })} label="Square">
+            <ShapeBtn active={webcam.shape === 'square'} onClick={() => setWebcam({ shape: 'square' })} label={t('side.square')}>
               <Square size={14} />
             </ShapeBtn>
-            <ShapeBtn active={webcam.shape === 'circle'} onClick={() => setWebcam({ shape: 'circle' })} label="Circle">
+            <ShapeBtn active={webcam.shape === 'circle'} onClick={() => setWebcam({ shape: 'circle' })} label={t('side.circle')}>
               <Circle size={14} />
             </ShapeBtn>
           </div>
@@ -478,11 +481,11 @@ function CompositionSection() {
       </div>
 
       <div>
-        <Label>Background</Label>
+        <Label>{t('side.background')}</Label>
         <div className="mb-2 flex gap-1">
-          <BgTab active={background.mode === 'image'} onClick={() => setBackground({ mode: 'image', value: background.mode === 'image' ? background.value : '' })}>Image</BgTab>
-          <BgTab active={background.mode === 'color'} onClick={() => setBackground({ mode: 'color', value: background.mode === 'color' ? background.value : '#1a1d23' })}>Color</BgTab>
-          <BgTab active={background.mode === 'gradient'} onClick={() => setBackground({ mode: 'gradient', value: background.mode === 'gradient' ? background.value : 'linear-gradient(135deg,#fb923c,#ec4899)' })}>Gradient</BgTab>
+          <BgTab active={background.mode === 'image'} onClick={() => setBackground({ mode: 'image', value: background.mode === 'image' ? background.value : '' })}>{t('side.image')}</BgTab>
+          <BgTab active={background.mode === 'color'} onClick={() => setBackground({ mode: 'color', value: background.mode === 'color' ? background.value : '#1a1d23' })}>{t('side.color')}</BgTab>
+          <BgTab active={background.mode === 'gradient'} onClick={() => setBackground({ mode: 'gradient', value: background.mode === 'gradient' ? background.value : 'linear-gradient(135deg,#fb923c,#ec4899)' })}>{t('side.gradient')}</BgTab>
         </div>
         {background.mode === 'color' && (
           <div className="space-y-2">
@@ -560,7 +563,7 @@ function CompositionSection() {
               onClick={handleUploadImage}
               className="flex w-full items-center justify-center gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm hover:bg-white/5"
             >
-              <Upload size={14} /> Upload Custom
+              <Upload size={14} /> {t('side.uploadCustom')}
             </button>
             <div className="grid grid-cols-4 gap-1.5">
               {WALLPAPER_URLS.map((url, i) => (
@@ -586,8 +589,8 @@ function CompositionSection() {
                 <button
                   onClick={() => setBackground({ mode: 'image', value: '' })}
                   className="absolute right-1 top-1 rounded bg-black/60 p-0.5 text-white/80 hover:bg-black/80"
-                  title="Clear image"
-                  aria-label="Clear image"
+                  title={t('side.clearImage')}
+                  aria-label={t('side.clearImage')}
                 >
                   <X size={12} />
                 </button>

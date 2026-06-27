@@ -20,6 +20,7 @@ import {
   MdCheck
 } from 'react-icons/md';
 import type { DesktopSource, Region } from '@shared/ipc';
+import { useT } from '../i18n';
 import { startRecording, type RecordingHandle } from './recording';
 
 type Phase = 'idle' | 'recording';
@@ -32,6 +33,7 @@ function fmt(ms: number) {
 }
 
 export function HudApp() {
+  const t = useT();
   const [source, setSource] = useState<DesktopSource | null>(null);
   // Optional region for the next recording. Cleared whenever the user picks a
   // different source via the screens/windows tabs.
@@ -236,7 +238,7 @@ export function HudApp() {
       }, 250);
     } catch (err) {
       console.error('record start failed', err);
-      alert('Failed to start recording: ' + (err as Error).message);
+      alert(t('hud.recordFailed', { msg: (err as Error).message }));
     }
   }
 
@@ -271,10 +273,10 @@ export function HudApp() {
   }
 
   const sourceLabel = region
-    ? 'Area'
+    ? t('hud.area')
     : source
     ? truncate(source.name, 18)
-    : 'Screen';
+    : t('hud.screen');
 
   const recording = phase === 'recording';
 
@@ -313,7 +315,7 @@ export function HudApp() {
           onClick={handlePickSource}
           disabled={recording}
           className="no-drag relative flex h-8 items-center gap-1.5 rounded-full bg-white/[0.04] px-3 text-xs font-medium text-hud-icon ring-1 ring-white/10 transition hover:bg-white/[0.07] hover:ring-white/15 disabled:opacity-50"
-          title="Pick source"
+          title={t('hud.pickSource')}
         >
           <MdMonitor size={14} className="text-hud-icon/80" />
           <span className="max-w-[120px] truncate">{sourceLabel}</span>
@@ -324,20 +326,20 @@ export function HudApp() {
         {/* Capture toggles. System audio is a single toggle (no per-device
             choice — desktopCapturer takes the system default). Mic and Cam get
             a split-button with a chevron that opens a device picker. */}
-        <ToggleBtn active={sysAudio} onClick={() => setSysAudio((v) => !v)} title="System audio">
+        <ToggleBtn active={sysAudio} onClick={() => setSysAudio((v) => !v)} title={t('hud.systemAudio')}>
           {sysAudio ? <MdVolumeUp size={18} /> : <MdVolumeOff size={18} />}
         </ToggleBtn>
         <ToggleWithMenu
           active={mic}
           onToggle={() => setMic((v) => !v)}
-          title="Microphone"
+          title={t('hud.microphone')}
           icon={<MdMic size={18} />}
           iconOff={<MdMicOff size={18} />}
           devices={audioInputs}
           selectedId={selectedMicId}
           onSelectDevice={setSelectedMicId}
-          menuLabel="Microphone"
-          fallbackDeviceLabel="Microphone"
+          menuLabel={t('hud.microphone')}
+          fallbackDeviceLabel={t('hud.microphone')}
           menuOpen={openMenu === 'mic'}
           onMenuOpenChange={(o) => setOpenMenu(o ? 'mic' : null)}
           hideChevron={recording}
@@ -345,14 +347,14 @@ export function HudApp() {
         <ToggleWithMenu
           active={cam}
           onToggle={() => setCam((v) => !v)}
-          title="Webcam"
+          title={t('hud.webcam')}
           icon={<MdVideocam size={18} />}
           iconOff={<MdVideocamOff size={18} />}
           devices={videoInputs}
           selectedId={selectedCamId}
           onSelectDevice={setSelectedCamId}
-          menuLabel="Camera"
-          fallbackDeviceLabel="Camera"
+          menuLabel={t('hud.camera')}
+          fallbackDeviceLabel={t('hud.camera')}
           menuOpen={openMenu === 'cam'}
           onMenuOpenChange={(o) => setOpenMenu(o ? 'cam' : null)}
           hideChevron={recording}
@@ -366,7 +368,7 @@ export function HudApp() {
         ) : (
           <>
             <StopButton onClick={handleStop} />
-            <IconBtn onClick={handleRestart} title="Restart recording">
+            <IconBtn onClick={handleRestart} title={t('hud.restart')}>
               <MdRefresh size={16} />
             </IconBtn>
             <RecordingTimer ms={elapsed} />
@@ -375,19 +377,19 @@ export function HudApp() {
 
         <Divider />
 
-        <IconBtn onClick={() => window.api.openProjectFromPicker()} title="Open project">
+        <IconBtn onClick={() => window.api.openProjectFromPicker()} title={t('hud.openProject')}>
           <MdInsertDriveFile size={18} />
         </IconBtn>
-        <IconBtn onClick={() => window.api.openExportsFolder()} title="Open Recordings folder (exports)">
+        <IconBtn onClick={() => window.api.openExportsFolder()} title={t('hud.openExports')}>
           <MdFolderOpen size={18} />
         </IconBtn>
 
         <Divider />
 
-        <IconBtn onClick={() => window.api.minimizeHud()} title="Minimize">
+        <IconBtn onClick={() => window.api.minimizeHud()} title={t('hud.minimize')}>
           <MdRemove size={18} />
         </IconBtn>
-        <IconBtn onClick={() => window.api.closeHud()} title="Close">
+        <IconBtn onClick={() => window.api.closeHud()} title={t('hud.close')}>
           <MdClose size={18} />
         </IconBtn>
       </div>
@@ -396,10 +398,11 @@ export function HudApp() {
 }
 
 function RecordButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
   return (
     <button
       onClick={onClick}
-      title="Start recording"
+      title={t('hud.startRecording')}
       className="no-drag group flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.04] ring-1 ring-white/10 transition hover:scale-105 hover:bg-white/[0.07] hover:ring-red-400/30 active:scale-95"
     >
       <span className="block h-3.5 w-3.5 rounded-full bg-[#ef4444] shadow-[0_0_8px_2px_rgba(239,68,68,0.45)] transition group-hover:shadow-[0_0_14px_3px_rgba(239,68,68,0.65)]" />
@@ -408,10 +411,11 @@ function RecordButton({ onClick }: { onClick: () => void }) {
 }
 
 function StopButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
   return (
     <button
       onClick={onClick}
-      title="Stop recording"
+      title={t('hud.stopRecording')}
       className="no-drag relative flex h-9 w-9 items-center justify-center rounded-full bg-red-500/[0.18] ring-1 ring-red-400/40 transition hover:scale-105 hover:bg-red-500/25 active:scale-95"
     >
       {/* Outer pulsing halo */}
@@ -498,6 +502,7 @@ function ToggleWithMenu({
   onMenuOpenChange: (open: boolean) => void;
   hideChevron?: boolean;
 }) {
+  const t = useT();
   const open = menuOpen;
   const setOpen = onMenuOpenChange;
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -535,7 +540,7 @@ function ToggleWithMenu({
       </button>
       {!hideChevron && (
         <button
-          title={`${menuLabel} device`}
+          title={t('hud.deviceMenu', { label: menuLabel })}
           onClick={() => setOpen(!open)}
           className={
             'flex h-9 w-4 items-center justify-center rounded-r-full border-l border-black/20 transition ' +
@@ -574,6 +579,7 @@ function DeviceMenu({
   fallbackLabel: string;
   onSelect: (id: string | undefined) => void;
 }) {
+  const t = useT();
   return (
     <div
       className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 overflow-hidden rounded-lg border border-white/10 bg-[#15171c] shadow-2xl shadow-black/60 ring-1 ring-black/40"
@@ -584,12 +590,12 @@ function DeviceMenu({
       </div>
       <div className="max-h-64 overflow-y-auto py-1">
         <DeviceMenuItem
-          label="System default"
+          label={t('hud.systemDefault')}
           active={!selectedId}
           onClick={() => onSelect(undefined)}
         />
         {devices.length === 0 && (
-          <div className="px-3 py-2 text-xs text-white/40">No devices detected</div>
+          <div className="px-3 py-2 text-xs text-white/40">{t('hud.noDevices')}</div>
         )}
         {devices.map((d, i) => (
           <DeviceMenuItem
