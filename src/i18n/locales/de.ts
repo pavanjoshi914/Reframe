@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'Rückgängig',
+  'editor.redo': 'Wiederholen',
   'tl.spotlight': 'Spotlight',
   'tl.magnify': 'Lupe',
   'side.selection': 'Auswahl',

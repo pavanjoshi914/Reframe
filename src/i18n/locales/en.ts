@@ -50,6 +50,8 @@ export default {
   'editor.toggleMute': 'Toggle Mute',
   'editor.loadProject': 'Load Project',
   'editor.saveProjectBtn': 'Save Project',
+  'editor.undo': 'Undo',
+  'editor.redo': 'Redo',
   'editor.play': 'Play',
   'editor.pause': 'Pause',
   'editor.mute': 'Mute',

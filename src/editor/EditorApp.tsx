@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX } from 'lucide-react';
+import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2 } from 'lucide-react';
 import { Preview } from './Preview';
 import { Sidebar } from './Sidebar';
 import { Timeline } from './Timeline';
@@ -34,6 +34,8 @@ export function EditorApp() {
   const setVideoVolume = useEditor((s) => s.setVideoVolume);
   const setVideoMuted = useEditor((s) => s.setVideoMuted);
   const currentProjectPath = useEditor((s) => s.currentProjectPath);
+  const canUndo = useEditor((s) => s.past.length > 0);
+  const canRedo = useEditor((s) => s.future.length > 0);
 
   // Load recording on first mount + listen for new recordings & opened
   // projects. Also kick off the auto-save lifecycle: every fresh recording
@@ -133,11 +135,74 @@ export function EditorApp() {
     };
   }, []);
 
-  // Spacebar play/pause
+  // Undo/redo history capture. Snapshot the document on every change, but
+  // coalesce bursts (slider drags, chip resize) into ONE entry via a 400 ms
+  // debounce. The baseline is keyed off currentProjectPath: when a project
+  // loads (path changes) we re-baseline instead of recording the load as an
+  // undo step — so this works regardless of which load path ran. We also skip
+  // while an undo/redo is being applied (_applyingHistory). We push the
+  // PRE-burst snapshot so undo returns to the state before the burst began.
+  useEffect(() => {
+    let burstStart: SerializedProject | null = null;
+    let timer: number | null = null;
+    let key: string | null = null;
+    let prevDoc = '';
+    const unsub = useEditor.subscribe((s) => {
+      if (s._applyingHistory) {
+        prevDoc = JSON.stringify(useEditor.getState().serialize());
+        return;
+      }
+      const path = s.currentProjectPath;
+      if (!path) return; // nothing loaded yet
+      const nowDoc = JSON.stringify(useEditor.getState().serialize());
+      if (path !== key) {
+        // A project just loaded → baseline here; don't record the load itself.
+        key = path;
+        prevDoc = nowDoc;
+        burstStart = null;
+        if (timer) {
+          window.clearTimeout(timer);
+          timer = null;
+        }
+        return;
+      }
+      if (nowDoc === prevDoc) return; // only transient state (playhead/etc.) moved
+      if (burstStart == null) burstStart = JSON.parse(prevDoc) as SerializedProject;
+      prevDoc = nowDoc;
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (burstStart) useEditor.getState().historyCommit(burstStart);
+        burstStart = null;
+        timer = null;
+      }, 400);
+    });
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      unsub();
+    };
+  }, []);
+
+  // Spacebar play/pause + undo/redo shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const tgt = e.target as HTMLElement | null;
-      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT')) return;
+      const typing = !!tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT');
+      const mod = e.ctrlKey || e.metaKey;
+      // Undo / redo — skip while typing so the browser's native text undo works.
+      if (mod && (e.key === 'z' || e.key === 'Z')) {
+        if (typing) return;
+        e.preventDefault();
+        if (e.shiftKey) useEditor.getState().redo();
+        else useEditor.getState().undo();
+        return;
+      }
+      if (mod && (e.key === 'y' || e.key === 'Y')) {
+        if (typing) return;
+        e.preventDefault();
+        useEditor.getState().redo();
+        return;
+      }
+      if (typing) return;
       if (e.key === ' ') {
         e.preventDefault();
         setPlaying(!useEditor.getState().playing);
@@ -203,6 +268,27 @@ export function EditorApp() {
           />
           <Divider />
           <FileMenu onSave={handleSaveProject} onLoad={handleLoadProject} />
+          <Divider />
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => useEditor.getState().undo()}
+              disabled={!canUndo}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-white/10 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+              aria-label={t('editor.undo')}
+              title={`${t('editor.undo')} (Ctrl+Z)`}
+            >
+              <Undo2 size={14} />
+            </button>
+            <button
+              onClick={() => useEditor.getState().redo()}
+              disabled={!canRedo}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-white/10 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+              aria-label={t('editor.redo')}
+              title={`${t('editor.redo')} (Ctrl+Shift+Z)`}
+            >
+              <Redo2 size={14} />
+            </button>
+          </div>
           {currentProjectPath && (
             <>
               <Divider />
@@ -328,6 +414,8 @@ function FileMenu({ onSave, onLoad }: { onSave: () => void; onLoad: () => void }
       <MenuItem
         label={t('editor.edit')}
         items={[
+          { label: t('editor.undo'), onClick: () => useEditor.getState().undo(), shortcut: 'Ctrl+Z' },
+          { label: t('editor.redo'), onClick: () => useEditor.getState().redo(), shortcut: 'Ctrl+Shift+Z' },
           { label: t('editor.deleteSelected'), onClick: () => {
               const id = useEditor.getState().selectedItemId;
               if (id) useEditor.getState().removeItem(id);

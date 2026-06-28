@@ -118,6 +118,14 @@ export type EditorState = {
   // reloaded from the recording's sidecar on open.
   cursorSamples: CursorSample[];
 
+  // Undo/redo history (session-only; never serialized). past/future hold
+  // document snapshots; _applyingHistory suppresses capture while a snapshot is
+  // being restored. The capture subscription baselines off currentProjectPath,
+  // so a fresh load re-baselines instead of being recorded as an undo step.
+  past: SerializedProject[];
+  future: SerializedProject[];
+  _applyingHistory: boolean;
+
   // Actions
   setRecording: (r: RecordingMeta, fileUrl: string, webcamFileUrl?: string | null) => void;
   setCurrentProjectPath: (p: string | null) => void;
@@ -149,6 +157,11 @@ export type EditorState = {
   suggestZooms: () => number;
   serialize: () => SerializedProject;
   hydrate: (data: SerializedProject) => void;
+  // Undo/redo
+  undo: () => void;
+  redo: () => void;
+  historyCommit: (snapshot: SerializedProject) => void;
+  applyDoc: (snap: SerializedProject) => void;
 };
 
 export type SerializedProject = {
@@ -167,6 +180,26 @@ export type SerializedProject = {
 
 function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
+}
+
+// Extract the serializable document (everything undo/redo and save care about)
+// from a store state. serialize(), the history-capture subscription, and
+// undo/redo all go through this so they agree on exactly which fields make up
+// "the project" — transient state (playhead, playing, selection) is excluded.
+function docOf(s: EditorState): SerializedProject {
+  return {
+    aspect: s.aspect,
+    cropRegion: s.cropRegion,
+    background: s.background,
+    webcam: s.webcam,
+    layoutPreset: s.layoutPreset,
+    polish: s.polish,
+    showAdvanced: s.showAdvanced,
+    effects: s.effects,
+    exportFormat: s.exportFormat,
+    exportQuality: s.exportQuality,
+    items: s.items
+  };
 }
 
 // Where to park the playhead to preview a timeline item: a little past its
@@ -235,6 +268,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   pixelsPerSecond: 60,
   cursorSamples: [],
 
+  past: [],
+  future: [],
+  _applyingHistory: false,
+
   setCurrentProjectPath: (p) => set({ currentProjectPath: p }),
   setLastSavedAt: (t) => set({ lastSavedAt: t }),
 
@@ -244,6 +281,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       fileUrl,
       webcamFileUrl: webcamFileUrl ?? null,
       durationMs: r.durationMs,
+      // Fresh recording → fresh undo history.
+      past: [],
+      future: [],
       // Auto-enable webcam in editor if a webcam file came with the recording
       // and the user hasn't explicitly turned it on/off in this session.
       webcam: webcamFileUrl ? { ...s.webcam, enabled: true } : s.webcam,
@@ -401,22 +441,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     }));
     return zooms.length;
   },
-  serialize: () => {
-    const s = get();
-    return {
-      aspect: s.aspect,
-      cropRegion: s.cropRegion,
-      background: s.background,
-      webcam: s.webcam,
-      layoutPreset: s.layoutPreset,
-      polish: s.polish,
-      showAdvanced: s.showAdvanced,
-      effects: s.effects,
-      exportFormat: s.exportFormat,
-      exportQuality: s.exportQuality,
-      items: s.items
-    };
-  },
+  serialize: () => docOf(get()),
   hydrate: (data) =>
     set({
       aspect: data.aspect,
@@ -435,6 +460,49 @@ export const useEditor = create<EditorState>((set, get) => ({
       exportFormat: data.exportFormat,
       exportQuality: data.exportQuality,
       items: data.items,
-      selectedItemId: null
-    })
+      selectedItemId: null,
+      // Loading a project is a fresh document → reset undo history.
+      past: [],
+      future: []
+    }),
+
+  // ---- Undo / redo -------------------------------------------------------
+  // Restore a document snapshot without touching transient state (playhead,
+  // selection beyond validity). Used by undo/redo and never recorded itself.
+  applyDoc: (snap) =>
+    set((s) => ({
+      aspect: snap.aspect,
+      cropRegion: snap.cropRegion ?? DEFAULT_CROP_REGION,
+      background: snap.background,
+      webcam: snap.webcam,
+      layoutPreset: snap.layoutPreset,
+      polish: snap.polish,
+      showAdvanced: snap.showAdvanced,
+      effects: snap.effects,
+      exportFormat: snap.exportFormat,
+      exportQuality: snap.exportQuality,
+      items: snap.items,
+      selectedItemId: snap.items.some((it) => it.id === s.selectedItemId) ? s.selectedItemId : null
+    })),
+  // Push a pre-change snapshot onto the past stack (called by the debounced
+  // capture subscription) and drop any redo future. Cap depth at 100.
+  historyCommit: (snapshot) => set((s) => ({ past: [...s.past, snapshot].slice(-100), future: [] })),
+  undo: () => {
+    const s = get();
+    if (s.past.length === 0) return;
+    const target = s.past[s.past.length - 1];
+    const current = docOf(s);
+    set({ _applyingHistory: true });
+    get().applyDoc(target);
+    set((st) => ({ past: st.past.slice(0, -1), future: [...st.future, current], _applyingHistory: false }));
+  },
+  redo: () => {
+    const s = get();
+    if (s.future.length === 0) return;
+    const target = s.future[s.future.length - 1];
+    const current = docOf(s);
+    set({ _applyingHistory: true });
+    get().applyDoc(target);
+    set((st) => ({ future: st.future.slice(0, -1), past: [...st.past, current], _applyingHistory: false }));
+  }
 }));

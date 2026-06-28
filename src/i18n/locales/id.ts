@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'Urungkan',
+  'editor.redo': 'Ulangi',
   'tl.spotlight': 'Sorot',
   'tl.magnify': 'Perbesar',
   'side.selection': 'Pilihan',

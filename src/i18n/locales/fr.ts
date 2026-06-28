@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'Annuler',
+  'editor.redo': 'Rétablir',
   'tl.spotlight': 'Projecteur',
   'tl.magnify': 'Loupe',
   'side.selection': 'Sélection',

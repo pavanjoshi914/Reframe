@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'Cofnij',
+  'editor.redo': 'Ponów',
   'tl.spotlight': 'Reflektor',
   'tl.magnify': 'Lupa',
   'side.selection': 'Zaznaczenie',

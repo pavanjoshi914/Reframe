@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'Annulla',
+  'editor.redo': 'Ripeti',
   'tl.spotlight': 'Faretto',
   'tl.magnify': 'Lente',
   'side.selection': 'Selezione',

@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'เลิกทำ',
+  'editor.redo': 'ทำซ้ำ',
   'tl.spotlight': 'สปอตไลต์',
   'tl.magnify': 'แว่นขยาย',
   'side.selection': 'ส่วนที่เลือก',

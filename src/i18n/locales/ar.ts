@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'تراجع',
+  'editor.redo': 'إعادة',
   'tl.spotlight': 'تسليط الضوء',
   'tl.magnify': 'تكبير',
   'side.selection': 'التحديد',

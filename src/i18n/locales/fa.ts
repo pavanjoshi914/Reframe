@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'واگرد',
+  'editor.redo': 'ازنو',
   'tl.spotlight': 'نورافکن',
   'tl.magnify': 'ذره‌بین',
   'side.selection': 'انتخاب',

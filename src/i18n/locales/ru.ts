@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'Отменить',
+  'editor.redo': 'Повторить',
   'tl.spotlight': 'Прожектор',
   'tl.magnify': 'Лупа',
   'side.selection': 'Выбор',

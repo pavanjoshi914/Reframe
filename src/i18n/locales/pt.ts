@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'Desfazer',
+  'editor.redo': 'Refazer',
   'tl.spotlight': 'Holofote',
   'tl.magnify': 'Ampliar',
   'side.selection': 'Seleção',

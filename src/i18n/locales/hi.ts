@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'पूर्ववत करें',
+  'editor.redo': 'फिर से करें',
   'tl.spotlight': 'स्पॉटलाइट',
   'tl.magnify': 'आवर्धक',
   'side.selection': 'चयन',

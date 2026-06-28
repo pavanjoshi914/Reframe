@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'Hoàn tác',
+  'editor.redo': 'Làm lại',
   'tl.spotlight': 'Đèn rọi',
   'tl.magnify': 'Phóng to',
   'side.selection': 'Lựa chọn',

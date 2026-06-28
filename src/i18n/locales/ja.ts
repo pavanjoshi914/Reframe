@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': '元に戻す',
+  'editor.redo': 'やり直す',
   'tl.spotlight': 'スポットライト',
   'tl.magnify': '拡大',
   'side.selection': '選択',

@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': '실행 취소',
+  'editor.redo': '다시 실행',
   'tl.spotlight': '스포트라이트',
   'tl.magnify': '확대',
   'side.selection': '선택',

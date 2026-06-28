@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'Geri al',
+  'editor.redo': 'Yinele',
   'tl.spotlight': 'Spot',
   'tl.magnify': 'Büyüteç',
   'side.selection': 'Seçim',

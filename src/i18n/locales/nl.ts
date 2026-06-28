@@ -1,4 +1,6 @@
 export default {
+  'editor.undo': 'Ongedaan maken',
+  'editor.redo': 'Opnieuw',
   'tl.spotlight': 'Spotlight',
   'tl.magnify': 'Vergroten',
   'side.selection': 'Selectie',

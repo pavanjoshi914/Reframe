@@ -91,6 +91,9 @@ export function Timeline() {
     function onKey(e: KeyboardEvent) {
       const tgt = e.target as HTMLElement | null;
       if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA')) return;
+      // Let modifier combos through (Ctrl+Z undo, Ctrl+S save, …) — only bare
+      // letter keys add lane items.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       const map: Record<string, LaneKind> = { z: 'zoom', t: 'trim', a: 'annotation', s: 'speed', m: 'magnify', l: 'spotlight' };
       const k = e.key.toLowerCase();
       if (map[k]) {
