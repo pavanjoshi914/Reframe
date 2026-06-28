@@ -169,6 +169,15 @@ function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
 }
 
+// Where to park the playhead to preview a timeline item: a little past its
+// start so time-based effects are already visible (zoom is fully eased in after
+// ~450ms), clamped to the item. Trims jump to just their start (the frame right
+// before the cut) since their interior is removed.
+function previewPointFor(item: { kind: LaneKind; startMs: number; endMs: number }): number {
+  if (item.kind === 'trim') return item.startMs;
+  return Math.min(item.endMs, item.startMs + 500);
+}
+
 // Numeric width/height ratio for an AspectRatio enum value. 'auto' maps to
 // the fallback so callers that need a concrete number for layout math (e.g.
 // webcam corner snapping) don't have to special-case it.
@@ -348,7 +357,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       // newly-added chip and the inline input auto-focuses immediately.
       ...(kind === 'annotation' ? { text: '' } : {})
     };
-    set((s) => ({ items: [...s.items, item], selectedItemId: item.id }));
+    // Jump the preview straight to the new item and pause, so the user sees it
+    // immediately instead of having to manually seek to where they added it.
+    set((s) => ({ items: [...s.items, item], selectedItemId: item.id, currentMs: previewPointFor(item), playing: false }));
   },
   updateItem: (id, patch) =>
     set((s) => ({ items: s.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) })),
@@ -357,7 +368,17 @@ export const useEditor = create<EditorState>((set, get) => ({
       items: s.items.filter((it) => it.id !== id),
       selectedItemId: s.selectedItemId === id ? null : s.selectedItemId
     })),
-  selectItem: (id) => set({ selectedItemId: id }),
+  selectItem: (id) => set((s) => {
+    if (!id) return { selectedItemId: id };
+    const it = s.items.find((i) => i.id === id);
+    // Selecting an item parks the preview on it (and pauses) so its effect is
+    // visible — but only when the playhead isn't already within it, so editing
+    // an item you're already viewing doesn't yank the playhead around.
+    if (it && (s.currentMs < it.startMs || s.currentMs > it.endMs)) {
+      return { selectedItemId: id, currentMs: previewPointFor(it), playing: false };
+    }
+    return { selectedItemId: id };
+  }),
   setPixelsPerSecond: (pps) => set({ pixelsPerSecond: Math.max(10, Math.min(800, pps)) }),
   setCursorSamples: (s) => set({ cursorSamples: s }),
   suggestZooms: () => {
