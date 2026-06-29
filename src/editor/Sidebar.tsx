@@ -269,7 +269,7 @@ function AnnotationEditor({ item }: { item: LaneItem }) {
         </div>
       </div>
 
-      <p className="text-[11px] text-white/40">Tip: drag the annotation on the preview to reposition it.</p>
+      <p className="text-[11px] text-white/40">{t('side.annotationTip')}</p>
       <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label={t('side.deleteAnnotation')} />
     </div>
   );

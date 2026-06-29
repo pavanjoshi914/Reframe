@@ -91,6 +91,8 @@ export function Timeline() {
     function onKey(e: KeyboardEvent) {
       const tgt = e.target as HTMLElement | null;
       if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA')) return;
+      // Don't hijack keys while typing an annotation on the canvas (contentEditable).
+      if (tgt?.isContentEditable || useEditor.getState().editingAnnotationId) return;
       // Let modifier combos through (Ctrl+Z undo, Ctrl+S save, …) — only bare
       // letter keys add lane items.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -421,27 +423,13 @@ function ItemChip({
     item.kind === 'speed' ? `${item.speed?.toFixed(2)}×` :
     item.kind === 'magnify' ? t('tl.magnify') :
     item.kind === 'spotlight' ? t('tl.spotlight') :
+    item.kind === 'annotation' ? (item.text?.trim() || t('tl.annotationPlaceholder')) :
     t('tl.cut');
-
-  // Auto-focus the text input the first time an annotation is created so the
-  // user can start typing immediately — addresses "annotation added but no way
-  // to enter text" (the inspector strip's input was too easy to miss).
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (item.kind === 'annotation' && selected && !item.text) {
-      inputRef.current?.focus();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.id, selected]);
 
   return (
     <div
       onClick={(e) => { e.stopPropagation(); selectItem(item.id); }}
-      onPointerDown={(e) => {
-        // Don't start a window-drag when the user clicks the text input.
-        if ((e.target as HTMLElement).tagName === 'INPUT') return;
-        onDragStart('move', e);
-      }}
+      onPointerDown={(e) => onDragStart('move', e)}
       onPointerMove={onDragMove}
       onPointerUp={onDragEnd}
       className={
@@ -451,22 +439,9 @@ function ItemChip({
       style={{ left, width }}
       title="Drag to move; drag edges to resize; click to select"
     >
-      {item.kind === 'annotation' ? (
-        <input
-          ref={inputRef}
-          value={item.text ?? ''}
-          onChange={(e) => updateItem(item.id, { text: e.target.value })}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); selectItem(item.id); }}
-          placeholder="Enter text…"
-          spellCheck={false}
-          className="w-full cursor-text truncate bg-transparent px-1.5 pt-1 text-[10px] tracking-wide text-white/90 placeholder:text-white/40 focus:outline-none"
-        />
-      ) : (
-        <div className="truncate px-1.5 pt-1 text-[10px] uppercase tracking-wide text-white/80">
-          {labelText}
-        </div>
-      )}
+      <div className={'truncate px-1.5 pt-1 text-[10px] tracking-wide text-white/80 ' + (item.kind === 'annotation' ? 'normal-case' : 'uppercase')}>
+        {labelText}
+      </div>
       {/* resize handles */}
       <div
         onPointerDown={(e) => onDragStart('left', e)}
@@ -488,7 +463,6 @@ function SelectedItemInspector() {
   const t = useT();
   const id = useEditor((s) => s.selectedItemId);
   const item = useEditor((s) => s.items.find((it) => it.id === id) ?? null);
-  const updateItem = useEditor((s) => s.updateItem);
   const removeItem = useEditor((s) => s.removeItem);
   const selectItem = useEditor((s) => s.selectItem);
 
@@ -496,7 +470,8 @@ function SelectedItemInspector() {
 
   // Zoom / Speed item editing lives in the right sidebar's Selection panel
   // (presets, custom value, focus crosshair). This inline strip keeps just the
-  // identifying summary, annotation-text inline edit, and a delete shortcut.
+  // identifying summary and a delete shortcut; annotation text is edited on the
+  // preview (double-click) or in the sidebar.
   const showSidebarHint = item.kind === 'zoom' || item.kind === 'speed';
 
   return (
@@ -507,12 +482,7 @@ function SelectedItemInspector() {
       </span>
 
       {item.kind === 'annotation' && (
-        <input
-          value={item.text ?? ''}
-          onChange={(e) => updateItem(item.id, { text: e.target.value })}
-          placeholder={t('tl.annotationText')}
-          className="flex-1 rounded border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/80 placeholder:text-white/30"
-        />
+        <span className="truncate text-[11px] text-white/40">{t('tl.annotationEditHint')}</span>
       )}
 
       {showSidebarHint && (

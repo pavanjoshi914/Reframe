@@ -186,7 +186,7 @@ export function EditorApp() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const tgt = e.target as HTMLElement | null;
-      const typing = !!tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT');
+      const typing = (!!tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT' || tgt.isContentEditable)) || !!useEditor.getState().editingAnnotationId;
       const mod = e.ctrlKey || e.metaKey;
       // Undo / redo — skip while typing so the browser's native text undo works.
       if (mod && (e.key === 'z' || e.key === 'Z')) {

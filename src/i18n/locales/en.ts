@@ -70,6 +70,7 @@ export default {
   'editor.noRecording': 'No recording loaded.',
   'editor.dragReposition': 'Drag to reposition',
   'editor.dragFocus': 'Drag to set zoom focus',
+  'editor.dragAnnotation': 'Drag to move · double-click to edit',
 
   // Sidebar — sections
   'side.selection': 'Selection',
@@ -160,6 +161,9 @@ export default {
   'tl.zoomHint': 'Pinch / Ctrl+Scroll Zoom',
   'tl.pressToAdd': 'Press {key} to add {label}',
   'tl.cut': 'cut',
+  'tl.annotationPlaceholder': 'Text',
+  'tl.annotationEditHint': 'Double-click the text on the preview to edit',
+  'side.annotationTip': 'Tip: double-click the text on the preview to edit it; drag to reposition.',
   'tl.deleteDel': 'Delete (Del)',
   'tl.adjustHint': 'Adjust level + focus in the right sidebar →',
   'tl.annotationText': 'Annotation text',

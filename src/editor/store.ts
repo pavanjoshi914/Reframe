@@ -33,6 +33,11 @@ export type LaneItem = {
   zoomTargetY?: number;
   text?: string;
   speed?: number;
+  // Spotlight / magnify: how the lens is positioned over its time range.
+  // 'cursor' (default) follows the recorded cursor; 'manual' stays put at
+  // posX/posY (fractions of the output frame), which the user drags on the
+  // preview. Whole-video application is just a region spanning 0..durationMs.
+  track?: 'cursor' | 'manual';
 } & AnnotationStyle;
 
 // Defaults applied when an annotation has no explicit value for a field.
@@ -112,6 +117,10 @@ export type EditorState = {
   // Timeline
   items: LaneItem[];
   selectedItemId: string | null;
+  // When set, the annotation with this id is in on-canvas text-edit mode (the
+  // preview shows a focused editor). Transient; never serialized. Used to
+  // suppress global/lane keyboard shortcuts while the user is typing a label.
+  editingAnnotationId: string | null;
   pixelsPerSecond: number;
 
   // Cursor samples captured during recording (for auto-zoom). Not serialized;
@@ -150,6 +159,7 @@ export type EditorState = {
   updateItem: (id: string, patch: Partial<LaneItem>) => void;
   removeItem: (id: string) => void;
   selectItem: (id: string | null) => void;
+  setEditingAnnotation: (id: string | null) => void;
   setPixelsPerSecond: (pps: number) => void;
   setCursorSamples: (s: CursorSample[]) => void;
   // Replace existing zoom items with auto-suggested ones derived from the
@@ -265,6 +275,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   items: [],
   selectedItemId: null,
+  editingAnnotationId: null,
   pixelsPerSecond: 60,
   cursorSamples: [],
 
@@ -409,16 +420,21 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedItemId: s.selectedItemId === id ? null : s.selectedItemId
     })),
   selectItem: (id) => set((s) => {
-    if (!id) return { selectedItemId: id };
+    // Changing selection always leaves any on-canvas text edit.
+    if (!id) return { selectedItemId: id, editingAnnotationId: null };
     const it = s.items.find((i) => i.id === id);
     // Selecting an item parks the preview on it (and pauses) so its effect is
     // visible — but only when the playhead isn't already within it, so editing
     // an item you're already viewing doesn't yank the playhead around.
     if (it && (s.currentMs < it.startMs || s.currentMs > it.endMs)) {
-      return { selectedItemId: id, currentMs: previewPointFor(it), playing: false };
+      return { selectedItemId: id, editingAnnotationId: null, currentMs: previewPointFor(it), playing: false };
     }
-    return { selectedItemId: id };
+    return { selectedItemId: id, editingAnnotationId: null };
   }),
+  // Enter/leave on-canvas annotation text editing. Entering also ensures the
+  // annotation is the selected item (so the sidebar editor stays in sync).
+  setEditingAnnotation: (id) =>
+    set((s) => (id ? { editingAnnotationId: id, selectedItemId: id } : { editingAnnotationId: null, selectedItemId: s.selectedItemId })),
   setPixelsPerSecond: (pps) => set({ pixelsPerSecond: Math.max(10, Math.min(800, pps)) }),
   setCursorSamples: (s) => set({ cursorSamples: s }),
   suggestZooms: () => {

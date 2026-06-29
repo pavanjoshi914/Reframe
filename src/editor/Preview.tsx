@@ -33,6 +33,8 @@ export function Preview() {
   const webcam = useEditor((s) => s.webcam);
   const setWebcam = useEditor((s) => s.setWebcam);
   const selectedItemId = useEditor((s) => s.selectedItemId);
+  const editingAnnotationId = useEditor((s) => s.editingAnnotationId);
+  const setEditingAnnotation = useEditor((s) => s.setEditingAnnotation);
   const updateItem = useEditor((s) => s.updateItem);
   const selectItem = useEditor((s) => s.selectItem);
   const selectedZoom = useMemo(() => {
@@ -542,35 +544,55 @@ export function Preview() {
           // but vmin-based unit (%) keeps it simple and good enough visually.
           const fontSizeFrac = (item.fontSize ?? ANNOTATION_DEFAULTS.fontSize) / 1080;
           const selected = selectedItemId === item.id;
+          const editing = editingAnnotationId === item.id;
+          const empty = !item.text || item.text.trim() === '';
+          const boxStyle: React.CSSProperties = {
+            left: `${posX * 100}%`,
+            top: `${posY * 100}%`,
+            transform: 'translate(-50%, -50%)',
+            maxWidth: '80%',
+            fontFamily,
+            fontWeight: bold ? 700 : 400,
+            fontStyle: italic ? 'italic' : 'normal',
+            fontSize: `calc(${fontSizeFrac * 100}vh)`,
+            lineHeight: 1.25,
+            color: textColor,
+            textAlign,
+            backgroundColor: bg ?? 'transparent',
+            padding: bg ? '0.4em 0.7em' : '0',
+            borderRadius: bg ? '10px' : '0',
+            outline: editing ? '2px solid rgba(110,231,183,0.9)' : selected ? '2px dashed rgba(110,231,183,0.7)' : 'none',
+            outlineOffset: '2px',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word'
+          };
+          // Editing: a focused contentEditable that matches the rendered text
+          // exactly (WYSIWYG). Esc / Enter (without Shift) or clicking away
+          // commits and exits; typing never leaks to lane shortcuts.
+          if (editing) {
+            return (
+              <AnnotationCanvasEditor
+                key={item.id}
+                initialText={item.text ?? ''}
+                style={boxStyle}
+                onChange={(text) => updateItem(item.id, { text })}
+                onDone={() => setEditingAnnotation(null)}
+              />
+            );
+          }
           return (
             <div
               onPointerDown={(e) => onAnnotationDown(e, item)}
               onPointerMove={onAnnotationMove}
               onPointerUp={onAnnotationUp}
               onPointerCancel={onAnnotationUp}
+              onDoubleClick={(e) => { e.stopPropagation(); setEditingAnnotation(item.id); }}
+              data-anno="overlay"
               className="absolute z-10 cursor-grab select-none active:cursor-grabbing"
-              style={{
-                left: `${posX * 100}%`,
-                top: `${posY * 100}%`,
-                transform: 'translate(-50%, -50%)',
-                maxWidth: '80%',
-                fontFamily,
-                fontWeight: bold ? 700 : 400,
-                fontStyle: italic ? 'italic' : 'normal',
-                fontSize: `calc(${fontSizeFrac * 100}vh)`,
-                lineHeight: 1.25,
-                color: textColor,
-                textAlign,
-                backgroundColor: bg ?? 'transparent',
-                padding: bg ? '0.4em 0.7em' : '0',
-                borderRadius: bg ? '10px' : '0',
-                outline: selected ? '2px dashed rgba(110,231,183,0.7)' : 'none',
-                outlineOffset: '2px',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word'
-              }}
+              style={{ ...boxStyle, color: empty ? 'rgba(255,255,255,0.5)' : textColor }}
+              title={t('editor.dragAnnotation')}
             >
-              {item.text || ''}
+              {empty ? t('side.enterText') : item.text}
             </div>
           );
         })()}
@@ -592,5 +614,58 @@ export function Preview() {
         )}
       </div>
     </div>
+  );
+}
+
+// On-canvas WYSIWYG text editor for an annotation. A focused contentEditable
+// that visually matches the rendered text; commits on blur and exits on
+// Esc / Enter (Shift+Enter inserts a newline). Pointer + key events are kept
+// local so dragging the stage and lane shortcuts don't fire while typing.
+function AnnotationCanvasEditor({
+  initialText,
+  style,
+  onChange,
+  onDone
+}: {
+  initialText: string;
+  style: React.CSSProperties;
+  onChange: (text: string) => void;
+  onDone: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.innerText = initialText;
+    el.focus();
+    // Caret to the end of any existing text.
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      data-anno="editor"
+      onInput={(e) => onChange(e.currentTarget.innerText)}
+      onPointerDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Escape' || (e.key === 'Enter' && !e.shiftKey)) {
+          e.preventDefault();
+          onDone();
+        }
+      }}
+      onBlur={onDone}
+      className="absolute z-20 cursor-text outline-none"
+      style={{ ...style, minWidth: '1ch' }}
+    />
   );
 }
