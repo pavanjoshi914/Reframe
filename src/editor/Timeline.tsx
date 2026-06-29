@@ -98,6 +98,13 @@ export function Timeline() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const map: Record<string, LaneKind> = { z: 'zoom', t: 'trim', a: 'annotation', s: 'speed', m: 'magnify', l: 'spotlight' };
       const k = e.key.toLowerCase();
+      // Shift+L / Shift+M apply a cursor-tracked spotlight/magnify to the WHOLE
+      // video (bare L / M still drop a region on part of it).
+      if (e.shiftKey && (k === 'l' || k === 'm')) {
+        e.preventDefault();
+        useEditor.getState().addWholeVideoEffect(k === 'l' ? 'spotlight' : 'magnify');
+        return;
+      }
       if (map[k]) {
         e.preventDefault();
         addItem(map[k], currentMs);

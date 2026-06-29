@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight } from 'lucide-react';
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem } from './store';
 import { runExport } from './export';
 import { CropModal } from './CropModal';
@@ -14,7 +14,9 @@ export function Sidebar() {
   const showSelection = selectedItem && (
     selectedItem.kind === 'zoom' ||
     selectedItem.kind === 'speed' ||
-    selectedItem.kind === 'annotation'
+    selectedItem.kind === 'annotation' ||
+    selectedItem.kind === 'magnify' ||
+    selectedItem.kind === 'spotlight'
   );
 
   return (
@@ -104,6 +106,10 @@ function SelectionSection() {
     return <AnnotationEditor item={item} />;
   }
 
+  if (item.kind === 'magnify' || item.kind === 'spotlight') {
+    return <SpotlightMagnifyEditor item={item} />;
+  }
+
   if (item.kind === 'speed') {
     const rate = item.speed ?? 1.5;
     return (
@@ -137,6 +143,66 @@ function SelectionSection() {
   }
 
   return null;
+}
+
+// Editor for a placed spotlight / magnify region: choose whether the lens
+// follows the recorded cursor or sits at a fixed (manually dragged) point, and
+// optionally stretch it across the whole video.
+function SpotlightMagnifyEditor({ item }: { item: LaneItem }) {
+  const t = useT();
+  const updateItem = useEditor((s) => s.updateItem);
+  const removeItem = useEditor((s) => s.removeItem);
+  const selectItem = useEditor((s) => s.selectItem);
+  const durationMs = useEditor((s) => s.durationMs);
+  const track = item.track ?? 'cursor';
+  const isMag = item.kind === 'magnify';
+  const wholeVideo = item.startMs <= 1 && item.endMs >= durationMs - 1;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-xs text-white/70">
+          {isMag ? <Search size={12} /> : <Flashlight size={12} />} {t(isMag ? 'tl.magnify' : 'tl.spotlight')}
+        </span>
+        <span className="rounded bg-violet-500/15 px-1.5 py-0.5 font-mono text-[11px] text-violet-300">
+          {((item.endMs - item.startMs) / 1000).toFixed(1)}s
+        </span>
+      </div>
+
+      <div>
+        <Label>{t('side.tracking')}</Label>
+        <div className="grid grid-cols-2 gap-1.5">
+          {(['cursor', 'manual'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => updateItem(item.id, { track: m })}
+              className={
+                'rounded-md px-2 py-1.5 text-xs font-medium ' +
+                (track === m ? 'bg-emerald-500 text-black' : 'bg-white/5 text-white/70 hover:bg-white/10')
+              }
+            >
+              {t(m === 'cursor' ? 'side.followCursor' : 'side.fixedPosition')}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-[11px] text-white/40">
+          {t(track === 'cursor' ? 'side.followCursorTip' : 'side.fixedPositionTip')}
+        </p>
+      </div>
+
+      <div>
+        <button
+          onClick={() => updateItem(item.id, { startMs: 0, endMs: durationMs })}
+          disabled={wholeVideo}
+          className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-white/5"
+        >
+          {t('side.applyWholeVideo')}
+        </button>
+        {wholeVideo && <p className="mt-1 text-[11px] text-emerald-300/70">{t('side.wholeVideoNote')}</p>}
+      </div>
+
+      <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label={t('side.deleteEffect')} />
+    </div>
+  );
 }
 
 const ANNOTATION_FONT_FAMILIES = [

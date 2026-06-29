@@ -661,23 +661,39 @@ export function drawFrame(
         drawWebcamPlaceholder(ctx, wx, wy, wcW, wcH, cornerRadius);
       }
     }
-    // Cursor spotlight + magnifier — both track the recorded cursor position.
-    // The magnifier is active either globally (the slider, applied to the whole
-    // video) OR only inside a "magnify" timeline region the user placed; a
-    // region with the slider off uses a sensible default strength.
+    // Cursor spotlight + magnifier. Each is active either globally (its slider,
+    // applied to the whole video) OR within a placed timeline region. A region
+    // either follows the recorded cursor ('cursor', default) or sits at a fixed
+    // user-dragged point ('manual', posX/posY as fractions of the output frame).
     const magItem = items.find((it) => it.kind === 'magnify' && ms >= it.startMs && ms <= it.endMs);
-    const magStrength = effects.cursorMagnifier > 0 ? effects.cursorMagnifier : (magItem ? 0.7 : 0);
     const spotItem = items.find((it) => it.kind === 'spotlight' && ms >= it.startMs && ms <= it.endMs);
-    const spotStrength = effects.cursorSpotlight > 0 ? effects.cursorSpotlight : (spotItem ? 0.8 : 0);
-    if ((spotStrength > 0 || magStrength > 0) && d.cursorSamples) {
-      const cur = cursorAt(d.cursorSamples, ms);
-      if (cur) {
-        const { w: sw, h: sh } = srcDims(srcCanvas);
-        const pos = cursorToOutput(cur, sw, sh, cropRegion, innerX, innerY, innerW, innerH, activeZoom ?? undefined);
-        if (pos) {
-          if (spotStrength > 0) drawCursorSpotlight(ctx, outW, outH, pos.x, pos.y, spotStrength);
-          if (magStrength > 0) drawCursorMagnifier(ctx, outW, outH, pos.x, pos.y, magStrength);
+    const globalMag = effects.cursorMagnifier;
+    const globalSpot = effects.cursorSpotlight;
+    if (globalMag > 0 || globalSpot > 0 || magItem || spotItem) {
+      // Position following the recorded cursor — shared by the global sliders
+      // and any 'cursor'-tracked region. Null when there's no cursor data.
+      let cursorPos: { x: number; y: number } | null = null;
+      if (d.cursorSamples) {
+        const cur = cursorAt(d.cursorSamples, ms);
+        if (cur) {
+          const { w: sw, h: sh } = srcDims(srcCanvas);
+          cursorPos = cursorToOutput(cur, sw, sh, cropRegion, innerX, innerY, innerW, innerH, activeZoom ?? undefined);
         }
+      }
+      const manualPos = (it: { posX?: number; posY?: number }) => ({ x: (it.posX ?? 0.5) * outW, y: (it.posY ?? 0.5) * outH });
+      // Magnifier: global slider wins; else the in-range region at default strength.
+      if (globalMag > 0) {
+        if (cursorPos) drawCursorMagnifier(ctx, outW, outH, cursorPos.x, cursorPos.y, globalMag);
+      } else if (magItem) {
+        const p = magItem.track === 'manual' ? manualPos(magItem) : cursorPos;
+        if (p) drawCursorMagnifier(ctx, outW, outH, p.x, p.y, 0.7);
+      }
+      // Spotlight: same resolution.
+      if (globalSpot > 0) {
+        if (cursorPos) drawCursorSpotlight(ctx, outW, outH, cursorPos.x, cursorPos.y, globalSpot);
+      } else if (spotItem) {
+        const p = spotItem.track === 'manual' ? manualPos(spotItem) : cursorPos;
+        if (p) drawCursorSpotlight(ctx, outW, outH, p.x, p.y, 0.8);
       }
     }
   }

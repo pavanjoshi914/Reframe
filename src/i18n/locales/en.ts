@@ -71,6 +71,7 @@ export default {
   'editor.dragReposition': 'Drag to reposition',
   'editor.dragFocus': 'Drag to set zoom focus',
   'editor.dragAnnotation': 'Drag to move · double-click to edit',
+  'editor.dragLens': 'Drag to place the lens',
 
   // Sidebar — sections
   'side.selection': 'Selection',
@@ -124,6 +125,14 @@ export default {
   'side.playbackSpeed': 'Playback Speed',
   'side.deleteSpeed': 'Delete Speed Region',
   'side.deleteAnnotation': 'Delete Annotation',
+  'side.deleteEffect': 'Delete',
+  'side.tracking': 'Tracking',
+  'side.followCursor': 'Follow cursor',
+  'side.fixedPosition': 'Fixed position',
+  'side.followCursorTip': 'The lens follows the recorded cursor (arrow).',
+  'side.fixedPositionTip': 'Drag the handle on the preview to place the lens.',
+  'side.applyWholeVideo': 'Apply to whole video',
+  'side.wholeVideoNote': 'Covers the whole video · tracks the cursor.',
   'side.text': 'Text',
   'side.enterText': 'Enter text…',
   'side.font': 'Font',

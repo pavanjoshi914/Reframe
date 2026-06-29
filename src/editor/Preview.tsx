@@ -42,6 +42,13 @@ export function Preview() {
     const it = items.find((i) => i.id === selectedItemId);
     return it && it.kind === 'zoom' ? it : null;
   }, [selectedItemId, items]);
+  // A selected spotlight/magnify region in 'manual' mode gets a draggable
+  // handle on the stage so the user can place the lens where they want.
+  const selectedManualLens = useMemo(() => {
+    if (!selectedItemId) return null;
+    const it = items.find((i) => i.id === selectedItemId);
+    return it && (it.kind === 'magnify' || it.kind === 'spotlight') && it.track === 'manual' ? it : null;
+  }, [selectedItemId, items]);
 
   const videoVolume = useEditor((s) => s.videoVolume);
   const videoMuted = useEditor((s) => s.videoMuted);
@@ -417,6 +424,35 @@ export function Preview() {
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   }
 
+  // Manual spotlight/magnify lens dragging — places posX/posY (fractions of the
+  // stage = output frame), the same coordinates the exporter reads in 'manual'.
+  const lensDragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; id: string } | null>(null);
+  function onLensDown(e: React.PointerEvent, item: NonNullable<typeof selectedManualLens>) {
+    if (!stageRef.current) return;
+    e.stopPropagation();
+    e.preventDefault();
+    selectItem(item.id);
+    lensDragRef.current = { startX: e.clientX, startY: e.clientY, baseX: item.posX ?? 0.5, baseY: item.posY ?? 0.5, id: item.id };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function onLensMove(e: React.PointerEvent) {
+    const d = lensDragRef.current;
+    const stage = stageRef.current;
+    if (!d || !stage) return;
+    const r = stage.getBoundingClientRect();
+    const dx = (e.clientX - d.startX) / r.width;
+    const dy = (e.clientY - d.startY) / r.height;
+    updateItem(d.id, {
+      posX: Math.max(0, Math.min(1, d.baseX + dx)),
+      posY: Math.max(0, Math.min(1, d.baseY + dy))
+    });
+  }
+  function onLensUp(e: React.PointerEvent) {
+    if (!lensDragRef.current) return;
+    lensDragRef.current = null;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  }
+
   function onWebcamUp(e: React.PointerEvent) {
     if (!dragRef.current) return;
     dragRef.current = null;
@@ -593,6 +629,28 @@ export function Preview() {
               title={t('editor.dragAnnotation')}
             >
               {empty ? t('side.enterText') : item.text}
+            </div>
+          );
+        })()}
+
+        {selectedManualLens && (() => {
+          const it = selectedManualLens;
+          const px = (it.posX ?? 0.5) * 100;
+          const py = (it.posY ?? 0.5) * 100;
+          return (
+            <div
+              onPointerDown={(e) => onLensDown(e, it)}
+              onPointerMove={onLensMove}
+              onPointerUp={onLensUp}
+              onPointerCancel={onLensUp}
+              data-lens="handle"
+              className="absolute z-20 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full bg-violet-500/30 ring-2 ring-violet-300 shadow-[0_0_12px_rgba(167,139,250,0.6)] active:cursor-grabbing"
+              style={{ left: `${px}%`, top: `${py}%` }}
+              title={t('editor.dragLens')}
+            >
+              <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-violet-200/80" />
+              <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-violet-200/80" />
+              <span className="block h-1.5 w-1.5 rounded-full bg-violet-100" />
             </div>
           );
         })()}

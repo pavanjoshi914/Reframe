@@ -156,6 +156,8 @@ export type EditorState = {
   setVideoVolume: (v: number) => void;
   setVideoMuted: (m: boolean) => void;
   addItem: (kind: LaneKind, atMs: number) => void;
+  // Add a spotlight/magnify region spanning the whole video, cursor-tracked.
+  addWholeVideoEffect: (kind: 'spotlight' | 'magnify') => void;
   updateItem: (id: string, patch: Partial<LaneItem>) => void;
   removeItem: (id: string) => void;
   selectItem: (id: string | null) => void;
@@ -404,13 +406,20 @@ export const useEditor = create<EditorState>((set, get) => ({
       endMs: Math.min(dur, atMs + len),
       ...(kind === 'zoom' ? { zoomLevel: 1.5, zoomTargetX: 0.5, zoomTargetY: 0.5 } : {}),
       ...(kind === 'speed' ? { speed: 1.5 } : {}),
-      // Empty default so the placeholder ("Enter text…") is visible on the
-      // newly-added chip and the inline input auto-focuses immediately.
+      // New cursor effects follow the recorded cursor by default.
+      ...(kind === 'magnify' || kind === 'spotlight' ? { track: 'cursor' as const } : {}),
       ...(kind === 'annotation' ? { text: '' } : {})
     };
     // Jump the preview straight to the new item and pause, so the user sees it
     // immediately instead of having to manually seek to where they added it.
     set((s) => ({ items: [...s.items, item], selectedItemId: item.id, currentMs: previewPointFor(item), playing: false }));
+  },
+  addWholeVideoEffect: (kind) => {
+    const dur = get().durationMs || 1000;
+    const item: LaneItem = { id: crypto.randomUUID(), kind, startMs: 0, endMs: dur, track: 'cursor' };
+    // Select it (so the sidebar shows the whole-video note) and pause at the
+    // start so the lens is visible; no per-region seek since it spans everything.
+    set((s) => ({ items: [...s.items, item], selectedItemId: item.id, editingAnnotationId: null, playing: false }));
   },
   updateItem: (id, patch) =>
     set((s) => ({ items: s.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) })),
