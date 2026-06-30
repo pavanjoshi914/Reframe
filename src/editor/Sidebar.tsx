@@ -36,6 +36,9 @@ export function Sidebar() {
         <Section title={t('side.videoEffects')} defaultOpen>
           <VideoEffectsSection />
         </Section>
+        <Section title={t('side.cursor')} defaultOpen>
+          <CursorSection />
+        </Section>
       </div>
       <ExportSection />
     </div>
@@ -744,6 +747,37 @@ function VideoEffectsSection() {
         )}
       </div>
       {cropOpen && <CropModal onClose={() => setCropOpen(false)} />}
+    </div>
+  );
+}
+
+// Synthetic-cursor styling: a smoothed, scalable pointer + click ripples — the
+// signature "smooth cursor" look of polished demo videos.
+function CursorSection() {
+  const t = useT();
+  const cursorFx = useEditor((s) => s.cursorFx);
+  const setCursorFx = useEditor((s) => s.setCursorFx);
+  const hasCursorData = useEditor((s) => s.cursorSamples.length > 0);
+  return (
+    <div className="space-y-3">
+      <ToggleRow label={t('side.smoothCursor')} checked={cursorFx.enabled} onChange={(v) => setCursorFx({ enabled: v })} />
+      {cursorFx.enabled && (
+        <>
+          <RangeRow
+            label={t('side.cursorSize')}
+            value={Math.round(cursorFx.size * 100)}
+            min={50}
+            max={300}
+            step={10}
+            onChange={(v) => setCursorFx({ size: v / 100 })}
+            fmt={(v) => `${(v / 100).toFixed(1)}×`}
+          />
+          <ToggleRow label={t('side.clickHighlights')} checked={cursorFx.clicks} onChange={(v) => setCursorFx({ clicks: v })} />
+        </>
+      )}
+      <p className="text-[11px] text-white/40">
+        {cursorFx.enabled && !hasCursorData ? t('side.cursorNoData') : t('side.cursorTip')}
+      </p>
     </div>
   );
 }
