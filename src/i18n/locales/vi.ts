@@ -1,4 +1,9 @@
 export default {
+  'export.title': "Đang xuất video",
+  'export.done': "Xong",
+  'export.frame': "Khung hình {n} / {total}",
+  'export.cancel': "Hủy",
+  'export.cancelling': "Đang hủy…",
   'editor.dragAnnotation': "Kéo để di chuyển · nhấp đúp để chỉnh sửa",
   'editor.dragLens': "Kéo để đặt thấu kính",
   'tl.annotationPlaceholder': "Văn bản",

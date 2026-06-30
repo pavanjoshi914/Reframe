@@ -150,6 +150,11 @@ export default {
   'export.encodingAudio': 'Encoding audio',
   'export.saving': 'Saving',
   'export.cancelled': 'Cancelled',
+  'export.title': 'Exporting video',
+  'export.done': 'Done',
+  'export.frame': 'Frame {n} / {total}',
+  'export.cancel': 'Cancel',
+  'export.cancelling': 'Cancelling…',
 
   // Timeline
   'tl.zoom': 'Zoom',

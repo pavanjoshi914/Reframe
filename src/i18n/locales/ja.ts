@@ -1,4 +1,9 @@
 export default {
+  'export.title': "動画を書き出し中",
+  'export.done': "完了",
+  'export.frame': "フレーム {n} / {total}",
+  'export.cancel': "キャンセル",
+  'export.cancelling': "キャンセル中…",
   'editor.dragAnnotation': "ドラッグで移動 · ダブルクリックで編集",
   'editor.dragLens': "ドラッグしてレンズを配置",
   'tl.annotationPlaceholder': "テキスト",

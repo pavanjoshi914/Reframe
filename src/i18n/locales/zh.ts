@@ -1,4 +1,9 @@
 export default {
+  'export.title': "正在导出视频",
+  'export.done': "完成",
+  'export.frame': "帧 {n} / {total}",
+  'export.cancel': "取消",
+  'export.cancelling': "正在取消…",
   'editor.dragAnnotation': "拖动移动 · 双击编辑",
   'editor.dragLens': "拖动放置镜头",
   'tl.annotationPlaceholder': "文本",

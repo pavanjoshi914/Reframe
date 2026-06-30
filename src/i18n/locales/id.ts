@@ -1,4 +1,9 @@
 export default {
+  'export.title': "Mengekspor video",
+  'export.done': "Selesai",
+  'export.frame': "Bingkai {n} / {total}",
+  'export.cancel': "Batal",
+  'export.cancelling': "Membatalkan…",
   'editor.dragAnnotation': "Seret untuk memindahkan · klik dua kali untuk mengedit",
   'editor.dragLens': "Seret untuk menempatkan lensa",
   'tl.annotationPlaceholder': "Teks",

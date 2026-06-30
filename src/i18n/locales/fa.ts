@@ -1,4 +1,9 @@
 export default {
+  'export.title': "در حال خروجی‌گرفتن ویدیو",
+  'export.done': "انجام شد",
+  'export.frame': "فریم {n} / {total}",
+  'export.cancel': "لغو",
+  'export.cancelling': "در حال لغو…",
   'editor.dragAnnotation': "برای جابجایی بکشید · برای ویرایش دوبار کلیک کنید",
   'editor.dragLens': "برای قرار دادن ذره‌بین بکشید",
   'tl.annotationPlaceholder': "متن",

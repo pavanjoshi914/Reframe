@@ -1,4 +1,9 @@
 export default {
+  'export.title': "جارٍ تصدير الفيديو",
+  'export.done': "تم",
+  'export.frame': "الإطار {n} / {total}",
+  'export.cancel': "إلغاء",
+  'export.cancelling': "جارٍ الإلغاء…",
   'editor.dragAnnotation': "اسحب للتحريك · انقر مزدوجًا للتحرير",
   'editor.dragLens': "اسحب لوضع العدسة",
   'tl.annotationPlaceholder': "نص",

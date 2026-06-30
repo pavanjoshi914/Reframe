@@ -1,4 +1,9 @@
 export default {
+  'export.title': "동영상 내보내는 중",
+  'export.done': "완료",
+  'export.frame': "프레임 {n} / {total}",
+  'export.cancel': "취소",
+  'export.cancelling': "취소 중…",
   'editor.dragAnnotation': "드래그하여 이동 · 더블클릭하여 편집",
   'editor.dragLens': "드래그하여 렌즈 배치",
   'tl.annotationPlaceholder': "텍스트",

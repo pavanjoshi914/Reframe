@@ -1,4 +1,9 @@
 export default {
+  'export.title': "Экспорт видео",
+  'export.done': "Готово",
+  'export.frame': "Кадр {n} / {total}",
+  'export.cancel': "Отмена",
+  'export.cancelling': "Отмена…",
   'editor.dragAnnotation': "Перетащите, чтобы переместить · двойной щелчок для редактирования",
   'editor.dragLens': "Перетащите, чтобы разместить линзу",
   'tl.annotationPlaceholder': "Текст",

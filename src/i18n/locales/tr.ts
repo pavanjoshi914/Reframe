@@ -1,4 +1,9 @@
 export default {
+  'export.title': "Video dışa aktarılıyor",
+  'export.done': "Tamam",
+  'export.frame': "Kare {n} / {total}",
+  'export.cancel': "İptal",
+  'export.cancelling': "İptal ediliyor…",
   'editor.dragAnnotation': "Taşımak için sürükleyin · düzenlemek için çift tıklayın",
   'editor.dragLens': "Merceği yerleştirmek için sürükleyin",
   'tl.annotationPlaceholder': "Metin",

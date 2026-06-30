@@ -1,4 +1,9 @@
 export default {
+  'export.title': "กำลังส่งออกวิดีโอ",
+  'export.done': "เสร็จสิ้น",
+  'export.frame': "เฟรม {n} / {total}",
+  'export.cancel': "ยกเลิก",
+  'export.cancelling': "กำลังยกเลิก…",
   'editor.dragAnnotation': "ลากเพื่อย้าย · ดับเบิลคลิกเพื่อแก้ไข",
   'editor.dragLens': "ลากเพื่อวางเลนส์",
   'tl.annotationPlaceholder': "ข้อความ",

@@ -1,4 +1,9 @@
 export default {
+  'export.title': "Eksportowanie wideo",
+  'export.done': "Gotowe",
+  'export.frame': "Klatka {n} / {total}",
+  'export.cancel': "Anuluj",
+  'export.cancelling': "Anulowanie…",
   'editor.dragAnnotation': "Przeciągnij, aby przenieść · kliknij dwukrotnie, aby edytować",
   'editor.dragLens': "Przeciągnij, aby umieścić soczewkę",
   'tl.annotationPlaceholder': "Tekst",

@@ -1,4 +1,9 @@
 export default {
+  'export.title': "वीडियो निर्यात हो रहा है",
+  'export.done': "पूर्ण",
+  'export.frame': "फ़्रेम {n} / {total}",
+  'export.cancel': "रद्द करें",
+  'export.cancelling': "रद्द किया जा रहा है…",
   'editor.dragAnnotation': "खींचकर ले जाएँ · संपादित करने के लिए डबल-क्लिक करें",
   'editor.dragLens': "लेंस रखने के लिए खींचें",
   'tl.annotationPlaceholder': "टेक्स्ट",

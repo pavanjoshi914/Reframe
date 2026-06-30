@@ -1,4 +1,9 @@
 export default {
+  'export.title': "Video exporteren",
+  'export.done': "Klaar",
+  'export.frame': "Frame {n} / {total}",
+  'export.cancel': "Annuleren",
+  'export.cancelling': "Annuleren…",
   'editor.dragAnnotation': "Sleep om te verplaatsen · dubbelklik om te bewerken",
   'editor.dragLens': "Sleep om de lens te plaatsen",
   'tl.annotationPlaceholder': "Tekst",

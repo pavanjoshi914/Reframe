@@ -1,4 +1,9 @@
 export default {
+  'export.title': "Exportando vídeo",
+  'export.done': "Listo",
+  'export.frame': "Fotograma {n} / {total}",
+  'export.cancel': "Cancelar",
+  'export.cancelling': "Cancelando…",
   'editor.dragAnnotation': "Arrastra para mover · doble clic para editar",
   'editor.dragLens': "Arrastra para colocar la lupa",
   'tl.annotationPlaceholder': "Texto",
