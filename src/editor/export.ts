@@ -196,6 +196,15 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
   }
 
   const sourceDurationSec = await screenTrack.computeDuration();
+  // The real number of source frames (= encoded packets). MediaRecorder WebMs
+  // often carry an unreliable duration, so driving progress off timestamps can
+  // saturate at 99% partway through and freeze the frame counter. The packet
+  // count is exact, so we drive both the percentage AND the "frame X / N"
+  // counter off frames actually processed.
+  let totalSrcFrames = 0;
+  try {
+    totalSrcFrames = (await screenTrack.computePacketStats()).packetCount;
+  } catch { /* fall back to the duration estimate below */ }
 
   // ── Output dimensions ───────────────────────────────────────────────────
   const intrinsic = { w: screenTrack.displayWidth || 1920, h: screenTrack.displayHeight || 1080 };
@@ -261,7 +270,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
     let nextEmitMs = 0;
     let lastProgress = 0;
     let gifFrameCount = 0;
-    let gifTotalEst = 0;
+    let gifTotalEst = totalSrcFrames;
     let gifPreviewPct = -100;
     for await (const wrapped of screenSink.canvases()) {
       if (cancelRequested) break;
@@ -296,8 +305,10 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
         }
       }
       outMs = endOut;
-      if (sourceDurationSec > 0) {
-        const pct = Math.min(99, (timestamp / sourceDurationSec) * 100);
+      {
+        const pct = gifTotalEst
+          ? Math.min(99, (gifFrameCount / gifTotalEst) * 100)
+          : sourceDurationSec > 0 ? Math.min(99, (timestamp / sourceDurationSec) * 100) : 0;
         if (pct - lastProgress >= 1) {
           lastProgress = pct;
           let preview: string | undefined;
@@ -399,9 +410,11 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
   // doesn't leak between regions.
   let fastForwardDebt = 0;
   let prevSpeedFactor = 1;
-  // Frame counters + preview throttle for the progress modal.
+  // Frame counters + preview throttle for the progress modal. totalFramesEst
+  // prefers the exact packet count; only if that wasn't available do we fall
+  // back to a per-frame-duration estimate.
   let srcFrameCount = 0;
-  let totalFramesEst = 0;
+  let totalFramesEst = totalSrcFrames;
   let lastPreviewPct = -100;
 
   for await (const wrapped of screenSink.canvases()) {
@@ -460,20 +473,28 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
       outTs += frameDuration;
     }
 
-    if (sourceDurationSec > 0) {
-      const pct = Math.min(99, (timestamp / sourceDurationSec) * 100);
-      if (pct - lastProgress >= 1) {
-        lastProgress = pct;
-        // A small JPEG snapshot every ~4% gives the modal a live "frame being
-        // processed" preview without the cost of doing it every frame.
-        let preview: string | undefined;
-        if (pct - lastPreviewPct >= 4) {
-          lastPreviewPct = pct;
-          preview = snapshotPreview(canvas);
-        }
-        onProgress('Encoding', pct, { frame: srcFrameCount, totalFrames: totalFramesEst, preview });
+    // Drive progress off frames processed when we know the total (exact, never
+    // saturates); fall back to the timestamp ratio only if we have no count.
+    const pct = totalFramesEst
+      ? Math.min(99, (srcFrameCount / totalFramesEst) * 100)
+      : sourceDurationSec > 0 ? Math.min(99, (timestamp / sourceDurationSec) * 100) : 0;
+    if (pct - lastProgress >= 1) {
+      lastProgress = pct;
+      // A small JPEG snapshot every ~4% gives the modal a live "frame being
+      // processed" preview without the cost of doing it every frame.
+      let preview: string | undefined;
+      if (pct - lastPreviewPct >= 4) {
+        lastPreviewPct = pct;
+        preview = snapshotPreview(canvas);
       }
+      onProgress('Encoding', pct, { frame: srcFrameCount, totalFrames: totalFramesEst, preview });
     }
+  }
+
+  // Make sure the counter lands on the true total even if the last 1% tick fell
+  // a few frames short of the end.
+  if (!cancelRequested && totalFramesEst) {
+    onProgress('Encoding', 99, { frame: srcFrameCount, totalFrames: totalFramesEst });
   }
 
   if (cancelRequested) {
