@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "Aquecendo o codificador…",
+  'export.cheer2': "Compondo seus quadros…",
+  'export.cheer3': "Ficando ótimo, aguarde…",
+  'export.cheer4': "Quase lá…",
+  'export.cheer5': "Quase pronto…",
   'export.title': "Exportando vídeo",
   'export.done': "Concluído",
   'export.frame': "Quadro {n} / {total}",

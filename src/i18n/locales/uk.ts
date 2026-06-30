@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "Розігрів кодувальника…",
+  'export.cheer2': "Збираємо ваші кадри…",
+  'export.cheer3': "Виглядає чудово, ще трохи…",
+  'export.cheer4': "Майже готово…",
+  'export.cheer5': "Ось-ось завершимо…",
   'export.title': "Експорт відео",
   'export.done': "Готово",
   'export.frame': "Кадр {n} / {total}",

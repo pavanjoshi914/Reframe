@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "正在预热编码器…",
+  'export.cheer2': "正在合成画面…",
+  'export.cheer3': "画面很棒，请稍候…",
+  'export.cheer4': "马上就好…",
+  'export.cheer5': "即将完成…",
   'export.title': "正在导出视频",
   'export.done': "完成",
   'export.frame': "帧 {n} / {total}",

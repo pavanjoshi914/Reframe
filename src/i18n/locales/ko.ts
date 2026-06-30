@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "인코더를 준비하는 중…",
+  'export.cheer2': "프레임을 합성하는 중…",
+  'export.cheer3': "멋지네요, 조금만 기다려 주세요…",
+  'export.cheer4': "거의 다 됐어요…",
+  'export.cheer5': "곧 완료됩니다…",
   'export.title': "동영상 내보내는 중",
   'export.done': "완료",
   'export.frame': "프레임 {n} / {total}",

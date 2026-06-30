@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "Đang khởi động bộ mã hóa…",
+  'export.cheer2': "Đang ghép các khung hình…",
+  'export.cheer3': "Trông tuyệt lắm, chờ chút nhé…",
+  'export.cheer4': "Sắp xong rồi…",
+  'export.cheer5': "Gần hoàn tất…",
   'export.title': "Đang xuất video",
   'export.done': "Xong",
   'export.frame': "Khung hình {n} / {total}",

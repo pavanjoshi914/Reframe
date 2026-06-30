@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "Encoder warmt op…",
+  'export.cheer2': "Je frames worden samengesteld…",
+  'export.cheer3': "Ziet er goed uit, momentje…",
+  'export.cheer4': "Bijna klaar…",
+  'export.cheer5': "Vrijwel voltooid…",
   'export.title': "Video exporteren",
   'export.done': "Klaar",
   'export.frame': "Frame {n} / {total}",

@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "جارٍ تجهيز المُرمِّز…",
+  'export.cheer2': "يتم تركيب إطاراتك…",
+  'export.cheer3': "يبدو رائعًا، انتظر قليلاً…",
+  'export.cheer4': "اقتربنا…",
+  'export.cheer5': "على وشك الانتهاء…",
   'export.title': "جارٍ تصدير الفيديو",
   'export.done': "تم",
   'export.frame': "الإطار {n} / {total}",

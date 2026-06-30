@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "กำลังอุ่นเครื่องตัวเข้ารหัส…",
+  'export.cheer2': "กำลังประกอบเฟรมของคุณ…",
+  'export.cheer3': "ดูดีมาก รอสักครู่…",
+  'export.cheer4': "ใกล้เสร็จแล้ว…",
+  'export.cheer5': "จวนเสร็จแล้ว…",
   'export.title': "กำลังส่งออกวิดีโอ",
   'export.done': "เสร็จสิ้น",
   'export.frame': "เฟรม {n} / {total}",

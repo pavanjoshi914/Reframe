@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "Kodlayıcı ısınıyor…",
+  'export.cheer2': "Kareleriniz birleştiriliyor…",
+  'export.cheer3': "Harika görünüyor, bekleyin…",
+  'export.cheer4': "Neredeyse bitti…",
+  'export.cheer5': "Az kaldı…",
   'export.title': "Video dışa aktarılıyor",
   'export.done': "Tamam",
   'export.frame': "Kare {n} / {total}",

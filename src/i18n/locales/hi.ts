@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "एन्कोडर तैयार हो रहा है…",
+  'export.cheer2': "आपके फ़्रेम जोड़े जा रहे हैं…",
+  'export.cheer3': "बढ़िया लग रहा है, थोड़ा रुकें…",
+  'export.cheer4': "बस थोड़ा और…",
+  'export.cheer5': "लगभग पूरा हो गया…",
   'export.title': "वीडियो निर्यात हो रहा है",
   'export.done': "पूर्ण",
   'export.frame': "फ़्रेम {n} / {total}",

@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "Memanaskan encoder…",
+  'export.cheer2': "Menyusun bingkai Anda…",
+  'export.cheer3': "Terlihat bagus, tunggu sebentar…",
+  'export.cheer4': "Hampir selesai…",
+  'export.cheer5': "Sebentar lagi selesai…",
   'export.title': "Mengekspor video",
   'export.done': "Selesai",
   'export.frame': "Bingkai {n} / {total}",

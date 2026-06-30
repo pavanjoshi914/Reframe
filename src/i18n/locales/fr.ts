@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "Préchauffage de l’encodeur…",
+  'export.cheer2': "Composition de vos images…",
+  'export.cheer3': "C’est superbe, patientez…",
+  'export.cheer4': "Presque fini…",
+  'export.cheer5': "Bientôt terminé…",
   'export.title': "Exportation de la vidéo",
   'export.done': "Terminé",
   'export.frame': "Image {n} / {total}",

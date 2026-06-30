@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "Rozgrzewanie kodera…",
+  'export.cheer2': "Składanie Twoich klatek…",
+  'export.cheer3': "Wygląda świetnie, chwileczkę…",
+  'export.cheer4': "Już prawie…",
+  'export.cheer5': "Prawie gotowe…",
   'export.title': "Eksportowanie wideo",
   'export.done': "Gotowe",
   'export.frame': "Klatka {n} / {total}",

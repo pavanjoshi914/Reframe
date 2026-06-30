@@ -827,11 +827,23 @@ const EXPORT_STAGE_LABELS: Record<string, string> = {
 
 // openscreen-style export progress popup: a live "frame being processed"
 // thumbnail, a progress bar with the frame counter + percentage, and Cancel.
+// Encouraging messages shown during the (long) encode phase, advancing with
+// progress so the wait feels like it's going somewhere ("almost there…").
+function cheerKey(pct: number): string {
+  if (pct < 25) return 'export.cheer1';
+  if (pct < 50) return 'export.cheer2';
+  if (pct < 75) return 'export.cheer3';
+  if (pct < 92) return 'export.cheer4';
+  return 'export.cheer5';
+}
+
 function ExportProgressModal({ busy, onCancel }: { busy: BusyState; onCancel: () => void }) {
   const t = useT();
   const [cancelling, setCancelling] = useState(false);
   const stage = EXPORT_STAGE_LABELS[busy.phase] ? t(EXPORT_STAGE_LABELS[busy.phase]) : busy.phase;
   const pct = Math.round(busy.pct);
+  const encoding = busy.phase === 'Encoding' || busy.phase === 'Encoding GIF';
+  const subtitle = cancelling ? t('export.cancelling') : encoding ? t(cheerKey(pct)) : stage;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="w-[380px] rounded-2xl border border-white/10 bg-[#14161b] p-6 shadow-2xl">
@@ -839,7 +851,7 @@ function ExportProgressModal({ busy, onCancel }: { busy: BusyState; onCancel: ()
           <Loader2 size={16} className="animate-spin text-emerald-400" />
           <h2 className="text-sm font-semibold text-white">{t('export.title')}</h2>
         </div>
-        <p className="mb-4 text-xs text-white/50">{cancelling ? t('export.cancelling') : stage}</p>
+        <p className="mb-4 text-xs text-white/50 transition-opacity">{subtitle}</p>
         <div className="mb-4 aspect-video w-full overflow-hidden rounded-lg border border-white/10 bg-black/40">
           {busy.preview ? (
             <img src={busy.preview} alt="" className="h-full w-full object-contain" />

@@ -155,6 +155,11 @@ export default {
   'export.frame': 'Frame {n} / {total}',
   'export.cancel': 'Cancel',
   'export.cancelling': 'Cancelling…',
+  'export.cheer1': 'Warming up the encoder…',
+  'export.cheer2': 'Compositing your frames…',
+  'export.cheer3': 'Looking sharp — hang tight…',
+  'export.cheer4': 'Almost there…',
+  'export.cheer5': 'Just about done…',
 
   // Timeline
   'tl.zoom': 'Zoom',

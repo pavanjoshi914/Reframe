@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "در حال آماده‌سازی کدگذار…",
+  'export.cheer2': "در حال ترکیب فریم‌ها…",
+  'export.cheer3': "عالی به نظر می‌رسد، کمی صبر کنید…",
+  'export.cheer4': "تقریباً تمام شد…",
+  'export.cheer5': "به‌زودی تمام می‌شود…",
   'export.title': "در حال خروجی‌گرفتن ویدیو",
   'export.done': "انجام شد",
   'export.frame': "فریم {n} / {total}",

@@ -1,4 +1,9 @@
 export default {
+  'export.cheer1': "エンコーダーを準備中…",
+  'export.cheer2': "フレームを合成中…",
+  'export.cheer3': "いい感じです。少々お待ちを…",
+  'export.cheer4': "もうすぐです…",
+  'export.cheer5': "まもなく完了…",
   'export.title': "動画を書き出し中",
   'export.done': "完了",
   'export.frame': "フレーム {n} / {total}",
