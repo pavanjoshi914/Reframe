@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { RecordingMeta, CursorSample } from '@shared/ipc';
+import type { RecordingMeta, CursorSample, ClickSample } from '@shared/ipc';
 import { suggestZoomsFromCursor } from './autoZoom';
 
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
@@ -123,9 +123,16 @@ export type EditorState = {
   editingAnnotationId: string | null;
   pixelsPerSecond: number;
 
-  // Cursor samples captured during recording (for auto-zoom). Not serialized;
-  // reloaded from the recording's sidecar on open.
+  // Cursor samples captured during recording (for auto-zoom + the synthetic
+  // cursor). Not serialized; reloaded from the recording's sidecar on open.
+  // cursorSamplesSmooth is a jitter-smoothed copy used to render the synthetic
+  // cursor as a buttery glide; cursorClicks drives click-highlight ripples.
   cursorSamples: CursorSample[];
+  cursorSamplesSmooth: CursorSample[];
+  cursorClicks: ClickSample[];
+  // Synthetic-cursor styling (serialized). When enabled, the compositor draws a
+  // smoothed, scalable cursor + optional click ripples on top of the video.
+  cursorFx: { enabled: boolean; size: number; clicks: boolean };
 
   // Undo/redo history (session-only; never serialized). past/future hold
   // document snapshots; _applyingHistory suppresses capture while a snapshot is
@@ -167,6 +174,8 @@ export type EditorState = {
   setEditingAnnotation: (id: string | null) => void;
   setPixelsPerSecond: (pps: number) => void;
   setCursorSamples: (s: CursorSample[]) => void;
+  setCursorClicks: (c: ClickSample[]) => void;
+  setCursorFx: (patch: Partial<EditorState['cursorFx']>) => void;
   // Replace existing zoom items with auto-suggested ones derived from the
   // captured cursor movement. Returns how many were added.
   suggestZooms: () => number;
@@ -191,10 +200,30 @@ export type SerializedProject = {
   exportFormat: EditorState['exportFormat'];
   exportQuality: EditorState['exportQuality'];
   items: LaneItem[];
+  cursorFx?: EditorState['cursorFx'];
 };
+
+const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = { enabled: false, size: 1.4, clicks: true };
 
 function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
+}
+
+// Jitter-smooth the captured cursor path with a symmetric moving average. A
+// window of ±win samples (~40ms each) rounds off the shaky hand motion into a
+// smooth glide while keeping near-zero net lag (symmetric, unlike an EMA). The
+// rounded corners are exactly the "buttery" look these demo tools are known for.
+function smoothCursor(samples: CursorSample[], win = 4): CursorSample[] {
+  if (samples.length < 3) return samples.slice();
+  const out: CursorSample[] = [];
+  for (let i = 0; i < samples.length; i++) {
+    let sx = 0, sy = 0, n = 0;
+    const lo = Math.max(0, i - win);
+    const hi = Math.min(samples.length - 1, i + win);
+    for (let j = lo; j <= hi; j++) { sx += samples[j].x; sy += samples[j].y; n++; }
+    out.push({ t: samples[i].t, x: sx / n, y: sy / n });
+  }
+  return out;
 }
 
 // Extract the serializable document (everything undo/redo and save care about)
@@ -213,7 +242,8 @@ function docOf(s: EditorState): SerializedProject {
     effects: s.effects,
     exportFormat: s.exportFormat,
     exportQuality: s.exportQuality,
-    items: s.items
+    items: s.items,
+    cursorFx: s.cursorFx
   };
 }
 
@@ -283,6 +313,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   editingAnnotationId: null,
   pixelsPerSecond: 60,
   cursorSamples: [],
+  cursorSamplesSmooth: [],
+  cursorClicks: [],
+  cursorFx: { enabled: false, size: 1.4, clicks: true },
 
   past: [],
   future: [],
@@ -468,7 +501,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   setEditingAnnotation: (id) =>
     set((s) => (id ? { editingAnnotationId: id, selectedItemId: id } : { editingAnnotationId: null, selectedItemId: s.selectedItemId })),
   setPixelsPerSecond: (pps) => set({ pixelsPerSecond: Math.max(10, Math.min(800, pps)) }),
-  setCursorSamples: (s) => set({ cursorSamples: s }),
+  setCursorSamples: (s) => set({ cursorSamples: s, cursorSamplesSmooth: smoothCursor(s) }),
+  setCursorClicks: (c) => set({ cursorClicks: c }),
+  setCursorFx: (patch) => set((st) => ({ cursorFx: { ...st.cursorFx, ...patch } })),
   suggestZooms: () => {
     const s = get();
     const suggestions = suggestZoomsFromCursor(s.cursorSamples, s.durationMs);
@@ -508,6 +543,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       exportFormat: data.exportFormat,
       exportQuality: data.exportQuality,
       items: data.items,
+      cursorFx: data.cursorFx ?? DEFAULT_CURSOR_FX,
       selectedItemId: null,
       // Loading a project is a fresh document → reset undo history.
       past: [],
@@ -530,6 +566,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       exportFormat: snap.exportFormat,
       exportQuality: snap.exportQuality,
       items: snap.items,
+      cursorFx: snap.cursorFx ?? s.cursorFx,
       selectedItemId: snap.items.some((it) => it.id === s.selectedItemId) ? s.selectedItemId : null
     })),
   // Push a pre-change snapshot onto the past stack (called by the debounced

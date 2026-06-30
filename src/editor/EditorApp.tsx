@@ -46,8 +46,10 @@ export function EditorApp() {
 
     // Load the recording's cursor sidecar (if any) so "Suggest Zooms" works.
     async function loadCursor(rec: import('@shared/ipc').RecordingMeta) {
-      const samples = rec.cursorFilePath ? await window.api.getCursorData(rec.cursorFilePath) : null;
-      if (!cancelled) useEditor.getState().setCursorSamples(samples ?? []);
+      const data = rec.cursorFilePath ? await window.api.getCursorData(rec.cursorFilePath) : null;
+      if (cancelled) return;
+      useEditor.getState().setCursorSamples(data?.samples ?? []);
+      useEditor.getState().setCursorClicks(data?.clicks ?? []);
     }
 
     async function hydrateForRecording(rec: import('@shared/ipc').RecordingMeta) {

@@ -498,7 +498,13 @@ ipcMain.handle('cursor:load', async (_evt, filePath: string) => {
     if (!recordingsTempDir || !resolved.startsWith(recordingsTempDir + path.sep)) return null;
     const raw = await fs.promises.readFile(resolved, 'utf-8');
     const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : null;
+    // Legacy sidecars are a bare CursorSample[]; current ones are
+    // { samples, clicks }. Normalize to { samples, clicks }.
+    if (Array.isArray(data)) return { samples: data, clicks: [] };
+    if (data && Array.isArray(data.samples)) {
+      return { samples: data.samples, clicks: Array.isArray(data.clicks) ? data.clicks : [] };
+    }
+    return null;
   } catch {
     return null;
   }

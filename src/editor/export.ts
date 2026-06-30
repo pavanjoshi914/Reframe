@@ -15,7 +15,7 @@ import {
 } from 'mediabunny';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
 import { useEditor, type CropRegion, ANNOTATION_DEFAULTS } from './store';
-import type { CursorSample } from '@shared/ipc';
+import type { CursorSample, ClickSample } from '@shared/ipc';
 
 // Export pipeline — frame-accurate, NOT real-time.
 //
@@ -238,7 +238,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
   const ctx = canvas.getContext('2d', { willReadFrequently: isGif });
   if (!ctx) throw new Error('2D canvas unavailable');
 
-  const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, bgImage, cursorSamples: state.cursorSamples };
+  const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorFx: state.cursorFx };
 
   // Motion blur: composite each frame onto a scratch canvas, then blend it onto
   // the output at alpha (1-k) so the output is an exponential frame average
@@ -621,6 +621,9 @@ export type DrawCtx = {
   cropRegion: CropRegion;
   bgImage: HTMLImageElement | null;
   cursorSamples?: CursorSample[];
+  cursorSamplesSmooth?: CursorSample[];
+  cursorClicks?: ClickSample[];
+  cursorFx?: { enabled: boolean; size: number; clicks: boolean };
 };
 
 // Interpolated cursor position (normalized 0..1 of the source frame) at `ms`,
@@ -790,6 +793,31 @@ export function drawFrame(
         if (p) drawCursorSpotlight(ctx, outW, outH, p.x, p.y, 0.8);
       }
     }
+
+    // Synthetic cursor + click ripples — the "smooth cursor" demo look. The
+    // pointer follows the (optionally smoothed) recorded path through the same
+    // crop/zoom transform as the content, but its SIZE is constant in output
+    // space (it doesn't grow when the video zooms in). Drawn on top of effects.
+    const cfx = d.cursorFx;
+    if (cfx?.enabled && (d.cursorSamples?.length || d.cursorClicks?.length)) {
+      const { w: sw, h: sh } = srcDims(srcCanvas);
+      const toOut = (nx: number, ny: number) =>
+        cursorToOutput({ x: nx, y: ny }, sw, sh, cropRegion, innerX, innerY, innerW, innerH, activeZoom ?? undefined);
+      if (cfx.clicks && d.cursorClicks) {
+        for (const c of d.cursorClicks) {
+          const age = ms - c.t;
+          if (age < 0 || age > CLICK_RIPPLE_MS) continue;
+          const p = toOut(c.x, c.y);
+          if (p) drawClickRipple(ctx, p.x, p.y, age / CLICK_RIPPLE_MS, outH);
+        }
+      }
+      const samples = d.cursorSamplesSmooth?.length ? d.cursorSamplesSmooth : d.cursorSamples;
+      const cur = cursorAt(samples, ms);
+      if (cur) {
+        const p = toOut(cur.x, cur.y);
+        if (p) drawSyntheticCursor(ctx, p.x, p.y, cfx.size, outH);
+      }
+    }
   }
 
   if (activeAnnotation && activeAnnotation.text) {
@@ -951,6 +979,72 @@ function drawCursorMagnifier(
   ctx.lineWidth = Math.max(2, R * 0.05);
   ctx.strokeStyle = 'rgba(255,255,255,0.7)';
   ctx.stroke();
+  ctx.restore();
+}
+
+// How long a click-highlight ripple lives (ms).
+const CLICK_RIPPLE_MS = 520;
+
+// A crisp, scalable arrow pointer (vector — sharp at any size), white fill +
+// dark outline + soft drop shadow, with the hotspot (tip) at (x, y). `scale` is
+// a user multiplier; the cursor height is a constant fraction of the frame so
+// it reads the same regardless of how far the video is zoomed.
+const CURSOR_UNIT: [number, number][] = [
+  [0, 0], [0, 16], [3.5, 12.5], [6, 18], [8, 17], [5.5, 11.5], [11, 11.5]
+];
+function drawSyntheticCursor(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  scale: number,
+  outH: number
+) {
+  const unitH = 18;
+  const targetH = outH * 0.05 * Math.max(0.3, scale);
+  const f = targetH / unitH;
+  ctx.save();
+  ctx.beginPath();
+  CURSOR_UNIT.forEach(([px, py], i) => {
+    const X = x + px * f, Y = y + py * f;
+    if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+  });
+  ctx.closePath();
+  ctx.shadowColor = 'rgba(0,0,0,0.4)';
+  ctx.shadowBlur = targetH * 0.18;
+  ctx.shadowOffsetY = targetH * 0.04;
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(1, targetH * 0.06);
+  ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+  ctx.stroke();
+  ctx.restore();
+}
+
+// An expanding, fading ring (+ a quick soft disc) at a click position. `p` is
+// the ripple's progress 0..1 over CLICK_RIPPLE_MS.
+function drawClickRipple(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  p: number,
+  outH: number
+) {
+  const ease = 1 - Math.pow(1 - p, 3);
+  const maxR = outH * 0.06;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, maxR * ease, 0, Math.PI * 2);
+  ctx.lineWidth = Math.max(1.5, outH * 0.006 * (1 - p));
+  ctx.strokeStyle = `rgba(110,231,183,${0.75 * (1 - p)})`;
+  ctx.stroke();
+  if (p < 0.5) {
+    ctx.beginPath();
+    ctx.arc(x, y, maxR * 0.45 * ease, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(110,231,183,${0.25 * (1 - p * 2)})`;
+    ctx.fill();
+  }
   ctx.restore();
 }
 

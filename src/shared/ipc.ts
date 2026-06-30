@@ -32,6 +32,12 @@ export type DisplayInfo = {
 // the editor's "Suggest Zooms" to auto-place zoom regions where the user was
 // pointing.
 export type CursorSample = { t: number; x: number; y: number };
+// A mouse click captured during recording (ms since start; normalized 0..1).
+// Drives the editor's click-highlight ripples and click-aware auto-zoom.
+export type ClickSample = { t: number; x: number; y: number };
+// Parsed cursor sidecar: position samples + click events. The on-disk file may
+// be a bare CursorSample[] (legacy) or { samples, clicks } (current).
+export type CursorData = { samples: CursorSample[]; clicks: ClickSample[] };
 
 export type RecordingMeta = {
   filePath: string;
@@ -115,8 +121,9 @@ export type Api = {
   saveExport: (req: ExportRequest) => Promise<{ saved: boolean; path?: string }>;
   setRecordingState: (recording: boolean) => Promise<void>;
   onStopShortcut: (cb: () => void) => () => void;
-  // Load the sidecar cursor samples for a recording (returns null if none).
-  getCursorData: (filePath: string) => Promise<CursorSample[] | null>;
+  // Load the sidecar cursor data (samples + clicks) for a recording. Returns
+  // null if there's no sidecar. Normalizes the legacy bare-array format.
+  getCursorData: (filePath: string) => Promise<CursorData | null>;
 };
 
 declare global {
