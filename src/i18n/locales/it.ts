@@ -1,4 +1,10 @@
 export default {
+  'side.cursor': "Cursore",
+  'side.smoothCursor': "Cursore fluido",
+  'side.cursorSize': "Dimensione cursore",
+  'side.clickHighlights': "Evidenziazione clic",
+  'side.cursorTip': "Disegna un cursore fluido e ingrandito che scorre lungo il movimento registrato.",
+  'side.cursorNoData': "Nessun dato del cursore è stato acquisito per questa registrazione.",
   'export.cheer1': "Riscaldamento dell’encoder…",
   'export.cheer2': "Composizione dei tuoi fotogrammi…",
   'export.cheer3': "Sta venendo benissimo, un attimo…",

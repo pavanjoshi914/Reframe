@@ -1,4 +1,10 @@
 export default {
+  'side.cursor': "Cursor",
+  'side.smoothCursor': "Vloeiende cursor",
+  'side.cursorSize': "Cursorgrootte",
+  'side.clickHighlights': "Klik-markering",
+  'side.cursorTip': "Tekent een vloeiende, vergrote cursor die langs je opgenomen beweging glijdt.",
+  'side.cursorNoData': "Er zijn geen cursorgegevens vastgelegd voor deze opname.",
   'export.cheer1': "Encoder warmt op…",
   'export.cheer2': "Je frames worden samengesteld…",
   'export.cheer3': "Ziet er goed uit, momentje…",

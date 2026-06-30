@@ -1,4 +1,10 @@
 export default {
+  'side.cursor': "Kursor",
+  'side.smoothCursor': "Płynny kursor",
+  'side.cursorSize': "Rozmiar kursora",
+  'side.clickHighlights': "Podświetlenie kliknięć",
+  'side.cursorTip': "Rysuje płynny, powiększony kursor, który sunie wzdłuż nagranego ruchu.",
+  'side.cursorNoData': "Nie zarejestrowano danych kursora dla tego nagrania.",
   'export.cheer1': "Rozgrzewanie kodera…",
   'export.cheer2': "Składanie Twoich klatek…",
   'export.cheer3': "Wygląda świetnie, chwileczkę…",

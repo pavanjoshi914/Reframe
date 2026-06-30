@@ -1,4 +1,10 @@
 export default {
+  'side.cursor': "المؤشر",
+  'side.smoothCursor': "مؤشر سلس",
+  'side.cursorSize': "حجم المؤشر",
+  'side.clickHighlights': "تمييز النقر",
+  'side.cursorTip': "يرسم مؤشرًا سلسًا ومكبَّرًا ينزلق على طول حركتك المسجَّلة.",
+  'side.cursorNoData': "لم يتم التقاط بيانات المؤشر لهذا التسجيل.",
   'export.cheer1': "جارٍ تجهيز المُرمِّز…",
   'export.cheer2': "يتم تركيب إطاراتك…",
   'export.cheer3': "يبدو رائعًا، انتظر قليلاً…",

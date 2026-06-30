@@ -1,4 +1,10 @@
 export default {
+  'side.cursor': "مکان‌نما",
+  'side.smoothCursor': "مکان‌نمای نرم",
+  'side.cursorSize': "اندازه مکان‌نما",
+  'side.clickHighlights': "برجسته‌سازی کلیک",
+  'side.cursorTip': "یک مکان‌نمای نرم و بزرگ‌شده می‌کشد که در امتداد حرکت ضبط‌شده شما می‌لغزد.",
+  'side.cursorNoData': "برای این ضبط هیچ داده مکان‌نمایی ثبت نشده است.",
   'export.cheer1': "در حال آماده‌سازی کدگذار…",
   'export.cheer2': "در حال ترکیب فریم‌ها…",
   'export.cheer3': "عالی به نظر می‌رسد، کمی صبر کنید…",

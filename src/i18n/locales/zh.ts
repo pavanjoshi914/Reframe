@@ -1,4 +1,10 @@
 export default {
+  'side.cursor': "光标",
+  'side.smoothCursor': "平滑光标",
+  'side.cursorSize': "光标大小",
+  'side.clickHighlights': "点击高亮",
+  'side.cursorTip': "绘制一个平滑放大的光标，沿录制的移动轨迹滑动。",
+  'side.cursorNoData': "此录制未捕获光标数据。",
   'export.cheer1': "正在预热编码器…",
   'export.cheer2': "正在合成画面…",
   'export.cheer3': "画面很棒，请稍候…",

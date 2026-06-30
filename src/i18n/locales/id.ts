@@ -1,4 +1,10 @@
 export default {
+  'side.cursor': "Kursor",
+  'side.smoothCursor': "Kursor halus",
+  'side.cursorSize': "Ukuran kursor",
+  'side.clickHighlights': "Sorotan klik",
+  'side.cursorTip': "Menggambar kursor halus dan diperbesar yang meluncur mengikuti gerakan rekaman Anda.",
+  'side.cursorNoData': "Tidak ada data kursor yang terekam untuk rekaman ini.",
   'export.cheer1': "Memanaskan encoder…",
   'export.cheer2': "Menyusun bingkai Anda…",
   'export.cheer3': "Terlihat bagus, tunggu sebentar…",

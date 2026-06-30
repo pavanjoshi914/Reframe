@@ -1,4 +1,10 @@
 export default {
+  'side.cursor': "Cursor",
+  'side.smoothCursor': "Sanfter Cursor",
+  'side.cursorSize': "Cursorgröße",
+  'side.clickHighlights': "Klick-Hervorhebung",
+  'side.cursorTip': "Zeichnet einen sanften, vergrößerten Cursor, der entlang deiner aufgezeichneten Bewegung gleitet.",
+  'side.cursorNoData': "Für diese Aufnahme wurden keine Cursordaten erfasst.",
   'export.cheer1': "Encoder wird aufgewärmt…",
   'export.cheer2': "Deine Frames werden zusammengesetzt…",
   'export.cheer3': "Sieht super aus, gleich fertig…",

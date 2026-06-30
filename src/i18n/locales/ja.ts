@@ -1,4 +1,10 @@
 export default {
+  'side.cursor': "カーソル",
+  'side.smoothCursor': "スムーズカーソル",
+  'side.cursorSize': "カーソルサイズ",
+  'side.clickHighlights': "クリックハイライト",
+  'side.cursorTip': "録画した動きに沿って滑らかに動く、拡大されたカーソルを描画します。",
+  'side.cursorNoData': "この録画にはカーソルデータが記録されていません。",
   'export.cheer1': "エンコーダーを準備中…",
   'export.cheer2': "フレームを合成中…",
   'export.cheer3': "いい感じです。少々お待ちを…",

@@ -1,4 +1,10 @@
 export default {
+  'side.cursor': "Курсор",
+  'side.smoothCursor': "Плавний курсор",
+  'side.cursorSize': "Розмір курсора",
+  'side.clickHighlights': "Підсвічування кліків",
+  'side.cursorTip': "Малює плавний збільшений курсор, що ковзає вздовж записаного руху.",
+  'side.cursorNoData': "Для цього запису не зібрано даних курсора.",
   'export.cheer1': "Розігрів кодувальника…",
   'export.cheer2': "Збираємо ваші кадри…",
   'export.cheer3': "Виглядає чудово, ще трохи…",

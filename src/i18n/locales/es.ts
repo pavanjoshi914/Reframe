@@ -1,4 +1,10 @@
 export default {
+  'side.cursor': "Cursor",
+  'side.smoothCursor': "Cursor suave",
+  'side.cursorSize': "Tamaño del cursor",
+  'side.clickHighlights': "Resaltado de clic",
+  'side.cursorTip': "Dibuja un cursor suave y ampliado que se desliza por tu movimiento grabado.",
+  'side.cursorNoData': "No se capturaron datos del cursor en esta grabación.",
   'export.cheer1': "Calentando el codificador…",
   'export.cheer2': "Componiendo tus fotogramas…",
   'export.cheer3': "Se ve genial, un momento…",
