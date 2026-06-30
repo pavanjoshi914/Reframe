@@ -760,19 +760,25 @@ function CursorSection() {
   const hasCursorData = useEditor((s) => s.cursorSamples.length > 0);
   return (
     <div className="space-y-3">
-      <ToggleRow label={t('side.smoothCursor')} checked={cursorFx.enabled} onChange={(v) => setCursorFx({ enabled: v })} />
+      <div data-cursorctl="enabled">
+        <ToggleRow label={t('side.smoothCursor')} checked={cursorFx.enabled} onChange={(v) => setCursorFx({ enabled: v })} />
+      </div>
       {cursorFx.enabled && (
         <>
-          <RangeRow
-            label={t('side.cursorSize')}
-            value={Math.round(cursorFx.size * 100)}
-            min={50}
-            max={300}
-            step={10}
-            onChange={(v) => setCursorFx({ size: v / 100 })}
-            fmt={(v) => `${(v / 100).toFixed(1)}×`}
-          />
-          <ToggleRow label={t('side.clickHighlights')} checked={cursorFx.clicks} onChange={(v) => setCursorFx({ clicks: v })} />
+          <div data-cursorctl="size">
+            <RangeRow
+              label={t('side.cursorSize')}
+              value={Math.round(cursorFx.size * 100)}
+              min={50}
+              max={300}
+              step={10}
+              onChange={(v) => setCursorFx({ size: v / 100 })}
+              fmt={(v) => `${(v / 100).toFixed(1)}×`}
+            />
+          </div>
+          <div data-cursorctl="clicks">
+            <ToggleRow label={t('side.clickHighlights')} checked={cursorFx.clicks} onChange={(v) => setCursorFx({ clicks: v })} />
+          </div>
         </>
       )}
       <p className="text-[11px] text-white/40">
