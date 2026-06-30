@@ -158,6 +158,9 @@ export type EditorState = {
   addItem: (kind: LaneKind, atMs: number) => void;
   // Add a spotlight/magnify region spanning the whole video, cursor-tracked.
   addWholeVideoEffect: (kind: 'spotlight' | 'magnify') => void;
+  // Stretch an existing spotlight/magnify region to the whole video, dropping
+  // any other regions of the same kind so only one full-span effect remains.
+  applyEffectWholeVideo: (id: string) => void;
   updateItem: (id: string, patch: Partial<LaneItem>) => void;
   removeItem: (id: string) => void;
   selectItem: (id: string | null) => void;
@@ -417,10 +420,30 @@ export const useEditor = create<EditorState>((set, get) => ({
   addWholeVideoEffect: (kind) => {
     const dur = get().durationMs || 1000;
     const item: LaneItem = { id: crypto.randomUUID(), kind, startMs: 0, endMs: dur, track: 'cursor' };
-    // Select it (so the sidebar shows the whole-video note) and pause at the
-    // start so the lens is visible; no per-region seek since it spans everything.
-    set((s) => ({ items: [...s.items, item], selectedItemId: item.id, editingAnnotationId: null, playing: false }));
+    // "Whole video" means exactly one region of this kind covering everything —
+    // drop any existing same-kind regions so they don't stack underneath it.
+    set((s) => ({
+      items: [...s.items.filter((it) => it.kind !== kind), item],
+      selectedItemId: item.id,
+      editingAnnotationId: null,
+      playing: false
+    }));
   },
+  applyEffectWholeVideo: (id) =>
+    set((s) => {
+      const target = s.items.find((it) => it.id === id);
+      if (!target) return {};
+      const dur = s.durationMs || target.endMs;
+      // Stretch this region to the whole video and remove the other same-kind
+      // regions, leaving a single full-span effect (matches "apply to whole
+      // video" intent for both spotlight and magnify).
+      return {
+        items: s.items
+          .filter((it) => it.id === id || it.kind !== target.kind)
+          .map((it) => (it.id === id ? { ...it, startMs: 0, endMs: dur } : it)),
+        selectedItemId: id
+      };
+    }),
   updateItem: (id, patch) =>
     set((s) => ({ items: s.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) })),
   removeItem: (id) =>
