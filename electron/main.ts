@@ -382,18 +382,21 @@ ipcMain.handle('recording:save', async (_evt, data: ArrayBuffer, meta: import('.
     webcamFilePath = path.join(recordingsTempDir, `${ts}-webcam.webm`);
     fs.writeFileSync(webcamFilePath, Buffer.from(meta.webcamData));
   }
-  // Persist cursor samples captured during this recording as a sidecar JSON.
+  // Persist cursor samples + clicks captured during this recording as a sidecar
+  // JSON ({ samples, clicks }; the editor also still accepts the legacy bare
+  // array). Written whenever either was captured.
   let cursorFilePath: string | undefined;
-  if (cursorSamples.length > 0) {
+  if (cursorSamples.length > 0 || clickSamples.length > 0) {
     cursorFilePath = path.join(recordingsTempDir, `${ts}.cursor.json`);
     try {
-      fs.writeFileSync(cursorFilePath, JSON.stringify(cursorSamples));
+      fs.writeFileSync(cursorFilePath, JSON.stringify({ samples: cursorSamples, clicks: clickSamples }));
     } catch (err) {
       console.warn('[main] failed to write cursor sidecar', err);
       cursorFilePath = undefined;
     }
   }
   cursorSamples = [];
+  clickSamples = [];
   const { webcamData, ...rest } = meta;
   void webcamData;
   const result: import('../src/shared/ipc.js').RecordingMeta = { ...rest, filePath, webcamFilePath, cursorFilePath };
@@ -478,10 +481,65 @@ function stopCursorTracking() {
   }
 }
 
+// ── Click tracking ──────────────────────────────────────────────────────────
+// Capture real mouse-down events during recording (for the editor's click
+// highlights + click-aware auto-zoom) via uiohook-napi's global hook. It's an
+// N-API addon so it loads in Electron without an ABI rebuild; if it's missing
+// or fails, recording simply proceeds without click data. Coordinates are
+// normalized against the recorded display, matching the cursor samples, and
+// timestamped on the same clock so clicks line up with the cursor path.
+type ClickPt = { t: number; x: number; y: number };
+let clickSamples: ClickPt[] = [];
+let clickTracking = false;
+let clickStart = 0;
+let uioHook: { start: () => void; stop: () => void; on: (e: string, cb: (ev: { x: number; y: number }) => void) => void } | null = null;
+let uioLoaded = false;
+let uioRunning = false;
+
+function ensureUio() {
+  if (uioLoaded) return uioHook;
+  uioLoaded = true;
+  try {
+    // require (not import) so the bundler leaves it external — the native .node
+    // is resolved from node_modules at runtime.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('uiohook-napi');
+    uioHook = mod.uIOhook ?? mod.default?.uIOhook ?? null;
+    uioHook?.on('mousedown', (ev) => {
+      if (!clickTracking || !cursorBounds) return;
+      const x = (ev.x - cursorBounds.x) / Math.max(1, cursorBounds.width);
+      const y = (ev.y - cursorBounds.y) / Math.max(1, cursorBounds.height);
+      if (x < 0 || x > 1 || y < 0 || y > 1) return;
+      clickSamples.push({ t: Date.now() - clickStart, x, y });
+    });
+  } catch (err) {
+    console.warn('[main] uiohook-napi unavailable; click capture disabled', err);
+    uioHook = null;
+  }
+  return uioHook;
+}
+
+function startClickTracking() {
+  clickSamples = [];
+  clickStart = cursorStart || Date.now();
+  clickTracking = true;
+  const h = ensureUio();
+  if (h && !uioRunning) {
+    try { h.start(); uioRunning = true; } catch (err) { console.warn('[main] uiohook start failed', err); }
+  }
+}
+
+function stopClickTracking() {
+  clickTracking = false;
+  if (uioHook && uioRunning) {
+    try { uioHook.stop(); uioRunning = false; } catch { /* ignore */ }
+  }
+}
+
 ipcMain.handle('hud:setRecording', (_evt, recording: boolean) => {
   isRecording = !!recording;
-  if (isRecording) startCursorTracking();
-  else stopCursorTracking();
+  if (isRecording) { startCursorTracking(); startClickTracking(); }
+  else { stopCursorTracking(); stopClickTracking(); }
   if (hudWindow) {
     // Keep setContentProtection on — excludes the HUD from screen capture on
     // macOS/Windows. On Linux it's a no-op (the HUD will be visible in the
