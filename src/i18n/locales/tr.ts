@@ -1,4 +1,5 @@
 export default {
+  'hud.hideCursor': "İmleci gizle (düzenleyicide Yumuşak imleci kullanın)",
   'side.cursor': "İmleç",
   'side.smoothCursor': "Yumuşak imleç",
   'side.cursorSize': "İmleç boyutu",

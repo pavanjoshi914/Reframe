@@ -1,4 +1,5 @@
 export default {
+  'hud.hideCursor': "Скрыть курсор (используйте Плавный курсор в редакторе)",
   'side.cursor': "Курсор",
   'side.smoothCursor': "Плавный курсор",
   'side.cursorSize': "Размер курсора",

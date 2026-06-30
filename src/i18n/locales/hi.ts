@@ -1,4 +1,5 @@
 export default {
+  'hud.hideCursor': "कर्सर छिपाएँ (एडिटर में स्मूद कर्सर का उपयोग करें)",
   'side.cursor': "कर्सर",
   'side.smoothCursor': "स्मूद कर्सर",
   'side.cursorSize': "कर्सर आकार",

@@ -1,4 +1,5 @@
 export default {
+  'hud.hideCursor': "Ocultar cursor (usa Cursor suave en el editor)",
   'side.cursor': "Cursor",
   'side.smoothCursor': "Cursor suave",
   'side.cursorSize': "Tamaño del cursor",

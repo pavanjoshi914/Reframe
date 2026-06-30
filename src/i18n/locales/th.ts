@@ -1,4 +1,5 @@
 export default {
+  'hud.hideCursor': "ซ่อนเคอร์เซอร์ (ใช้เคอร์เซอร์ลื่นไหลในตัวแก้ไข)",
   'side.cursor': "เคอร์เซอร์",
   'side.smoothCursor': "เคอร์เซอร์ลื่นไหล",
   'side.cursorSize': "ขนาดเคอร์เซอร์",

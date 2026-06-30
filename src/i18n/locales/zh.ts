@@ -1,4 +1,5 @@
 export default {
+  'hud.hideCursor': "隐藏光标（在编辑器中使用平滑光标）",
   'side.cursor': "光标",
   'side.smoothCursor': "平滑光标",
   'side.cursorSize': "光标大小",

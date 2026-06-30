@@ -1,4 +1,5 @@
 export default {
+  'hud.hideCursor': "Cursor verbergen (gebruik Vloeiende cursor in de editor)",
   'side.cursor': "Cursor",
   'side.smoothCursor': "Vloeiende cursor",
   'side.cursorSize': "Cursorgrootte",

@@ -1,4 +1,5 @@
 export default {
+  'hud.hideCursor': "커서 숨기기 (편집기에서 부드러운 커서 사용)",
   'side.cursor': "커서",
   'side.smoothCursor': "부드러운 커서",
   'side.cursorSize': "커서 크기",

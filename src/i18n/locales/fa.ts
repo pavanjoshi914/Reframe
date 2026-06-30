@@ -1,4 +1,5 @@
 export default {
+  'hud.hideCursor': "پنهان‌کردن مکان‌نما (در ویرایشگر از مکان‌نمای نرم استفاده کنید)",
   'side.cursor': "مکان‌نما",
   'side.smoothCursor': "مکان‌نمای نرم",
   'side.cursorSize': "اندازه مکان‌نما",

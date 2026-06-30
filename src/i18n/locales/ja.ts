@@ -1,4 +1,5 @@
 export default {
+  'hud.hideCursor': "カーソルを非表示（エディターでスムーズカーソルを使用）",
   'side.cursor': "カーソル",
   'side.smoothCursor': "スムーズカーソル",
   'side.cursorSize': "カーソルサイズ",

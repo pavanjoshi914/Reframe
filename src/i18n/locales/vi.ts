@@ -1,4 +1,5 @@
 export default {
+  'hud.hideCursor': "Ẩn con trỏ (dùng Con trỏ mượt trong trình chỉnh sửa)",
   'side.cursor': "Con trỏ",
   'side.smoothCursor': "Con trỏ mượt",
   'side.cursorSize': "Kích thước con trỏ",

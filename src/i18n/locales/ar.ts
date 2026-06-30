@@ -1,4 +1,5 @@
 export default {
+  'hud.hideCursor': "إخفاء المؤشر (استخدم المؤشر السلس في المحرر)",
   'side.cursor': "المؤشر",
   'side.smoothCursor': "مؤشر سلس",
   'side.cursorSize': "حجم المؤشر",
