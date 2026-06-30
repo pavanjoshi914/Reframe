@@ -17,7 +17,8 @@ import {
   MdRefresh,
   MdDragIndicator,
   MdKeyboardArrowUp,
-  MdCheck
+  MdCheck,
+  MdMouse
 } from 'react-icons/md';
 import type { DesktopSource, Region } from '@shared/ipc';
 import { useT } from '../i18n';
@@ -41,6 +42,7 @@ export function HudApp() {
   const [sysAudio, setSysAudio] = useState(false);
   const [mic, setMic] = useState(false);
   const [cam, setCam] = useState(false);
+  const [hideCursor, setHideCursor] = useState(false);
   // Device selection — `undefined` means "system default". Persisted to
   // localStorage so the user doesn't have to re-pick each session. The values
   // are deviceIds reported by `navigator.mediaDevices.enumerateDevices()`.
@@ -224,6 +226,7 @@ export function HudApp() {
         withSystemAudio: sysAudio,
         withMic: mic,
         withCam: cam,
+        hideCursor,
         micDeviceId: selectedMicId,
         camDeviceId: selectedCamId,
         camStream: camStreamRef.current
@@ -328,6 +331,9 @@ export function HudApp() {
             a split-button with a chevron that opens a device picker. */}
         <ToggleBtn active={sysAudio} onClick={() => setSysAudio((v) => !v)} title={t('hud.systemAudio')}>
           {sysAudio ? <MdVolumeUp size={18} /> : <MdVolumeOff size={18} />}
+        </ToggleBtn>
+        <ToggleBtn active={hideCursor} onClick={() => setHideCursor((v) => !v)} title={t('hud.hideCursor')}>
+          <MdMouse size={18} />
         </ToggleBtn>
         <ToggleWithMenu
           active={mic}

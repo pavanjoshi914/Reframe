@@ -39,6 +39,7 @@ const api: Api = {
   openExternal: (url) => ipcRenderer.invoke('external:open', url),
   saveExport: (req) => ipcRenderer.invoke('export:save', req),
   setRecordingState: (recording) => ipcRenderer.invoke('hud:setRecording', recording),
+  setPendingCaptureSource: (sourceId) => ipcRenderer.invoke('capture:setPendingSource', sourceId),
   getCursorData: (filePath) => ipcRenderer.invoke('cursor:load', filePath),
   onStopShortcut: (cb) => {
     const handler = () => cb();

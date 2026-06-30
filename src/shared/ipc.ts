@@ -120,6 +120,9 @@ export type Api = {
   openExternal: (url: string) => Promise<void>;
   saveExport: (req: ExportRequest) => Promise<{ saved: boolean; path?: string }>;
   setRecordingState: (recording: boolean) => Promise<void>;
+  // Tell main which desktopCapturer source the next getDisplayMedia call (used
+  // for cursor-hidden capture) should resolve to.
+  setPendingCaptureSource: (sourceId: string) => Promise<void>;
   onStopShortcut: (cb: () => void) => () => void;
   // Load the sidecar cursor data (samples + clicks) for a recording. Returns
   // null if there's no sidecar. Normalizes the legacy bare-array format.

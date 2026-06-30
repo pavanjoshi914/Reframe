@@ -14,6 +14,7 @@ export default {
   'hud.screen': 'Screen',
   'hud.area': 'Area',
   'hud.systemAudio': 'System audio',
+  'hud.hideCursor': 'Hide cursor (use Smooth cursor in the editor)',
   'hud.microphone': 'Microphone',
   'hud.webcam': 'Webcam',
   'hud.camera': 'Camera',

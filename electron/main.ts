@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
@@ -536,6 +536,16 @@ function stopClickTracking() {
   }
 }
 
+// Cursor-hidden capture: the renderer sets the chosen desktopCapturer source id
+// here, then calls getDisplayMedia({ video: { cursor: 'never' } }). The display-
+// media request handler (registered at startup) resolves that call to this
+// source without showing the OS picker. Lets the synthetic cursor replace the
+// baked-in OS cursor. Falls back to the normal getUserMedia path on any failure.
+let pendingCaptureSourceId: string | null = null;
+ipcMain.handle('capture:setPendingSource', (_evt, sourceId: string) => {
+  pendingCaptureSourceId = sourceId;
+});
+
 ipcMain.handle('hud:setRecording', (_evt, recording: boolean) => {
   isRecording = !!recording;
   if (isRecording) { startCursorTracking(); startClickTracking(); }
@@ -744,6 +754,26 @@ app.whenReady().then(async () => {
   // top toolbar already exposes File/Edit/View — keeping both produced a
   // duplicate-looking header.
   Menu.setApplicationMenu(null);
+
+  // Resolve getDisplayMedia (used only for cursor-hidden capture) to the source
+  // the renderer pre-selected, bypassing the OS picker. If we can't match it,
+  // deny so the renderer falls back to the normal getUserMedia path.
+  try {
+    session.defaultSession.setDisplayMediaRequestHandler(
+      (_request, callback) => {
+        desktopCapturer
+          .getSources({ types: ['screen', 'window'] })
+          .then((sources) => {
+            const src = sources.find((s) => s.id === pendingCaptureSourceId) ?? null;
+            callback(src ? { video: src } : {});
+          })
+          .catch(() => callback({}));
+      },
+      { useSystemPicker: false }
+    );
+  } catch (err) {
+    console.warn('[main] setDisplayMediaRequestHandler unavailable', err);
+  }
 
   protocol.handle('media', async (req) => {
     const url = new URL(req.url);
