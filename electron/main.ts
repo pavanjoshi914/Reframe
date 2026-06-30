@@ -463,38 +463,55 @@ function startCursorTracking() {
   cursorSamples = [];
   cursorStart = Date.now();
   cursorBounds = screen.getPrimaryDisplay().bounds;
-  cursorTimer = setInterval(() => {
-    if (!cursorBounds) return;
-    const p = screen.getCursorScreenPoint();
-    const x = (p.x - cursorBounds.x) / Math.max(1, cursorBounds.width);
-    const y = (p.y - cursorBounds.y) / Math.max(1, cursorBounds.height);
-    // Skip points outside the recorded display (e.g. cursor on another monitor).
-    if (x < 0 || x > 1 || y < 0 || y > 1) return;
-    cursorSamples.push({ t: Date.now() - cursorStart, x, y });
-  }, 40);
+  cursorTracking = true;
+  lastMoveT = 0;
+  // Prefer uiohook for the cursor PATH too: its coordinates match the captured
+  // frame (the click ripples, which use it, track accurately), whereas
+  // screen.getCursorScreenPoint() was offset on some displays. Only fall back to
+  // polling getCursorScreenPoint when the global hook isn't available.
+  if (!startUio()) {
+    cursorTimer = setInterval(() => {
+      if (!cursorBounds) return;
+      const p = screen.getCursorScreenPoint();
+      const x = (p.x - cursorBounds.x) / Math.max(1, cursorBounds.width);
+      const y = (p.y - cursorBounds.y) / Math.max(1, cursorBounds.height);
+      if (x < 0 || x > 1 || y < 0 || y > 1) return;
+      cursorSamples.push({ t: Date.now() - cursorStart, x, y });
+    }, 40);
+  }
 }
 
 function stopCursorTracking() {
+  cursorTracking = false;
   if (cursorTimer) {
     clearInterval(cursorTimer);
     cursorTimer = null;
   }
 }
 
-// ── Click tracking ──────────────────────────────────────────────────────────
-// Capture real mouse-down events during recording (for the editor's click
-// highlights + click-aware auto-zoom) via uiohook-napi's global hook. It's an
-// N-API addon so it loads in Electron without an ABI rebuild; if it's missing
-// or fails, recording simply proceeds without click data. Coordinates are
-// normalized against the recorded display, matching the cursor samples, and
-// timestamped on the same clock so clicks line up with the cursor path.
+// ── Click + cursor-path tracking via uiohook-napi ───────────────────────────
+// A global mouse hook captures both the cursor PATH (mousemove, throttled) and
+// CLICKS (mousedown) during recording, normalized against the recorded display
+// and timestamped on the recording clock. uiohook-napi is an N-API addon so it
+// loads in Electron without an ABI rebuild; if it's missing/fails, cursor
+// tracking falls back to getCursorScreenPoint polling and clicks are simply
+// absent — recording is never blocked.
 type ClickPt = { t: number; x: number; y: number };
 let clickSamples: ClickPt[] = [];
 let clickTracking = false;
-let clickStart = 0;
+let cursorTracking = false;
+let lastMoveT = 0;
 let uioHook: { start: () => void; stop: () => void; on: (e: string, cb: (ev: { x: number; y: number }) => void) => void } | null = null;
 let uioLoaded = false;
 let uioRunning = false;
+
+function normPt(ev: { x: number; y: number }): { x: number; y: number } | null {
+  if (!cursorBounds) return null;
+  const x = (ev.x - cursorBounds.x) / Math.max(1, cursorBounds.width);
+  const y = (ev.y - cursorBounds.y) / Math.max(1, cursorBounds.height);
+  if (x < 0 || x > 1 || y < 0 || y > 1) return null;
+  return { x, y };
+}
 
 function ensureUio() {
   if (uioLoaded) return uioHook;
@@ -505,33 +522,46 @@ function ensureUio() {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require('uiohook-napi');
     uioHook = mod.uIOhook ?? mod.default?.uIOhook ?? null;
+    uioHook?.on('mousemove', (ev) => {
+      if (!cursorTracking) return;
+      const now = Date.now();
+      if (now - lastMoveT < 33) return; // ~30 Hz
+      const p = normPt(ev);
+      if (!p) return;
+      lastMoveT = now;
+      cursorSamples.push({ t: now - cursorStart, x: p.x, y: p.y });
+    });
     uioHook?.on('mousedown', (ev) => {
-      if (!clickTracking || !cursorBounds) return;
-      const x = (ev.x - cursorBounds.x) / Math.max(1, cursorBounds.width);
-      const y = (ev.y - cursorBounds.y) / Math.max(1, cursorBounds.height);
-      if (x < 0 || x > 1 || y < 0 || y > 1) return;
-      clickSamples.push({ t: Date.now() - clickStart, x, y });
+      if (!clickTracking) return;
+      const p = normPt(ev);
+      if (p) clickSamples.push({ t: Date.now() - cursorStart, x: p.x, y: p.y });
     });
   } catch (err) {
-    console.warn('[main] uiohook-napi unavailable; click capture disabled', err);
+    console.warn('[main] uiohook-napi unavailable; using cursor polling, no clicks', err);
     uioHook = null;
   }
   return uioHook;
 }
 
-function startClickTracking() {
-  clickSamples = [];
-  clickStart = cursorStart || Date.now();
-  clickTracking = true;
+// Ensure the global hook is loaded + running. Returns false if unavailable.
+function startUio(): boolean {
   const h = ensureUio();
   if (h && !uioRunning) {
-    try { h.start(); uioRunning = true; } catch (err) { console.warn('[main] uiohook start failed', err); }
+    try { h.start(); uioRunning = true; } catch (err) { console.warn('[main] uiohook start failed', err); uioHook = null; }
   }
+  return !!uioHook;
+}
+
+function startClickTracking() {
+  clickSamples = [];
+  clickTracking = true;
+  startUio();
 }
 
 function stopClickTracking() {
   clickTracking = false;
-  if (uioHook && uioRunning) {
+  // Stop the hook once neither cursor-path nor click tracking needs it.
+  if (uioHook && uioRunning && !cursorTracking) {
     try { uioHook.stop(); uioRunning = false; } catch { /* ignore */ }
   }
 }
