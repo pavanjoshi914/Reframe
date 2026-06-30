@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight } from 'lucide-react';
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem } from './store';
-import { runExport } from './export';
+import { runExport, cancelExport } from './export';
 import { CropModal } from './CropModal';
 import { useT } from '../i18n';
 
@@ -153,6 +153,7 @@ function SpotlightMagnifyEditor({ item }: { item: LaneItem }) {
   const updateItem = useEditor((s) => s.updateItem);
   const removeItem = useEditor((s) => s.removeItem);
   const selectItem = useEditor((s) => s.selectItem);
+  const applyEffectWholeVideo = useEditor((s) => s.applyEffectWholeVideo);
   const durationMs = useEditor((s) => s.durationMs);
   const track = item.track ?? 'cursor';
   const isMag = item.kind === 'magnify';
@@ -191,8 +192,9 @@ function SpotlightMagnifyEditor({ item }: { item: LaneItem }) {
 
       <div>
         <button
-          onClick={() => updateItem(item.id, { startMs: 0, endMs: durationMs })}
+          onClick={() => applyEffectWholeVideo(item.id)}
           disabled={wholeVideo}
+          data-act="apply-whole-video"
           className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-white/5"
         >
           {t('side.applyWholeVideo')}
@@ -753,7 +755,7 @@ function ExportSection() {
   const q = useEditor((s) => s.exportQuality);
   const setQ = useEditor((s) => s.setExportQuality);
   const fileUrl = useEditor((s) => s.fileUrl);
-  const [busy, setBusy] = useState<null | { phase: string; pct: number }>(null);
+  const [busy, setBusy] = useState<null | BusyState>(null);
 
   async function handleExport() {
     if (!fileUrl) {
@@ -762,9 +764,18 @@ function ExportSection() {
     }
     if (busy) return;
     try {
-      setBusy({ phase: t('export.preparing'), pct: 0 });
+      setBusy({ phase: 'Preparing', pct: 0 });
       await runExport({
-        onProgress: (phase, pct) => setBusy({ phase, pct })
+        onProgress: (phase, pct, detail) =>
+          setBusy((prev) => ({
+            phase,
+            pct,
+            // Keep the last frame counters / preview when a tick omits them, so
+            // the modal doesn't flicker between updates.
+            frame: detail?.frame ?? prev?.frame,
+            totalFrames: detail?.totalFrames ?? prev?.totalFrames,
+            preview: detail?.preview ?? prev?.preview
+          }))
       });
     } catch (err) {
       console.error('export failed', err);
@@ -794,8 +805,63 @@ function ExportSection() {
         className="flex w-full items-center justify-center gap-2 rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-        {busy ? `${busy.phase} ${Math.round(busy.pct)}%` : t('side.exportVideo')}
+        {busy ? `${Math.round(busy.pct)}%` : t('side.exportVideo')}
       </button>
+      {busy && <ExportProgressModal busy={busy} onCancel={() => cancelExport()} />}
+    </div>
+  );
+}
+
+type BusyState = { phase: string; pct: number; frame?: number; totalFrames?: number; preview?: string };
+
+// Maps the exporter's coarse English stage names to localized labels.
+const EXPORT_STAGE_LABELS: Record<string, string> = {
+  Preparing: 'export.preparing',
+  Encoding: 'export.encoding',
+  'Encoding GIF': 'export.encodingGif',
+  'Encoding audio': 'export.encodingAudio',
+  Saving: 'export.saving',
+  Cancelled: 'export.cancelled',
+  Done: 'export.done'
+};
+
+// openscreen-style export progress popup: a live "frame being processed"
+// thumbnail, a progress bar with the frame counter + percentage, and Cancel.
+function ExportProgressModal({ busy, onCancel }: { busy: BusyState; onCancel: () => void }) {
+  const t = useT();
+  const [cancelling, setCancelling] = useState(false);
+  const stage = EXPORT_STAGE_LABELS[busy.phase] ? t(EXPORT_STAGE_LABELS[busy.phase]) : busy.phase;
+  const pct = Math.round(busy.pct);
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div className="w-[380px] rounded-2xl border border-white/10 bg-[#14161b] p-6 shadow-2xl">
+        <div className="mb-1 flex items-center gap-2">
+          <Loader2 size={16} className="animate-spin text-emerald-400" />
+          <h2 className="text-sm font-semibold text-white">{t('export.title')}</h2>
+        </div>
+        <p className="mb-4 text-xs text-white/50">{cancelling ? t('export.cancelling') : stage}</p>
+        <div className="mb-4 aspect-video w-full overflow-hidden rounded-lg border border-white/10 bg-black/40">
+          {busy.preview ? (
+            <img src={busy.preview} alt="" className="h-full w-full object-contain" />
+          ) : (
+            <div className="flex h-full items-center justify-center text-[11px] text-white/30">{t('export.preparing')}…</div>
+          )}
+        </div>
+        <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full bg-emerald-500 transition-[width] duration-150" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="mb-4 flex items-center justify-between text-[11px] text-white/50">
+          <span>{busy.totalFrames ? t('export.frame', { n: busy.frame ?? 0, total: busy.totalFrames }) : ''}</span>
+          <span className="font-mono text-white/70">{pct}%</span>
+        </div>
+        <button
+          onClick={() => { setCancelling(true); onCancel(); }}
+          disabled={cancelling}
+          className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white/70 hover:bg-white/10 disabled:opacity-50"
+        >
+          {t('export.cancel')}
+        </button>
+      </div>
     </div>
   );
 }

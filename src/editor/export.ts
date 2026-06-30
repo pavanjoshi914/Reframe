@@ -30,7 +30,38 @@ import type { CursorSample } from '@shared/ipc';
 // Every source frame is processed deterministically — no playback, no
 // MediaRecorder, no dependence on video.currentTime.
 
-type ProgressFn = (phase: string, pct: number) => void;
+// Rich progress: a coarse stage + percentage, plus optional frame counters and
+// a small live preview (data URL) so the UI can show "frame X / N" and the
+// frame currently being processed, openscreen-style.
+export type ProgressDetail = { frame?: number; totalFrames?: number; preview?: string };
+type ProgressFn = (phase: string, pct: number, detail?: ProgressDetail) => void;
+
+// Cooperative cancellation: the export loops poll this flag between frames so the
+// progress modal's Cancel button can stop a long encode without an AbortSignal
+// threaded through every mediabunny call.
+let cancelRequested = false;
+export function cancelExport() {
+  cancelRequested = true;
+}
+
+// Downscale the export canvas to a small JPEG data URL for the progress modal's
+// live "frame being processed" thumbnail. Reuses one offscreen canvas.
+let previewCanvas: HTMLCanvasElement | null = null;
+function snapshotPreview(src: HTMLCanvasElement): string {
+  try {
+    const W = 256;
+    const h = Math.max(1, Math.round(W * (src.height / Math.max(1, src.width))));
+    if (!previewCanvas) previewCanvas = document.createElement('canvas');
+    previewCanvas.width = W;
+    previewCanvas.height = h;
+    const pctx = previewCanvas.getContext('2d');
+    if (!pctx) return '';
+    pctx.drawImage(src, 0, 0, W, h);
+    return previewCanvas.toDataURL('image/jpeg', 0.5);
+  } catch {
+    return '';
+  }
+}
 
 // A source frame the compositor can draw: an export decode canvas, a still
 // image, or — in the live preview — a <video> element.
@@ -131,6 +162,7 @@ function srcDims(s: CanvasImageSource): { w: number; h: number } {
 }
 
 export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
+  cancelRequested = false;
   const state = useEditor.getState();
   if (!state.fileUrl) throw new Error('No recording loaded.');
 
@@ -228,10 +260,16 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
     let outMs = 0;
     let nextEmitMs = 0;
     let lastProgress = 0;
+    let gifFrameCount = 0;
+    let gifTotalEst = 0;
+    let gifPreviewPct = -100;
     for await (const wrapped of screenSink.canvases()) {
+      if (cancelRequested) break;
       const { canvas: srcCanvas, timestamp, duration } = wrapped;
       const ms = timestamp * 1000;
       const frameDuration = duration || 1 / 30;
+      if (!gifTotalEst && sourceDurationSec > 0) gifTotalEst = Math.max(1, Math.round(sourceDurationSec / frameDuration));
+      gifFrameCount++;
       if (items.some((it) => it.kind === 'trim' && ms >= it.startMs && ms < it.endMs)) continue;
       const speed = items.find((it) => it.kind === 'speed' && ms >= it.startMs && ms <= it.endMs);
       const speedFactor = speed?.speed ?? 1;
@@ -260,9 +298,15 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
       outMs = endOut;
       if (sourceDurationSec > 0) {
         const pct = Math.min(99, (timestamp / sourceDurationSec) * 100);
-        if (pct - lastProgress >= 1) { lastProgress = pct; onProgress('Encoding GIF', pct); }
+        if (pct - lastProgress >= 1) {
+          lastProgress = pct;
+          let preview: string | undefined;
+          if (pct - gifPreviewPct >= 4) { gifPreviewPct = pct; preview = snapshotPreview(canvas); }
+          onProgress('Encoding GIF', pct, { frame: gifFrameCount, totalFrames: gifTotalEst, preview });
+        }
       }
     }
+    if (cancelRequested) { onProgress('Cancelled', 100); return; }
     onProgress('Saving', 99);
     enc.finish();
     const gifBytes = enc.bytes();
@@ -293,7 +337,14 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
   });
   const videoSource = new CanvasSource(canvas, {
     codec: codec as VideoCodec,
-    bitrate: preset.bitrate
+    bitrate: preset.bitrate,
+    // Speed: the low-latency encode path skips the heavy multi-frame
+    // lookahead/rate-control — a solid wall-time win at negligible quality cost
+    // for screen recordings. We deliberately leave hardwareAcceleration at its
+    // default ('no-preference'): that still uses a GPU encoder when the machine
+    // has one, but — unlike 'prefer-hardware' — it falls back to software
+    // instead of failing the whole export when no hardware encoder exists.
+    latencyMode: 'realtime'
   });
   output.addVideoTrack(videoSource);
 
@@ -348,11 +399,20 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
   // doesn't leak between regions.
   let fastForwardDebt = 0;
   let prevSpeedFactor = 1;
+  // Frame counters + preview throttle for the progress modal.
+  let srcFrameCount = 0;
+  let totalFramesEst = 0;
+  let lastPreviewPct = -100;
 
   for await (const wrapped of screenSink.canvases()) {
+    if (cancelRequested) break;
     const { canvas: srcCanvas, timestamp, duration } = wrapped;
     const ms = timestamp * 1000;
     const frameDuration = duration || 1 / 30;
+    if (!totalFramesEst && sourceDurationSec > 0) {
+      totalFramesEst = Math.max(1, Math.round(sourceDurationSec / frameDuration));
+    }
+    srcFrameCount++;
 
     // Trim: drop frames inside any trim region entirely.
     const inTrim = items.some(
@@ -404,9 +464,22 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
       const pct = Math.min(99, (timestamp / sourceDurationSec) * 100);
       if (pct - lastProgress >= 1) {
         lastProgress = pct;
-        onProgress('Encoding', pct);
+        // A small JPEG snapshot every ~4% gives the modal a live "frame being
+        // processed" preview without the cost of doing it every frame.
+        let preview: string | undefined;
+        if (pct - lastPreviewPct >= 4) {
+          lastPreviewPct = pct;
+          preview = snapshotPreview(canvas);
+        }
+        onProgress('Encoding', pct, { frame: srcFrameCount, totalFrames: totalFramesEst, preview });
       }
     }
+  }
+
+  if (cancelRequested) {
+    try { await output.finalize(); } catch { /* nothing to keep */ }
+    onProgress('Cancelled', 100);
+    return;
   }
 
   // Mux the rebuilt audio buffer (timestamps start at 0, aligning with frame 0).
