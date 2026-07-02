@@ -221,6 +221,9 @@ export function HudApp() {
       return;
     }
     try {
+      // Tell main which display is being recorded so the cursor path is
+      // normalized against IT (not the primary) — matters on multi-monitor.
+      await window.api.setPendingCaptureSource(source.id).catch(() => {});
       const handle = await startRecording({
         sourceId: source.id,
         withSystemAudio: sysAudio,
@@ -256,16 +259,20 @@ export function HudApp() {
     // Bring HUD back / drop content protection state.
     window.api.setRecordingState(false);
 
-    const buf = await result.blob.arrayBuffer();
     const webcamBuf = result.webcamBlob ? await result.webcamBlob.arrayBuffer() : undefined;
-    const meta = await window.api.saveRecording(buf, {
+    const saveMeta = {
       durationMs: result.durationMs,
       width: result.width,
       height: result.height,
       startedAt: result.startedAt,
       webcamData: webcamBuf,
       region: region ?? undefined
-    });
+    };
+    // The ffmpeg cursor-hidden path already wrote the screen webm to disk, so we
+    // reference it by path; the Chromium path hands over an in-memory blob.
+    const meta = result.screenFilePath
+      ? await window.api.saveRecordingFromFile(result.screenFilePath, saveMeta)
+      : await window.api.saveRecording(await result.blob!.arrayBuffer(), saveMeta);
     await window.api.openEditor(meta);
   }
 

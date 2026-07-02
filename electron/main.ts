@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, desktopCapturer, 
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
+import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // Custom scheme so the renderer (running on http://localhost:5173 in dev) can
@@ -373,10 +374,14 @@ ipcMain.handle('picker:cancel', () => {
   pickerWindow?.close();
 });
 
-ipcMain.handle('recording:save', async (_evt, data: ArrayBuffer, meta: import('../src/shared/ipc.js').SaveRecordingMeta) => {
+// Shared tail of the save flow: given a finalized on-disk screen webm (whether
+// written from a renderer MediaRecorder blob or produced by ffmpeg), attach the
+// optional webcam clip + cursor/click sidecar and return the RecordingMeta.
+function writeRecordingSidecars(
+  filePath: string,
+  meta: import('../src/shared/ipc.js').SaveRecordingMeta
+): import('../src/shared/ipc.js').RecordingMeta {
   const ts = new Date(meta.startedAt).toISOString().replace(/[:.]/g, '-');
-  const filePath = path.join(recordingsTempDir, `${ts}.webm`);
-  fs.writeFileSync(filePath, Buffer.from(data));
   let webcamFilePath: string | undefined;
   if (meta.webcamData) {
     webcamFilePath = path.join(recordingsTempDir, `${ts}-webcam.webm`);
@@ -389,7 +394,35 @@ ipcMain.handle('recording:save', async (_evt, data: ArrayBuffer, meta: import('.
   if (cursorSamples.length > 0 || clickSamples.length > 0) {
     cursorFilePath = path.join(recordingsTempDir, `${ts}.cursor.json`);
     try {
-      fs.writeFileSync(cursorFilePath, JSON.stringify({ samples: cursorSamples, clicks: clickSamples }));
+      const disp = recordedDisplay ?? screen.getPrimaryDisplay();
+      // Normalize the raw pointer coords to 0..1 of the recorded frame. uiohook
+      // reports PHYSICAL global pixels; the video is the recorded display at
+      // physical resolution, so the true scale is (video px / display logical
+      // px) — derived from the ACTUAL captured video size, not Electron's
+      // scaleFactor (which is wrong on Wayland fractional scaling). The
+      // getCursorScreenPoint fallback is LOGICAL, so it's normalized by the
+      // display's logical bounds instead.
+      const vw = meta.width || Math.round(disp.bounds.width * (disp.scaleFactor || 1));
+      const vh = meta.height || Math.round(disp.bounds.height * (disp.scaleFactor || 1));
+      const norm = (arr: CursorPt[]) => {
+        if (cursorFromUio) {
+          const scaleX = vw / Math.max(1, disp.bounds.width);
+          const scaleY = vh / Math.max(1, disp.bounds.height);
+          const oX = disp.bounds.x * scaleX;
+          const oY = disp.bounds.y * scaleY;
+          return arr
+            .map((p) => ({ t: p.t, x: (p.x - oX) / vw, y: (p.y - oY) / vh }))
+            .filter((p) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1);
+        }
+        return arr
+          .map((p) => ({
+            t: p.t,
+            x: (p.x - disp.bounds.x) / Math.max(1, disp.bounds.width),
+            y: (p.y - disp.bounds.y) / Math.max(1, disp.bounds.height)
+          }))
+          .filter((p) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1);
+      };
+      fs.writeFileSync(cursorFilePath, JSON.stringify({ samples: norm(cursorSamples), clicks: norm(clickSamples) }));
     } catch (err) {
       console.warn('[main] failed to write cursor sidecar', err);
       cursorFilePath = undefined;
@@ -402,6 +435,19 @@ ipcMain.handle('recording:save', async (_evt, data: ArrayBuffer, meta: import('.
   const result: import('../src/shared/ipc.js').RecordingMeta = { ...rest, filePath, webcamFilePath, cursorFilePath };
   lastRecording = result;
   return result;
+}
+
+ipcMain.handle('recording:save', async (_evt, data: ArrayBuffer, meta: import('../src/shared/ipc.js').SaveRecordingMeta) => {
+  const ts = new Date(meta.startedAt).toISOString().replace(/[:.]/g, '-');
+  const filePath = path.join(recordingsTempDir, `${ts}.webm`);
+  fs.writeFileSync(filePath, Buffer.from(data));
+  return writeRecordingSidecars(filePath, meta);
+});
+
+// Save path for the ffmpeg cursor-hidden capture: the screen webm already exists
+// on disk (ffmpeg wrote it), so we skip the blob write and just attach sidecars.
+ipcMain.handle('recording:saveFromFile', async (_evt, screenFilePath: string, meta: import('../src/shared/ipc.js').SaveRecordingMeta) => {
+  return writeRecordingSidecars(screenFilePath, meta);
 });
 
 ipcMain.handle('editor:open', (_evt, recording) => {
@@ -456,27 +502,27 @@ type CursorPt = { t: number; x: number; y: number };
 let cursorSamples: CursorPt[] = [];
 let cursorTimer: ReturnType<typeof setInterval> | null = null;
 let cursorStart = 0;
-let cursorBounds: { x: number; y: number; width: number; height: number } | null = null;
+
+// Whether the cursor path came from uiohook (raw PHYSICAL global pixels) or the
+// getCursorScreenPoint fallback (LOGICAL global points). They live in different
+// coordinate spaces, so recording:save normalizes each accordingly.
+let cursorFromUio = false;
 
 function startCursorTracking() {
   stopCursorTracking();
   cursorSamples = [];
   cursorStart = Date.now();
-  cursorBounds = screen.getPrimaryDisplay().bounds;
   cursorTracking = true;
   lastMoveT = 0;
-  // Prefer uiohook for the cursor PATH too: its coordinates match the captured
-  // frame (the click ripples, which use it, track accurately), whereas
-  // screen.getCursorScreenPoint() was offset on some displays. Only fall back to
-  // polling getCursorScreenPoint when the global hook isn't available.
-  if (!startUio()) {
+  // Prefer uiohook for the cursor PATH (its coordinates match the captured
+  // frame — the click ripples, which use it, track accurately). Only fall back
+  // to polling getCursorScreenPoint when the global hook isn't available. Both
+  // store RAW coords; normalization happens at save time.
+  cursorFromUio = startUio();
+  if (!cursorFromUio) {
     cursorTimer = setInterval(() => {
-      if (!cursorBounds) return;
       const p = screen.getCursorScreenPoint();
-      const x = (p.x - cursorBounds.x) / Math.max(1, cursorBounds.width);
-      const y = (p.y - cursorBounds.y) / Math.max(1, cursorBounds.height);
-      if (x < 0 || x > 1 || y < 0 || y > 1) return;
-      cursorSamples.push({ t: Date.now() - cursorStart, x, y });
+      cursorSamples.push({ t: Date.now() - cursorStart, x: p.x, y: p.y });
     }, 40);
   }
 }
@@ -505,14 +551,6 @@ let uioHook: { start: () => void; stop: () => void; on: (e: string, cb: (ev: { x
 let uioLoaded = false;
 let uioRunning = false;
 
-function normPt(ev: { x: number; y: number }): { x: number; y: number } | null {
-  if (!cursorBounds) return null;
-  const x = (ev.x - cursorBounds.x) / Math.max(1, cursorBounds.width);
-  const y = (ev.y - cursorBounds.y) / Math.max(1, cursorBounds.height);
-  if (x < 0 || x > 1 || y < 0 || y > 1) return null;
-  return { x, y };
-}
-
 function ensureUio() {
   if (uioLoaded) return uioHook;
   uioLoaded = true;
@@ -522,19 +560,20 @@ function ensureUio() {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require('uiohook-napi');
     uioHook = mod.uIOhook ?? mod.default?.uIOhook ?? null;
+    // Store RAW pointer coordinates; they're normalized at save time against
+    // the recorded video's ACTUAL pixel size (see recording:save) — which is
+    // the ground truth, unlike Electron's scaleFactor (wrong on Wayland
+    // fractional scaling).
     uioHook?.on('mousemove', (ev) => {
       if (!cursorTracking) return;
       const now = Date.now();
       if (now - lastMoveT < 33) return; // ~30 Hz
-      const p = normPt(ev);
-      if (!p) return;
       lastMoveT = now;
-      cursorSamples.push({ t: now - cursorStart, x: p.x, y: p.y });
+      cursorSamples.push({ t: now - cursorStart, x: ev.x, y: ev.y });
     });
     uioHook?.on('mousedown', (ev) => {
       if (!clickTracking) return;
-      const p = normPt(ev);
-      if (p) clickSamples.push({ t: Date.now() - cursorStart, x: p.x, y: p.y });
+      clickSamples.push({ t: Date.now() - cursorStart, x: ev.x, y: ev.y });
     });
   } catch (err) {
     console.warn('[main] uiohook-napi unavailable; using cursor polling, no clicks', err);
@@ -572,8 +611,155 @@ function stopClickTracking() {
 // source without showing the OS picker. Lets the synthetic cursor replace the
 // baked-in OS cursor. Falls back to the normal getUserMedia path on any failure.
 let pendingCaptureSourceId: string | null = null;
-ipcMain.handle('capture:setPendingSource', (_evt, sourceId: string) => {
+// The display actually being recorded (resolved from the picked source's
+// display_id). Cursor coordinates are normalized against THIS display, not the
+// primary — otherwise recording a secondary monitor offsets the whole cursor
+// path (Cap normalizes per recorded display for the same reason).
+let recordedDisplay: Electron.Display | null = null;
+ipcMain.handle('capture:setPendingSource', async (_evt, sourceId: string) => {
   pendingCaptureSourceId = sourceId;
+  recordedDisplay = null;
+  try {
+    const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
+    const src = sources.find((s) => s.id === sourceId);
+    if (src && src.display_id) {
+      recordedDisplay = screen.getAllDisplays().find((d) => String(d.id) === String(src.display_id)) ?? null;
+    }
+    // Fall back to the display under the cursor for window sources (no display_id).
+    if (!recordedDisplay) {
+      recordedDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()) ?? null;
+    }
+  } catch {
+    recordedDisplay = null;
+  }
+});
+
+// ── Cursor-hidden screen capture via ffmpeg x11grab (Linux / X11) ────────────
+// Chromium's getDisplayMedia({ cursor:'never' }) is IGNORED on X11 — the
+// compositor always bakes the OS cursor into the captured frames — so the only
+// reliable way to record WITHOUT the cursor (letting the editor's synthetic
+// smooth cursor stand in with no double-cursor) is to grab the X display
+// directly with `ffmpeg -f x11grab -draw_mouse 0`. This runs ONLY on Linux and
+// ONLY when "Hide cursor" is on; every other case keeps the Chromium path.
+// Audio (system monitor + mic) is captured via PulseAudio in the same process
+// and muxed into the webm. If ffmpeg is missing or fails to start, ffcap:start
+// returns { ok:false } and the renderer falls back to the normal capture.
+let ffProc: ChildProcess | null = null;
+let ffOutPath: string | null = null;
+let ffStartedAt = 0;
+let ffDims = { width: 1920, height: 1080 };
+
+// Resolve the default PulseAudio sink monitor (system audio) + source (mic).
+function pulseDefaults(): { monitor: string | null; source: string | null } {
+  try {
+    const info = execFileSync('pactl', ['info'], { encoding: 'utf8' });
+    const sink = /Default Sink:\s*(.+)/.exec(info)?.[1]?.trim() || null;
+    const source = /Default Source:\s*(.+)/.exec(info)?.[1]?.trim() || null;
+    return { monitor: sink ? `${sink}.monitor` : null, source: source || null };
+  } catch {
+    return { monitor: null, source: null };
+  }
+}
+
+// Prefer a bundled ffmpeg-static binary when present; otherwise system ffmpeg.
+function ffmpegBin(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const p = require('ffmpeg-static');
+    if (p && typeof p === 'string') return p;
+  } catch {
+    /* not installed — use system ffmpeg */
+  }
+  return 'ffmpeg';
+}
+
+ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; withMic: boolean }) => {
+  if (process.platform !== 'linux') return { ok: false, width: 0, height: 0 };
+  try { ffProc?.kill('SIGKILL'); } catch { /* ignore */ }
+  ffProc = null;
+
+  const disp = recordedDisplay ?? screen.getPrimaryDisplay();
+  const scale = disp.scaleFactor || 1;
+  const w = Math.round(disp.bounds.width * scale);
+  const h = Math.round(disp.bounds.height * scale);
+  const x = Math.round(disp.bounds.x * scale);
+  const y = Math.round(disp.bounds.y * scale);
+  ffDims = { width: w, height: h };
+  const display = process.env.DISPLAY || ':0';
+
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  ffOutPath = path.join(recordingsTempDir, `${ts}-screen.webm`);
+
+  const { monitor, source } = pulseDefaults();
+  const wantSys = !!opts.withSystemAudio && !!monitor;
+  const wantMic = !!opts.withMic && !!source;
+
+  const args: string[] = [
+    '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'x11grab', '-draw_mouse', '0', '-framerate', '30',
+    '-video_size', `${w}x${h}`, '-i', `${display}+${x},${y}`
+  ];
+  if (wantSys) args.push('-f', 'pulse', '-i', monitor as string);
+  if (wantMic) args.push('-f', 'pulse', '-i', source as string);
+  // Audio inputs follow the video (input 0) in push order.
+  if (wantSys && wantMic) {
+    args.push('-filter_complex', '[1:a][2:a]amix=inputs=2:duration=longest[a]', '-map', '0:v', '-map', '[a]');
+  } else if (wantSys || wantMic) {
+    args.push('-map', '0:v', '-map', '1:a');
+  } else {
+    args.push('-map', '0:v');
+  }
+  // VP8/webm at realtime deadline so software encoding keeps up with capture;
+  // matches the codec/container the editor + exporter already ingest.
+  args.push('-c:v', 'libvpx', '-b:v', '8M', '-deadline', 'realtime', '-cpu-used', '4', '-pix_fmt', 'yuv420p');
+  if (wantSys || wantMic) args.push('-c:a', 'libopus', '-b:a', '128k');
+  args.push(ffOutPath);
+
+  try {
+    const proc = spawn(ffmpegBin(), args, { stdio: ['pipe', 'ignore', 'pipe'] });
+    ffProc = proc;
+    let stderr = '';
+    proc.stderr?.on('data', (d) => { stderr += String(d); });
+    const ok = await new Promise<boolean>((resolve) => {
+      let settled = false;
+      proc.once('spawn', () => { settled = true; ffStartedAt = Date.now(); resolve(true); });
+      proc.once('error', (err) => {
+        if (!settled) { settled = true; console.warn('[main] ffmpeg spawn error', err); resolve(false); }
+      });
+      // An exit within the first moment means capture failed (bad device/args).
+      proc.once('exit', (code) => {
+        if (!settled) { settled = true; console.warn('[main] ffmpeg exited early', code, stderr); resolve(false); }
+      });
+      setTimeout(() => { if (!settled) { settled = true; resolve(true); } }, 700);
+    });
+    if (!ok) { ffProc = null; ffOutPath = null; return { ok: false, width: 0, height: 0 }; }
+    return { ok: true, width: w, height: h };
+  } catch (err) {
+    console.warn('[main] ffmpeg capture failed to start', err);
+    ffProc = null;
+    ffOutPath = null;
+    return { ok: false, width: 0, height: 0 };
+  }
+});
+
+ipcMain.handle('ffcap:stop', async () => {
+  const proc = ffProc;
+  ffProc = null;
+  if (!proc || !ffOutPath) return null;
+  const durationMs = Date.now() - ffStartedAt;
+  await new Promise<void>((resolve) => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    proc.once('exit', finish);
+    // Ask ffmpeg to finalize gracefully (flush the webm index) via stdin 'q';
+    // then SIGINT, then a hard timeout, so stop() can never hang the HUD.
+    try { proc.stdin?.write('q'); } catch { /* ignore */ }
+    setTimeout(() => { try { proc.kill('SIGINT'); } catch { /* ignore */ } }, 400);
+    setTimeout(finish, 4000);
+  });
+  const out = ffOutPath;
+  ffOutPath = null;
+  return { filePath: out, width: ffDims.width, height: ffDims.height, durationMs };
 });
 
 ipcMain.handle('hud:setRecording', (_evt, recording: boolean) => {

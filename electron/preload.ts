@@ -21,6 +21,7 @@ const api: Api = {
     return () => ipcRenderer.off('region:selected', handler);
   },
   saveRecording: (data, meta) => ipcRenderer.invoke('recording:save', data, meta),
+  saveRecordingFromFile: (screenFilePath, meta) => ipcRenderer.invoke('recording:saveFromFile', screenFilePath, meta),
   openEditor: (recording) => ipcRenderer.invoke('editor:open', recording),
   getRecordingMeta: () => ipcRenderer.invoke('recording:meta'),
   getRecordingFileUrl: (filePath) => ipcRenderer.invoke('recording:fileUrl', filePath),
@@ -40,6 +41,9 @@ const api: Api = {
   saveExport: (req) => ipcRenderer.invoke('export:save', req),
   setRecordingState: (recording) => ipcRenderer.invoke('hud:setRecording', recording),
   setPendingCaptureSource: (sourceId) => ipcRenderer.invoke('capture:setPendingSource', sourceId),
+  platform: process.platform,
+  ffcapStart: (opts) => ipcRenderer.invoke('ffcap:start', opts),
+  ffcapStop: () => ipcRenderer.invoke('ffcap:stop'),
   getCursorData: (filePath) => ipcRenderer.invoke('cursor:load', filePath),
   onStopShortcut: (cb) => {
     const handler = () => cb();

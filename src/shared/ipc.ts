@@ -90,6 +90,9 @@ export type Api = {
   cancelRegionSelector: () => Promise<void>;
   onRegionSelected: (cb: (selection: RegionSelection) => void) => () => void;
   saveRecording: (data: ArrayBuffer, meta: SaveRecordingMeta) => Promise<RecordingMeta>;
+  // Save path for the ffmpeg cursor-hidden capture: the screen webm already
+  // exists on disk (ffmpeg wrote it), so we pass its path instead of a blob.
+  saveRecordingFromFile: (screenFilePath: string, meta: SaveRecordingMeta) => Promise<RecordingMeta>;
   openEditor: (recording: RecordingMeta) => Promise<void>;
   getRecordingMeta: () => Promise<RecordingMeta | null>;
   getRecordingFileUrl: (filePath: string) => Promise<string>;
@@ -123,6 +126,14 @@ export type Api = {
   // Tell main which desktopCapturer source the next getDisplayMedia call (used
   // for cursor-hidden capture) should resolve to.
   setPendingCaptureSource: (sourceId: string) => Promise<void>;
+  // process.platform, exposed so the renderer can pick the Linux-only ffmpeg
+  // cursor-hidden capture path without an async round-trip.
+  platform: string;
+  // Start/stop the ffmpeg x11grab cursor-hidden screen capture (Linux only).
+  // start returns { ok:false } when unavailable so the caller can fall back to
+  // the normal Chromium capture; stop returns the finalized screen webm path.
+  ffcapStart: (opts: { withSystemAudio: boolean; withMic: boolean }) => Promise<{ ok: boolean; width: number; height: number }>;
+  ffcapStop: () => Promise<{ filePath: string; width: number; height: number; durationMs: number } | null>;
   onStopShortcut: (cb: () => void) => () => void;
   // Load the sidecar cursor data (samples + clicks) for a recording. Returns
   // null if there's no sidecar. Normalizes the legacy bare-array format.

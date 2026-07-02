@@ -22,7 +22,10 @@ import fixWebmDuration from 'fix-webm-duration';
 
 export type RecordingHandle = {
   stop: () => Promise<{
-    blob: Blob;
+    // Exactly one of `blob` (Chromium MediaRecorder path) or `screenFilePath`
+    // (ffmpeg cursor-hidden path — the webm already exists on disk) is set.
+    blob?: Blob;
+    screenFilePath?: string;
     webcamBlob?: Blob;
     durationMs: number;
     width: number;
@@ -46,7 +49,101 @@ async function repairWebmDuration(blob: Blob, durationMs: number): Promise<Blob>
   }
 }
 
+// Codec preference for MediaRecorder — VP8 first (see the long note in the
+// screen recorder below for why it must be VP8/VP9, never H.264-in-WebM).
+function pickMime(): string {
+  const candidates = ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm'];
+  return candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? 'video/webm';
+}
+
+// Open a webcam recorder (used by both capture paths). Borrows a pre-opened
+// preview stream when provided; otherwise opens + owns one. Returns null (and
+// stops any stream it opened) if the camera can't be captured — recording is
+// never blocked by a webcam failure.
+async function openWebcam(
+  opts: RecordingOptions,
+  mimeType: string
+): Promise<{ recorder: MediaRecorder; chunks: BlobPart[]; stream: MediaStream; owns: boolean } | null> {
+  let stream = opts.camStream ?? null;
+  const owns = !opts.camStream;
+  try {
+    if (!stream) {
+      const camVideoConstraints: MediaTrackConstraints = {
+        width: { ideal: 640, max: 1280 },
+        height: { ideal: 480, max: 720 },
+        frameRate: { ideal: 30, max: 30 },
+        ...(opts.camDeviceId ? { deviceId: { exact: opts.camDeviceId } } : {})
+      };
+      stream = await navigator.mediaDevices.getUserMedia({ video: camVideoConstraints, audio: false });
+    }
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 6_000_000 });
+    const chunks: BlobPart[] = [];
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+    return { recorder, chunks, stream, owns };
+  } catch (err) {
+    console.warn('webcam capture failed; continuing without it', err);
+    if (owns) stream?.getTracks().forEach((t) => t.stop());
+    return null;
+  }
+}
+
+// Cursor-hidden capture path (Linux/X11): the screen (+ system/mic audio) is
+// grabbed by ffmpeg in the main process with the OS cursor omitted; only the
+// webcam is recorded here in the renderer. See electron/main.ts ffcap:start.
+async function startFfmpegRecording(
+  opts: RecordingOptions,
+  started: { width: number; height: number }
+): Promise<RecordingHandle> {
+  const mimeType = pickMime();
+  const cam = opts.withCam ? await openWebcam(opts, mimeType) : null;
+  const startedAt = Date.now();
+  cam?.recorder.start(1000);
+
+  return {
+    async stop() {
+      const stoppedCam = cam
+        ? new Promise<void>((resolve) => { cam.recorder.onstop = () => resolve(); })
+        : Promise.resolve();
+      cam?.recorder.stop();
+      await stoppedCam;
+      if (cam?.owns) cam.stream.getTracks().forEach((t) => t.stop());
+
+      const ff = await window.api.ffcapStop();
+      const durationMs = ff?.durationMs ?? Date.now() - startedAt;
+      const rawWebcamBlob = cam && cam.chunks.length > 0 ? new Blob(cam.chunks, { type: mimeType }) : undefined;
+      const webcamBlob = rawWebcamBlob ? await repairWebmDuration(rawWebcamBlob, durationMs) : undefined;
+
+      return {
+        screenFilePath: ff?.filePath,
+        webcamBlob,
+        durationMs,
+        width: ff?.width ?? started.width,
+        height: ff?.height ?? started.height,
+        startedAt
+      };
+    }
+  };
+}
+
 export async function startRecording(opts: RecordingOptions): Promise<RecordingHandle> {
+  // Linux + "Hide cursor": capture the screen via ffmpeg `x11grab -draw_mouse 0`
+  // in the main process — the only reliable way to omit the OS cursor on X11
+  // (Chromium's getDisplayMedia cursor:'never' is silently ignored there). If
+  // ffmpeg is unavailable or fails to start, fall through to the normal path.
+  if (opts.hideCursor && window.api.platform === 'linux') {
+    try {
+      await window.api.setPendingCaptureSource(opts.sourceId);
+      const started = await window.api.ffcapStart({
+        withSystemAudio: !!opts.withSystemAudio,
+        withMic: !!opts.withMic
+      });
+      if (started?.ok) return await startFfmpegRecording(opts, started);
+      console.warn('[recording] ffmpeg cursor-hidden capture unavailable; using normal capture');
+    } catch (err) {
+      console.warn('[recording] ffmpeg cursor-hidden capture failed; using normal capture', err);
+    }
+  }
+
   const constraints: any = {
     audio: opts.withSystemAudio
       ? {
