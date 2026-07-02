@@ -3,6 +3,8 @@ export default {
   'side.cursor': "İmleç",
   'side.smoothCursor': "Yumuşak imleç",
   'side.cursorSize': "İmleç boyutu",
+  'side.cursorSmoothing': "Yumuşatma",
+  'side.cursorSmoothingOff': "Kapalı (birebir)",
   'side.clickHighlights': "Tıklama vurgusu",
   'side.cursorTip': "Kaydedilen hareketiniz boyunca süzülen yumuşak, büyütülmüş bir imleç çizer.",
   'side.cursorNoData': "Bu kayıt için imleç verisi yakalanmadı.",

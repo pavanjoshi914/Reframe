@@ -106,6 +106,8 @@ export default {
   'side.cursor': 'Cursor',
   'side.smoothCursor': 'Smooth cursor',
   'side.cursorSize': 'Cursor size',
+  'side.cursorSmoothing': 'Smoothing',
+  'side.cursorSmoothingOff': 'Off (exact)',
   'side.clickHighlights': 'Click highlights',
   'side.cursorTip': 'Draws a smooth, enlarged cursor that glides along your recorded movement.',
   'side.cursorNoData': 'No cursor data was captured for this recording.',

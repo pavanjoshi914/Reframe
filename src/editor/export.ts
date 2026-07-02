@@ -623,7 +623,7 @@ export type DrawCtx = {
   cursorSamples?: CursorSample[];
   cursorSamplesSmooth?: CursorSample[];
   cursorClicks?: ClickSample[];
-  cursorFx?: { enabled: boolean; size: number; clicks: boolean };
+  cursorFx?: { enabled: boolean; size: number; clicks: boolean; smoothing?: number };
 };
 
 // Interpolated cursor position (normalized 0..1 of the source frame) at `ms`,
@@ -642,6 +642,51 @@ function cursorAt(samples: CursorSample[] | undefined, ms: number): { x: number;
   const a = samples[lo], b = samples[hi];
   const f = b.t === a.t ? 0 : (ms - a.t) / (b.t - a.t);
   return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+}
+
+// Interpolated cursor position at `ms` using a CENTRIPETAL Catmull-Rom spline
+// (alpha = 0.5) through the four surrounding samples — a smooth curve that
+// passes through every real point (no offset) and curves nicely between sparse
+// samples during fast moves (where linear interpolation looks angular), without
+// the overshoot uniform Catmull-Rom can produce. Falls back to linear when
+// there aren't enough points.
+function cursorAtSpline(samples: CursorSample[] | undefined, ms: number): { x: number; y: number } | null {
+  if (!samples || samples.length === 0) return null;
+  if (samples.length < 4) return cursorAt(samples, ms);
+  if (ms <= samples[0].t) return { x: samples[0].x, y: samples[0].y };
+  const last = samples[samples.length - 1];
+  if (ms >= last.t) return { x: last.x, y: last.y };
+  let lo = 0, hi = samples.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (samples[mid].t <= ms) lo = mid; else hi = mid;
+  }
+  const i1 = lo, i2 = hi;
+  const p1 = samples[i1], p2 = samples[i2];
+  const p0 = samples[Math.max(0, i1 - 1)];
+  const p3 = samples[Math.min(samples.length - 1, i2 + 1)];
+  const segLen = p2.t - p1.t;
+  const t = segLen > 0 ? (ms - p1.t) / segLen : 0;
+  const knot = (ti: number, a: { x: number; y: number }, b: { x: number; y: number }) =>
+    ti + Math.sqrt(Math.hypot(b.x - a.x, b.y - a.y)); // alpha = 0.5
+  const t0 = 0;
+  const t1 = knot(t0, p0, p1);
+  const t2 = knot(t1, p1, p2);
+  const t3 = knot(t2, p2, p3);
+  if (t1 === t0 || t2 === t1 || t3 === t2) {
+    return { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t };
+  }
+  const lerp = (a: { x: number; y: number }, b: { x: number; y: number }, u: number) => ({
+    x: a.x + (b.x - a.x) * u,
+    y: a.y + (b.y - a.y) * u
+  });
+  const tt = t1 + (t2 - t1) * t;
+  const A1 = lerp(p0, p1, (tt - t0) / (t1 - t0));
+  const A2 = lerp(p1, p2, (tt - t1) / (t2 - t1));
+  const A3 = lerp(p2, p3, (tt - t2) / (t3 - t2));
+  const B1 = lerp(A1, A2, (tt - t0) / (t2 - t0));
+  const B2 = lerp(A2, A3, (tt - t1) / (t3 - t1));
+  return lerp(B1, B2, (tt - t1) / (t2 - t1));
 }
 
 // Map a cursor (normalized source coords) to output-canvas pixels, mirroring
@@ -811,8 +856,13 @@ export function drawFrame(
           if (p) drawClickRipple(ctx, p.x, p.y, age / CLICK_RIPPLE_MS, outH);
         }
       }
-      const samples = d.cursorSamplesSmooth?.length ? d.cursorSamplesSmooth : d.cursorSamples;
-      const cur = cursorAt(samples, ms);
+      // Blend the raw (pixel-exact) and One-Euro-smoothed positions by the
+      // smoothing amount: 0 = exactly where the cursor was, 1 = full glide.
+      const sm = Math.max(0, Math.min(1, cfx.smoothing ?? 0.5));
+      const raw = cursorAt(d.cursorSamples, ms);
+      const smooth = d.cursorSamplesSmooth?.length ? cursorAtSpline(d.cursorSamplesSmooth, ms) : raw;
+      const cur =
+        raw && smooth ? { x: raw.x + (smooth.x - raw.x) * sm, y: raw.y + (smooth.y - raw.y) * sm } : smooth || raw;
       if (cur) {
         const p = toOut(cur.x, cur.y);
         if (p) drawSyntheticCursor(ctx, p.x, p.y, cfx.size, outH);

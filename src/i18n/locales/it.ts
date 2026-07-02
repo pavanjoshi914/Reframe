@@ -3,6 +3,8 @@ export default {
   'side.cursor': "Cursore",
   'side.smoothCursor': "Cursore fluido",
   'side.cursorSize': "Dimensione cursore",
+  'side.cursorSmoothing': "Levigatura",
+  'side.cursorSmoothingOff': "Off (esatto)",
   'side.clickHighlights': "Evidenziazione clic",
   'side.cursorTip': "Disegna un cursore fluido e ingrandito che scorre lungo il movimento registrato.",
   'side.cursorNoData': "Nessun dato del cursore è stato acquisito per questa registrazione.",

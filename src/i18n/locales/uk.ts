@@ -3,6 +3,8 @@ export default {
   'side.cursor': "Курсор",
   'side.smoothCursor': "Плавний курсор",
   'side.cursorSize': "Розмір курсора",
+  'side.cursorSmoothing': "Згладжування",
+  'side.cursorSmoothingOff': "Вимк. (точно)",
   'side.clickHighlights': "Підсвічування кліків",
   'side.cursorTip': "Малює плавний збільшений курсор, що ковзає вздовж записаного руху.",
   'side.cursorNoData': "Для цього запису не зібрано даних курсора.",

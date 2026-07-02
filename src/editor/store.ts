@@ -132,7 +132,9 @@ export type EditorState = {
   cursorClicks: ClickSample[];
   // Synthetic-cursor styling (serialized). When enabled, the compositor draws a
   // smoothed, scalable cursor + optional click ripples on top of the video.
-  cursorFx: { enabled: boolean; size: number; clicks: boolean };
+  // smoothing 0..1: 0 = the raw cursor position (pixel-exact, no smoothing),
+  // 1 = the full One Euro glide. Lets the user trade accuracy for buttery-ness.
+  cursorFx: { enabled: boolean; size: number; clicks: boolean; smoothing: number };
 
   // Undo/redo history (session-only; never serialized). past/future hold
   // document snapshots; _applyingHistory suppresses capture while a snapshot is
@@ -203,27 +205,62 @@ export type SerializedProject = {
   cursorFx?: EditorState['cursorFx'];
 };
 
-const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = { enabled: false, size: 1.4, clicks: true };
+const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = { enabled: false, size: 1.4, clicks: true, smoothing: 0.5 };
 
 function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
 }
 
-// Jitter-smooth the captured cursor path with a symmetric moving average. A
-// window of ±win samples (~40ms each) rounds off the shaky hand motion into a
-// smooth glide while keeping near-zero net lag (symmetric, unlike an EMA). The
-// rounded corners are exactly the "buttery" look these demo tools are known for.
-function smoothCursor(samples: CursorSample[], win = 4): CursorSample[] {
-  if (samples.length < 3) return samples.slice();
-  const out: CursorSample[] = [];
-  for (let i = 0; i < samples.length; i++) {
-    let sx = 0, sy = 0, n = 0;
-    const lo = Math.max(0, i - win);
-    const hi = Math.min(samples.length - 1, i + win);
-    for (let j = lo; j <= hi; j++) { sx += samples[j].x; sy += samples[j].y; n++; }
-    out.push({ t: samples[i].t, x: sx / n, y: sy / n });
-  }
-  return out;
+// Jitter-smooth the captured cursor path with a ZERO-PHASE, ADAPTIVE filter:
+// the One Euro filter (Casiez et al.) run FORWARD then BACKWARD. Two properties
+// matter for a recorded (non-real-time) path:
+//  • Adaptive — at high speed the cutoff rises so fast moves are barely
+//    smoothed (the cursor stays on the real path), while slow movement is
+//    de-jittered. A fixed filter can't do both; it either lags fast moves or
+//    leaves jitter.
+//  • Zero-phase — the forward pass's lag is cancelled by the backward pass, so
+//    the smoothed cursor doesn't trail the real one (a single causal pass, like
+//    we used before, always does). The editor has the whole path, so we can.
+// Paired with the centripetal Catmull-Rom interpolation in the compositor for
+// smooth motion between the sparse samples — the approach pro recorders use.
+const EURO_MIN_CUTOFF = 1.0; // Hz — jitter smoothing when slow/at rest
+const EURO_BETA = 1.2;       // speed coupling — higher keeps fast moves sharper
+const EURO_D_CUTOFF = 1.0;
+function euroAlpha(cutoffHz: number, dtSec: number): number {
+  const tau = 1 / (2 * Math.PI * cutoffHz);
+  return 1 / (1 + tau / dtSec);
+}
+function smoothCursor(samples: CursorSample[]): CursorSample[] {
+  const n = samples.length;
+  if (n < 3) return samples.slice();
+  const ts = samples.map((s) => s.t);
+  // One One-Euro pass over the given index order; writes results back in the
+  // original index positions so a forward and a backward pass compose cleanly.
+  const pass = (xin: number[], yin: number[], order: number[]): [number[], number[]] => {
+    const xo = new Array<number>(n);
+    const yo = new Array<number>(n);
+    let xh = 0, yh = 0, dxh = 0, dyh = 0, xPrev = 0, yPrev = 0, tPrev = 0, first = true;
+    for (const i of order) {
+      if (first) {
+        xh = xin[i]; yh = yin[i]; xPrev = xin[i]; yPrev = yin[i]; tPrev = ts[i];
+        xo[i] = xh; yo[i] = yh; first = false; continue;
+      }
+      const dt = Math.max(1, Math.abs(ts[i] - tPrev)) / 1000;
+      const aD = euroAlpha(EURO_D_CUTOFF, dt);
+      dxh += aD * ((xin[i] - xPrev) / dt - dxh);
+      dyh += aD * ((yin[i] - yPrev) / dt - dyh);
+      const aX = euroAlpha(EURO_MIN_CUTOFF + EURO_BETA * Math.abs(dxh), dt);
+      const aY = euroAlpha(EURO_MIN_CUTOFF + EURO_BETA * Math.abs(dyh), dt);
+      xh += aX * (xin[i] - xh);
+      yh += aY * (yin[i] - yh);
+      xo[i] = xh; yo[i] = yh; xPrev = xin[i]; yPrev = yin[i]; tPrev = ts[i];
+    }
+    return [xo, yo];
+  };
+  const order = [...Array(n).keys()];
+  const [xf, yf] = pass(samples.map((s) => s.x), samples.map((s) => s.y), order);
+  const [xb, yb] = pass(xf, yf, order.slice().reverse());
+  return samples.map((s, i) => ({ t: s.t, x: xb[i], y: yb[i] }));
 }
 
 // Extract the serializable document (everything undo/redo and save care about)
@@ -315,7 +352,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   cursorSamples: [],
   cursorSamplesSmooth: [],
   cursorClicks: [],
-  cursorFx: { enabled: false, size: 1.4, clicks: true },
+  cursorFx: { enabled: false, size: 1.4, clicks: true, smoothing: 0.5 },
 
   past: [],
   future: [],
@@ -543,7 +580,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       exportFormat: data.exportFormat,
       exportQuality: data.exportQuality,
       items: data.items,
-      cursorFx: data.cursorFx ?? DEFAULT_CURSOR_FX,
+      cursorFx: { ...DEFAULT_CURSOR_FX, ...(data.cursorFx ?? {}) },
       selectedItemId: null,
       // Loading a project is a fresh document → reset undo history.
       past: [],

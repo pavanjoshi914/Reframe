@@ -3,6 +3,8 @@ export default {
   'side.cursor': "커서",
   'side.smoothCursor': "부드러운 커서",
   'side.cursorSize': "커서 크기",
+  'side.cursorSmoothing': "부드럽게",
+  'side.cursorSmoothingOff': "끄기 (정확)",
   'side.clickHighlights': "클릭 하이라이트",
   'side.cursorTip': "녹화된 움직임을 따라 부드럽게 미끄러지는 확대된 커서를 그립니다.",
   'side.cursorNoData': "이 녹화에는 커서 데이터가 기록되지 않았습니다.",

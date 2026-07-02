@@ -776,6 +776,17 @@ function CursorSection() {
               fmt={(v) => `${(v / 100).toFixed(1)}×`}
             />
           </div>
+          <div data-cursorctl="smoothing">
+            <RangeRow
+              label={t('side.cursorSmoothing')}
+              value={Math.round((cursorFx.smoothing ?? 0.5) * 100)}
+              min={0}
+              max={100}
+              step={5}
+              onChange={(v) => setCursorFx({ smoothing: v / 100 })}
+              fmt={(v) => (v === 0 ? t('side.cursorSmoothingOff') : `${v}%`)}
+            />
+          </div>
           <div data-cursorctl="clicks">
             <ToggleRow label={t('side.clickHighlights')} checked={cursorFx.clicks} onChange={(v) => setCursorFx({ clicks: v })} />
           </div>

@@ -3,6 +3,8 @@ export default {
   'side.cursor': "เคอร์เซอร์",
   'side.smoothCursor': "เคอร์เซอร์ลื่นไหล",
   'side.cursorSize': "ขนาดเคอร์เซอร์",
+  'side.cursorSmoothing': "ความนุ่มนวล",
+  'side.cursorSmoothingOff': "ปิด (แม่นยำ)",
   'side.clickHighlights': "ไฮไลต์การคลิก",
   'side.cursorTip': "วาดเคอร์เซอร์ที่ลื่นไหลและขยายใหญ่ ซึ่งเลื่อนไปตามการเคลื่อนไหวที่บันทึกไว้",
   'side.cursorNoData': "ไม่มีการบันทึกข้อมูลเคอร์เซอร์สำหรับการบันทึกนี้",

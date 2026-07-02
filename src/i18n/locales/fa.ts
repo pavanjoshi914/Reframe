@@ -3,6 +3,8 @@ export default {
   'side.cursor': "مکان‌نما",
   'side.smoothCursor': "مکان‌نمای نرم",
   'side.cursorSize': "اندازه مکان‌نما",
+  'side.cursorSmoothing': "نرم‌سازی",
+  'side.cursorSmoothingOff': "خاموش (دقیق)",
   'side.clickHighlights': "برجسته‌سازی کلیک",
   'side.cursorTip': "یک مکان‌نمای نرم و بزرگ‌شده می‌کشد که در امتداد حرکت ضبط‌شده شما می‌لغزد.",
   'side.cursorNoData': "برای این ضبط هیچ داده مکان‌نمایی ثبت نشده است.",

@@ -3,6 +3,8 @@ export default {
   'side.cursor': "光标",
   'side.smoothCursor': "平滑光标",
   'side.cursorSize': "光标大小",
+  'side.cursorSmoothing': "平滑",
+  'side.cursorSmoothingOff': "关闭（精确）",
   'side.clickHighlights': "点击高亮",
   'side.cursorTip': "绘制一个平滑放大的光标，沿录制的移动轨迹滑动。",
   'side.cursorNoData': "此录制未捕获光标数据。",

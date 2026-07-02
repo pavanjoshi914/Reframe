@@ -3,6 +3,8 @@ export default {
   'side.cursor': "Cursor",
   'side.smoothCursor': "Vloeiende cursor",
   'side.cursorSize': "Cursorgrootte",
+  'side.cursorSmoothing': "Vloeiendheid",
+  'side.cursorSmoothingOff': "Uit (exact)",
   'side.clickHighlights': "Klik-markering",
   'side.cursorTip': "Tekent een vloeiende, vergrote cursor die langs je opgenomen beweging glijdt.",
   'side.cursorNoData': "Er zijn geen cursorgegevens vastgelegd voor deze opname.",

@@ -3,6 +3,8 @@ export default {
   'side.cursor': "Cursor",
   'side.smoothCursor': "Cursor suave",
   'side.cursorSize': "Tamanho do cursor",
+  'side.cursorSmoothing': "Suavização",
+  'side.cursorSmoothingOff': "Desligado (exato)",
   'side.clickHighlights': "Destaque de clique",
   'side.cursorTip': "Desenha um cursor suave e ampliado que desliza pelo seu movimento gravado.",
   'side.cursorNoData': "Nenhum dado de cursor foi capturado nesta gravação.",

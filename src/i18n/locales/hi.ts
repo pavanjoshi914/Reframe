@@ -3,6 +3,8 @@ export default {
   'side.cursor': "कर्सर",
   'side.smoothCursor': "स्मूद कर्सर",
   'side.cursorSize': "कर्सर आकार",
+  'side.cursorSmoothing': "स्मूथिंग",
+  'side.cursorSmoothingOff': "बंद (सटीक)",
   'side.clickHighlights': "क्लिक हाइलाइट",
   'side.cursorTip': "एक स्मूद, बड़ा कर्सर बनाता है जो आपकी रिकॉर्ड की गई गति के साथ सरकता है।",
   'side.cursorNoData': "इस रिकॉर्डिंग के लिए कोई कर्सर डेटा कैप्चर नहीं हुआ।",

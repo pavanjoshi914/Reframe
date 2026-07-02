@@ -3,6 +3,8 @@ export default {
   'side.cursor': "المؤشر",
   'side.smoothCursor': "مؤشر سلس",
   'side.cursorSize': "حجم المؤشر",
+  'side.cursorSmoothing': "التنعيم",
+  'side.cursorSmoothingOff': "إيقاف (دقيق)",
   'side.clickHighlights': "تمييز النقر",
   'side.cursorTip': "يرسم مؤشرًا سلسًا ومكبَّرًا ينزلق على طول حركتك المسجَّلة.",
   'side.cursorNoData': "لم يتم التقاط بيانات المؤشر لهذا التسجيل.",

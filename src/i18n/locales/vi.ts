@@ -3,6 +3,8 @@ export default {
   'side.cursor': "Con trỏ",
   'side.smoothCursor': "Con trỏ mượt",
   'side.cursorSize': "Kích thước con trỏ",
+  'side.cursorSmoothing': "Làm mượt",
+  'side.cursorSmoothingOff': "Tắt (chính xác)",
   'side.clickHighlights': "Làm nổi bật nhấp chuột",
   'side.cursorTip': "Vẽ một con trỏ mượt mà, phóng to lướt theo chuyển động đã ghi của bạn.",
   'side.cursorNoData': "Không có dữ liệu con trỏ nào được ghi cho bản ghi này.",

@@ -3,6 +3,8 @@ export default {
   'side.cursor': "Kursor",
   'side.smoothCursor': "Płynny kursor",
   'side.cursorSize': "Rozmiar kursora",
+  'side.cursorSmoothing': "Wygładzanie",
+  'side.cursorSmoothingOff': "Wył. (dokładnie)",
   'side.clickHighlights': "Podświetlenie kliknięć",
   'side.cursorTip': "Rysuje płynny, powiększony kursor, który sunie wzdłuż nagranego ruchu.",
   'side.cursorNoData': "Nie zarejestrowano danych kursora dla tego nagrania.",

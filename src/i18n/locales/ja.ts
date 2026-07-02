@@ -3,6 +3,8 @@ export default {
   'side.cursor': "カーソル",
   'side.smoothCursor': "スムーズカーソル",
   'side.cursorSize': "カーソルサイズ",
+  'side.cursorSmoothing': "スムージング",
+  'side.cursorSmoothingOff': "オフ（正確）",
   'side.clickHighlights': "クリックハイライト",
   'side.cursorTip': "録画した動きに沿って滑らかに動く、拡大されたカーソルを描画します。",
   'side.cursorNoData': "この録画にはカーソルデータが記録されていません。",
