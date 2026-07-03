@@ -83,6 +83,10 @@ export function EditorApp() {
       const webcamUrl = p.recording.webcamFilePath ? await window.api.getRecordingFileUrl(p.recording.webcamFilePath) : null;
       if (cancelled) return;
       setRecording(p.recording, url, webcamUrl);
+      // A hide-cursor clip has no cursor of its own and its Smooth-cursor toggle
+      // is removed, so ensure the synthetic cursor is on even for older projects
+      // saved before that rule (safe: there's no meaningful "off" for them).
+      if (p.recording.hideCursor) useEditor.getState().setCursorFx({ enabled: true });
       void loadCursor(p.recording);
       useEditor.getState().setCurrentProjectPath(p.path);
     }

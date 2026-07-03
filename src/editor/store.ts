@@ -4,6 +4,9 @@ import { suggestZoomsFromCursor } from './autoZoom';
 
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
 export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed' | 'magnify' | 'spotlight';
+// Synthetic-cursor pointer masks: an OS-like arrow, a bolder stylized arrow,
+// a hollow ring, and a filled dot. Rendered by the compositor (export.ts).
+export type CursorStyle = 'system' | 'arrow' | 'ring' | 'dot';
 
 export type AnnotationStyle = {
   // Visual styling for an annotation. All fields optional so older projects
@@ -134,7 +137,8 @@ export type EditorState = {
   // smoothed, scalable cursor + optional click ripples on top of the video.
   // smoothing 0..1: 0 = the raw cursor position (pixel-exact, no smoothing),
   // 1 = the full One Euro glide. Lets the user trade accuracy for buttery-ness.
-  cursorFx: { enabled: boolean; size: number; clicks: boolean; smoothing: number };
+  // style picks the pointer mask; color is its fill (outline auto-contrasts).
+  cursorFx: { enabled: boolean; size: number; clicks: boolean; smoothing: number; style: CursorStyle; color: string };
 
   // Undo/redo history (session-only; never serialized). past/future hold
   // document snapshots; _applyingHistory suppresses capture while a snapshot is
@@ -205,7 +209,7 @@ export type SerializedProject = {
   cursorFx?: EditorState['cursorFx'];
 };
 
-const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = { enabled: false, size: 1.4, clicks: true, smoothing: 0.5 };
+const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = { enabled: false, size: 1.4, clicks: true, smoothing: 0.5, style: 'system', color: '#ffffff' };
 
 function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
@@ -352,7 +356,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   cursorSamples: [],
   cursorSamplesSmooth: [],
   cursorClicks: [],
-  cursorFx: { enabled: false, size: 1.4, clicks: true, smoothing: 0.5 },
+  cursorFx: { ...DEFAULT_CURSOR_FX },
 
   past: [],
   future: [],

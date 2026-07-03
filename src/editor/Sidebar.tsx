@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight } from 'lucide-react';
-import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem } from './store';
+import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem, type CursorStyle } from './store';
 import { runExport, cancelExport } from './export';
 import { CropModal } from './CropModal';
 import { useT } from '../i18n';
@@ -753,22 +753,68 @@ function VideoEffectsSection() {
 
 // Synthetic-cursor styling: a smoothed, scalable pointer + click ripples — the
 // signature "smooth cursor" look of polished demo videos.
+const CURSOR_STYLES: { id: CursorStyle; key: string }[] = [
+  { id: 'system', key: 'side.cursorStyleSystem' },
+  { id: 'arrow', key: 'side.cursorStyleArrow' },
+  { id: 'ring', key: 'side.cursorStyleRing' },
+  { id: 'dot', key: 'side.cursorStyleDot' }
+];
+const CURSOR_COLORS = ['#ffffff', '#111111', '#34d399', '#f59e0b', '#ef4444', '#3b82f6'];
+
 function CursorSection() {
   const t = useT();
   const cursorFx = useEditor((s) => s.cursorFx);
   const setCursorFx = useEditor((s) => s.setCursorFx);
   const hasCursorData = useEditor((s) => s.cursorSamples.length > 0);
-  // This clip was captured with the OS cursor hidden — it has no baked cursor,
-  // so turning Smooth cursor off leaves NO cursor at all. Warn instead of
-  // silently showing an empty pointer-less video.
+  // A hide-cursor clip has NO baked-in cursor, so the synthetic one is the only
+  // cursor there is — it's always shown (no on/off toggle); the user styles it
+  // instead. Non-hide recordings keep the toggle (cursor is optional on top).
   const hideCursorClip = useEditor((s) => !!s.recording?.hideCursor);
+  const on = cursorFx.enabled || hideCursorClip;
+  const style = cursorFx.style ?? 'system';
+  const color = cursorFx.color ?? '#ffffff';
   return (
     <div className="space-y-3">
-      <div data-cursorctl="enabled">
-        <ToggleRow label={t('side.smoothCursor')} checked={cursorFx.enabled} onChange={(v) => setCursorFx({ enabled: v })} />
-      </div>
-      {cursorFx.enabled && (
+      {!hideCursorClip && (
+        <div data-cursorctl="enabled">
+          <ToggleRow label={t('side.smoothCursor')} checked={cursorFx.enabled} onChange={(v) => setCursorFx({ enabled: v })} />
+        </div>
+      )}
+      {on && (
         <>
+          <div data-cursorctl="style">
+            <Label>{t('side.style')}</Label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {CURSOR_STYLES.map((s) => (
+                <CursorStyleBtn key={s.id} active={style === s.id} onClick={() => setCursorFx({ style: s.id })} label={t(s.key)} />
+              ))}
+            </div>
+          </div>
+          <div data-cursorctl="color">
+            <Label>{t('side.color')}</Label>
+            <div className="flex items-center gap-1.5">
+              {CURSOR_COLORS.map((c) => (
+                <button
+                  key={c}
+                  aria-label={`Cursor color ${c}`}
+                  title={c}
+                  onClick={() => setCursorFx({ color: c })}
+                  className={
+                    'h-6 w-6 rounded-full transition ' +
+                    (color.toLowerCase() === c.toLowerCase() ? 'ring-2 ring-emerald-400' : 'ring-1 ring-white/15 hover:ring-white/40')
+                  }
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setCursorFx({ color: e.target.value })}
+                className="h-6 w-6 shrink-0 cursor-pointer rounded border border-white/10 bg-transparent"
+                aria-label={t('side.color')}
+              />
+            </div>
+          </div>
           <div data-cursorctl="size">
             <RangeRow
               label={t('side.cursorSize')}
@@ -796,14 +842,26 @@ function CursorSection() {
           </div>
         </>
       )}
-      {hideCursorClip && !cursorFx.enabled ? (
-        <p className="text-[11px] text-amber-400/80">{t('side.cursorHiddenNote')}</p>
-      ) : (
-        <p className="text-[11px] text-white/40">
-          {cursorFx.enabled && !hasCursorData ? t('side.cursorNoData') : t('side.cursorTip')}
-        </p>
-      )}
+      <p className="text-[11px] text-white/40">
+        {on && !hasCursorData ? t('side.cursorNoData') : t('side.cursorTip')}
+      </p>
     </div>
+  );
+}
+
+function CursorStyleBtn({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-pressed={active}
+      className={
+        'rounded-md px-1.5 py-1.5 text-[11px] font-medium ' +
+        (active ? 'bg-emerald-500 text-black' : 'bg-white/5 text-white/70 hover:bg-white/10')
+      }
+    >
+      {label}
+    </button>
   );
 }
 

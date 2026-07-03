@@ -623,7 +623,7 @@ export type DrawCtx = {
   cursorSamples?: CursorSample[];
   cursorSamplesSmooth?: CursorSample[];
   cursorClicks?: ClickSample[];
-  cursorFx?: { enabled: boolean; size: number; clicks: boolean; smoothing?: number };
+  cursorFx?: { enabled: boolean; size: number; clicks: boolean; smoothing?: number; style?: string; color?: string };
 };
 
 // Interpolated cursor position (normalized 0..1 of the source frame) at `ms`,
@@ -865,7 +865,7 @@ export function drawFrame(
         raw && smooth ? { x: raw.x + (smooth.x - raw.x) * sm, y: raw.y + (smooth.y - raw.y) * sm } : smooth || raw;
       if (cur) {
         const p = toOut(cur.x, cur.y);
-        if (p) drawSyntheticCursor(ctx, p.x, p.y, cfx.size, outH);
+        if (p) drawSyntheticCursor(ctx, p.x, p.y, cfx.size, outH, cfx.style, cfx.color);
       }
     }
   }
@@ -1035,26 +1035,77 @@ function drawCursorMagnifier(
 // How long a click-highlight ripple lives (ms).
 const CLICK_RIPPLE_MS = 520;
 
-// A crisp, scalable arrow pointer (vector — sharp at any size), white fill +
-// dark outline + soft drop shadow, with the hotspot (tip) at (x, y). `scale` is
-// a user multiplier; the cursor height is a constant fraction of the frame so
-// it reads the same regardless of how far the video is zoomed.
-const CURSOR_UNIT: [number, number][] = [
-  [0, 0], [0, 16], [3.5, 12.5], [6, 18], [8, 17], [5.5, 11.5], [11, 11.5]
-];
+// Crisp, scalable pointer masks (vectors — sharp at any size). The hotspot
+// (the actual pointer position) is the arrows' tip / the dot & ring centre.
+// Height is a constant fraction of the frame so the cursor reads the same
+// regardless of how far the video is zoomed. `scale` is the user multiplier.
+const CURSOR_MASKS: Record<string, [number, number][]> = {
+  // Classic OS-style arrow.
+  system: [[0, 0], [0, 16], [3.5, 12.5], [6, 18], [8, 17], [5.5, 11.5], [11, 11.5]],
+  // Bolder, stylized arrow.
+  arrow: [[0, 0], [0, 19], [4.6, 14.8], [7.4, 21], [10.2, 19.8], [7.3, 13.9], [13.2, 12.2]]
+};
+
+// Relative luminance of a #rrggbb colour — picks a contrasting outline so the
+// cursor stays visible whether its fill is light or dark.
+function hexLuminance(hex: string): number {
+  const h = (hex || '#ffffff').replace('#', '');
+  if (h.length < 6) return 1;
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 function drawSyntheticCursor(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   scale: number,
-  outH: number
+  outH: number,
+  style = 'system',
+  color = '#ffffff'
 ) {
   const unitH = 18;
   const targetH = outH * 0.05 * Math.max(0.3, scale);
   const f = targetH / unitH;
+  const fill = color || '#ffffff';
+  const outline = hexLuminance(fill) > 0.6 ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.92)';
   ctx.save();
+
+  // Dot / ring pointers are centred on the hotspot.
+  if (style === 'dot' || style === 'ring') {
+    const r = targetH * 0.42;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur = targetH * 0.18;
+    ctx.shadowOffsetY = targetH * 0.04;
+    if (style === 'dot') {
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.lineWidth = Math.max(1, targetH * 0.05);
+      ctx.strokeStyle = outline;
+      ctx.stroke();
+    } else {
+      ctx.shadowColor = 'transparent';
+      ctx.lineWidth = Math.max(1.5, targetH * 0.13);
+      ctx.strokeStyle = fill;
+      ctx.stroke();
+      // A small centre dot marks the exact hotspot inside the ring.
+      ctx.beginPath();
+      ctx.arc(x, y, targetH * 0.06, 0, Math.PI * 2);
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
+
+  const pts = CURSOR_MASKS[style] ?? CURSOR_MASKS.system;
   ctx.beginPath();
-  CURSOR_UNIT.forEach(([px, py], i) => {
+  pts.forEach(([px, py], i) => {
     const X = x + px * f, Y = y + py * f;
     if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
   });
@@ -1062,12 +1113,12 @@ function drawSyntheticCursor(
   ctx.shadowColor = 'rgba(0,0,0,0.4)';
   ctx.shadowBlur = targetH * 0.18;
   ctx.shadowOffsetY = targetH * 0.04;
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = fill;
   ctx.fill();
   ctx.shadowColor = 'transparent';
   ctx.lineJoin = 'round';
   ctx.lineWidth = Math.max(1, targetH * 0.06);
-  ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+  ctx.strokeStyle = outline;
   ctx.stroke();
   ctx.restore();
 }
