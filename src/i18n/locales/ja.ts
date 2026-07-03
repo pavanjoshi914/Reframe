@@ -170,7 +170,7 @@ export default {
   'tl.annotation': '注釈',
   'tl.speed': '速度',
   'tl.add': '{label}を追加',
-  'tl.suggestZooms': 'カーソルの動きからズームを提案',
+  'tl.suggestZooms': "クリックと動きで自動ズーム",
   'tl.noCursorData': 'この録画にカーソルデータがありません',
   'tl.zoomOut': '縮小',
   'tl.zoomIn': '拡大',

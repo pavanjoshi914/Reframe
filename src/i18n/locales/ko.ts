@@ -170,7 +170,7 @@ export default {
   'tl.annotation': '주석',
   'tl.speed': '속도',
   'tl.add': '{label} 추가',
-  'tl.suggestZooms': '커서 움직임으로 확대 추천',
+  'tl.suggestZooms': "클릭 및 움직임에 자동 확대",
   'tl.noCursorData': '이 녹화에 커서 데이터 없음',
   'tl.zoomOut': '축소',
   'tl.zoomIn': '확대',

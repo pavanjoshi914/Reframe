@@ -170,7 +170,7 @@ export default {
   'tl.annotation': 'Аннотация',
   'tl.speed': 'Скорость',
   'tl.add': 'Добавить {label}',
-  'tl.suggestZooms': 'Предложить зумы по движению курсора',
+  'tl.suggestZooms': "Автомасштаб по кликам и движению",
   'tl.noCursorData': 'Нет данных курсора для этой записи',
   'tl.zoomOut': 'Уменьшить',
   'tl.zoomIn': 'Увеличить',

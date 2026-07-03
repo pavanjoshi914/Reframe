@@ -184,7 +184,7 @@ export default {
   'tl.annotation': 'تعليق',
   'tl.speed': 'السرعة',
   'tl.add': 'إضافة {label}',
-  'tl.suggestZooms': 'اقتراح تكبيرات من حركة المؤشر',
+  'tl.suggestZooms': "تكبير تلقائي عند النقر والحركة",
   'tl.noCursorData': 'لا توجد بيانات مؤشر لهذا التسجيل',
   'tl.zoomOut': 'تصغير',
   'tl.zoomIn': 'تكبير',

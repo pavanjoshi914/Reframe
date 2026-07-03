@@ -170,7 +170,7 @@ export default {
   'tl.annotation': 'Annotatie',
   'tl.speed': 'Snelheid',
   'tl.add': '{label} toevoegen',
-  'tl.suggestZooms': 'Zooms voorstellen op basis van cursorbeweging',
+  'tl.suggestZooms': "Auto-zoom bij klikken & beweging",
   'tl.noCursorData': 'Geen cursorgegevens voor deze opname',
   'tl.zoomOut': 'Uitzoomen',
   'tl.zoomIn': 'Inzoomen',

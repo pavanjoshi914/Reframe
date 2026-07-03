@@ -64,6 +64,10 @@ export function Timeline() {
   const pixelsPerSecond = useEditor((s) => s.pixelsPerSecond);
   const setPixelsPerSecond = useEditor((s) => s.setPixelsPerSecond);
   const cursorSamples = useEditor((s) => s.cursorSamples);
+  const cursorClicks = useEditor((s) => s.cursorClicks);
+  // Auto-zoom now uses clicks as well as movement, so enable the button when
+  // either was captured.
+  const hasActivity = cursorSamples.length > 0 || cursorClicks.length > 0;
   const suggestZooms = useEditor((s) => s.suggestZooms);
 
   const trackRef = useRef<HTMLDivElement>(null);
@@ -304,10 +308,11 @@ export function Timeline() {
                     <span className="flex items-center gap-1">
                       {lane.kind === 'zoom' && (
                         <button
+                          data-testid="suggest-zooms"
                           onClick={() => suggestZooms()}
-                          disabled={cursorSamples.length === 0}
+                          disabled={!hasActivity}
                           className="flex h-5 w-5 items-center justify-center rounded bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-30"
-                          title={cursorSamples.length ? t('tl.suggestZooms') : t('tl.noCursorData')}
+                          title={hasActivity ? t('tl.suggestZooms') : t('tl.noCursorData')}
                           aria-label={t('tl.suggestZooms')}
                         >
                           <Sparkles size={10} />
@@ -435,6 +440,7 @@ function ItemChip({
 
   return (
     <div
+      data-item-kind={item.kind}
       onClick={(e) => { e.stopPropagation(); selectItem(item.id); }}
       onPointerDown={(e) => onDragStart('move', e)}
       onPointerMove={onDragMove}

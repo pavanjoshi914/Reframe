@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { RecordingMeta, CursorSample, ClickSample } from '@shared/ipc';
-import { suggestZoomsFromCursor } from './autoZoom';
+import { suggestZoomsFromActivity } from './autoZoom';
 
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
 export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed' | 'magnify' | 'spotlight';
@@ -547,7 +547,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setCursorFx: (patch) => set((st) => ({ cursorFx: { ...st.cursorFx, ...patch } })),
   suggestZooms: () => {
     const s = get();
-    const suggestions = suggestZoomsFromCursor(s.cursorSamples, s.durationMs);
+    const suggestions = suggestZoomsFromActivity(s.cursorSamples, s.cursorClicks, s.durationMs);
     const zooms: LaneItem[] = suggestions.map((z) => ({
       id: crypto.randomUUID(),
       kind: 'zoom',

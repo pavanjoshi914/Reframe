@@ -170,7 +170,7 @@ export default {
   'tl.annotation': 'คำอธิบาย',
   'tl.speed': 'ความเร็ว',
   'tl.add': 'เพิ่ม {label}',
-  'tl.suggestZooms': 'แนะนำการซูมจากการเคลื่อนของเคอร์เซอร์',
+  'tl.suggestZooms': "ซูมอัตโนมัติเมื่อคลิกและเคลื่อนไหว",
   'tl.noCursorData': 'ไม่มีข้อมูลเคอร์เซอร์สำหรับการบันทึกนี้',
   'tl.zoomOut': 'ซูมออก',
   'tl.zoomIn': 'ซูมเข้า',

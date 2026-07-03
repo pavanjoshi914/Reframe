@@ -170,7 +170,7 @@ export default {
   'tl.annotation': 'Açıklama',
   'tl.speed': 'Hız',
   'tl.add': '{label} ekle',
-  'tl.suggestZooms': 'İmleç hareketinden yakınlaştırma öner',
+  'tl.suggestZooms': "Tıklama ve harekette otomatik yakınlaştırma",
   'tl.noCursorData': 'Bu kayıt için imleç verisi yok',
   'tl.zoomOut': 'Uzaklaştır',
   'tl.zoomIn': 'Yakınlaştır',

@@ -184,7 +184,7 @@ export default {
   'tl.annotation': '注释',
   'tl.speed': '速度',
   'tl.add': '添加{label}',
-  'tl.suggestZooms': '根据光标移动推荐缩放',
+  'tl.suggestZooms': "点击和移动时自动缩放",
   'tl.noCursorData': '此录制没有光标数据',
   'tl.zoomOut': '缩小',
   'tl.zoomIn': '放大',

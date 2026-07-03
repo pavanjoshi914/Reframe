@@ -170,7 +170,7 @@ export default {
   'tl.annotation': 'Anotasi',
   'tl.speed': 'Kecepatan',
   'tl.add': 'Tambah {label}',
-  'tl.suggestZooms': 'Sarankan zoom dari gerakan kursor',
+  'tl.suggestZooms': "Zoom otomatis pada klik & gerakan",
   'tl.noCursorData': 'Tidak ada data kursor untuk rekaman ini',
   'tl.zoomOut': 'Perkecil',
   'tl.zoomIn': 'Perbesar',

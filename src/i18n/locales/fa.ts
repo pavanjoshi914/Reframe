@@ -170,7 +170,7 @@ export default {
   'tl.annotation': 'یادداشت',
   'tl.speed': 'سرعت',
   'tl.add': 'افزودن {label}',
-  'tl.suggestZooms': 'پیشنهاد بزرگ‌نمایی از حرکت نشانگر',
+  'tl.suggestZooms': "بزرگ‌نمایی خودکار روی کلیک و حرکت",
   'tl.noCursorData': 'داده نشانگری برای این ضبط نیست',
   'tl.zoomOut': 'کوچک‌نمایی',
   'tl.zoomIn': 'بزرگ‌نمایی',

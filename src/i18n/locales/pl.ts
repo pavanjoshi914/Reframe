@@ -170,7 +170,7 @@ export default {
   'tl.annotation': 'Adnotacja',
   'tl.speed': 'Prędkość',
   'tl.add': 'Dodaj {label}',
-  'tl.suggestZooms': 'Zaproponuj zbliżenia na podstawie ruchu kursora',
+  'tl.suggestZooms': "Autopowiększenie przy kliknięciach i ruchu",
   'tl.noCursorData': 'Brak danych kursora dla tego nagrania',
   'tl.zoomOut': 'Oddal',
   'tl.zoomIn': 'Przybliż',

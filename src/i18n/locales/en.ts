@@ -183,7 +183,7 @@ export default {
   'tl.magnify': 'Magnify',
   'tl.spotlight': 'Spotlight',
   'tl.add': 'Add {label}',
-  'tl.suggestZooms': 'Suggest zooms from cursor movement',
+  'tl.suggestZooms': 'Auto-zoom on clicks & movement',
   'tl.noCursorData': 'No cursor data for this recording',
   'tl.zoomOut': 'Zoom out',
   'tl.zoomIn': 'Zoom in',

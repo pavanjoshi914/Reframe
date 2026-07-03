@@ -170,7 +170,7 @@ export default {
   'tl.annotation': 'Anmerkung',
   'tl.speed': 'Geschwindigkeit',
   'tl.add': '{label} hinzufügen',
-  'tl.suggestZooms': 'Zooms aus Cursorbewegung vorschlagen',
+  'tl.suggestZooms': "Auto-Zoom bei Klicks & Bewegung",
   'tl.noCursorData': 'Keine Cursordaten für diese Aufnahme',
   'tl.zoomOut': 'Verkleinern',
   'tl.zoomIn': 'Vergrößern',

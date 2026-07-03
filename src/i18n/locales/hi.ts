@@ -184,7 +184,7 @@ export default {
   'tl.annotation': 'एनोटेशन',
   'tl.speed': 'गति',
   'tl.add': '{label} जोड़ें',
-  'tl.suggestZooms': 'कर्सर मूवमेंट से ज़ूम सुझाएं',
+  'tl.suggestZooms': "क्लिक और मूवमेंट पर ऑटो-ज़ूम",
   'tl.noCursorData': 'इस रिकॉर्डिंग के लिए कर्सर डेटा नहीं है',
   'tl.zoomOut': 'ज़ूम आउट',
   'tl.zoomIn': 'ज़ूम इन',

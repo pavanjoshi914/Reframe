@@ -170,7 +170,7 @@ export default {
   'tl.annotation': 'Chú thích',
   'tl.speed': 'Tốc độ',
   'tl.add': 'Thêm {label}',
-  'tl.suggestZooms': 'Gợi ý thu phóng từ chuyển động con trỏ',
+  'tl.suggestZooms': "Tự động thu phóng theo nhấp chuột & di chuyển",
   'tl.noCursorData': 'Không có dữ liệu con trỏ cho bản ghi này',
   'tl.zoomOut': 'Thu nhỏ',
   'tl.zoomIn': 'Phóng to',

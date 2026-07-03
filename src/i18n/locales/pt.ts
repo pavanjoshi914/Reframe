@@ -184,7 +184,7 @@ export default {
   'tl.annotation': 'Anotação',
   'tl.speed': 'Velocidade',
   'tl.add': 'Adicionar {label}',
-  'tl.suggestZooms': 'Sugerir zooms pelo movimento do cursor',
+  'tl.suggestZooms': "Zoom automático em cliques e movimento",
   'tl.noCursorData': 'Sem dados de cursor para esta gravação',
   'tl.zoomOut': 'Reduzir zoom',
   'tl.zoomIn': 'Aumentar zoom',
