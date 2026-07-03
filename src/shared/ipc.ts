@@ -53,6 +53,10 @@ export type RecordingMeta = {
   // Path to the sidecar .cursor.json (array of CursorSample) captured during
   // recording, if cursor tracking produced any samples.
   cursorFilePath?: string;
+  // True when captured with the OS cursor hidden (ffmpeg x11grab on Linux, or
+  // getDisplayMedia cursor:'never' elsewhere). The video has NO baked cursor,
+  // so the editor auto-enables the synthetic Smooth cursor for this recording.
+  hideCursor?: boolean;
 };
 
 export type SaveRecordingMeta = Omit<RecordingMeta, 'filePath' | 'webcamFilePath'> & {

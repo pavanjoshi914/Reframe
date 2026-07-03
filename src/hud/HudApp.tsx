@@ -260,13 +260,20 @@ export function HudApp() {
     window.api.setRecordingState(false);
 
     const webcamBuf = result.webcamBlob ? await result.webcamBlob.arrayBuffer() : undefined;
+    // Was the OS cursor actually omitted from the video? On Linux that's true
+    // only when the ffmpeg path ran (screenFilePath set) — a fallback to the
+    // Chromium path leaves the cursor baked in. Elsewhere getDisplayMedia
+    // cursor:'never' works, so the toggle reflects reality. Drives the editor's
+    // auto-enable of the synthetic Smooth cursor.
+    const cursorHidden = !!result.screenFilePath || (hideCursor && window.api.platform !== 'linux');
     const saveMeta = {
       durationMs: result.durationMs,
       width: result.width,
       height: result.height,
       startedAt: result.startedAt,
       webcamData: webcamBuf,
-      region: region ?? undefined
+      region: region ?? undefined,
+      hideCursor: cursorHidden
     };
     // The ffmpeg cursor-hidden path already wrote the screen webm to disk, so we
     // reference it by path; the Chromium path hands over an in-memory blob.

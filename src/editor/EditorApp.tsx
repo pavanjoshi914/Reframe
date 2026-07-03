@@ -57,6 +57,11 @@ export function EditorApp() {
       const webcamUrl = rec.webcamFilePath ? await window.api.getRecordingFileUrl(rec.webcamFilePath) : null;
       if (cancelled) return;
       setRecording(rec, url, webcamUrl);
+      // A hide-cursor recording has NO baked-in OS cursor, so default the
+      // synthetic Smooth cursor ON — otherwise the video (and its export) would
+      // show no cursor at all. Fresh-recording only; a reloaded project keeps
+      // its saved cursorFx (hydrateForProject doesn't do this).
+      if (rec.hideCursor) useEditor.getState().setCursorFx({ enabled: true });
       void loadCursor(rec);
 
       // Initial project file for a freshly-captured recording.

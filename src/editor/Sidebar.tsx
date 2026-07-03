@@ -27,6 +27,9 @@ export function Sidebar() {
             <SelectionSection />
           </Section>
         )}
+        <Section title={t('side.cursor')} defaultOpen>
+          <CursorSection />
+        </Section>
         <Section title={t('side.composition')} defaultOpen>
           <CompositionSection />
         </Section>
@@ -35,9 +38,6 @@ export function Sidebar() {
         </Section>
         <Section title={t('side.videoEffects')} defaultOpen>
           <VideoEffectsSection />
-        </Section>
-        <Section title={t('side.cursor')} defaultOpen>
-          <CursorSection />
         </Section>
       </div>
       <ExportSection />
