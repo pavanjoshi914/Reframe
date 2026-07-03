@@ -8,6 +8,7 @@ export default {
   'side.clickHighlights': "Podświetlenie kliknięć",
   'side.cursorTip': "Rysuje płynny, powiększony kursor, który sunie wzdłuż nagranego ruchu.",
   'side.cursorNoData': "Nie zarejestrowano danych kursora dla tego nagrania.",
+  'side.cursorHiddenNote': "Nagrano z ukrytym kursorem — ten klip nie ma własnego kursora. Włącz Płynny kursor (ustaw Wygładzanie na Wył., aby uzyskać dokładny kursor).",
   'export.cheer1': "Rozgrzewanie kodera…",
   'export.cheer2': "Składanie Twoich klatek…",
   'export.cheer3': "Wygląda świetnie, chwileczkę…",

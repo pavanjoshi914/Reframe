@@ -8,6 +8,7 @@ export default {
   'side.clickHighlights': "Destaque de clique",
   'side.cursorTip': "Desenha um cursor suave e ampliado que desliza pelo seu movimento gravado.",
   'side.cursorNoData': "Nenhum dado de cursor foi capturado nesta gravação.",
+  'side.cursorHiddenNote': "Gravado com o cursor oculto — este clipe não tem cursor próprio. Ative o Cursor suave (defina Suavização como Desligado para um cursor exato).",
   'export.cheer1': "Aquecendo o codificador…",
   'export.cheer2': "Compondo seus quadros…",
   'export.cheer3': "Ficando ótimo, aguarde…",

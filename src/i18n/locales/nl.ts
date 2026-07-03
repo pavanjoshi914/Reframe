@@ -8,6 +8,7 @@ export default {
   'side.clickHighlights': "Klik-markering",
   'side.cursorTip': "Tekent een vloeiende, vergrote cursor die langs je opgenomen beweging glijdt.",
   'side.cursorNoData': "Er zijn geen cursorgegevens vastgelegd voor deze opname.",
+  'side.cursorHiddenNote': "Opgenomen met verborgen cursor — deze clip heeft geen eigen cursor. Zet Vloeiende cursor aan (zet Vloeiendheid op Uit voor een exacte cursor).",
   'export.cheer1': "Encoder warmt op…",
   'export.cheer2': "Je frames worden samengesteld…",
   'export.cheer3': "Ziet er goed uit, momentje…",

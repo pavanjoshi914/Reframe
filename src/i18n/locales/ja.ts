@@ -8,6 +8,7 @@ export default {
   'side.clickHighlights': "クリックハイライト",
   'side.cursorTip': "録画した動きに沿って滑らかに動く、拡大されたカーソルを描画します。",
   'side.cursorNoData': "この録画にはカーソルデータが記録されていません。",
+  'side.cursorHiddenNote': "カーソルを非表示にして録画されています — このクリップにはカーソルがありません。スムーズカーソルをオンにしてください（スムージングをオフにすると正確なカーソルになります）。",
   'export.cheer1': "エンコーダーを準備中…",
   'export.cheer2': "フレームを合成中…",
   'export.cheer3': "いい感じです。少々お待ちを…",

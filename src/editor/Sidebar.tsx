@@ -758,6 +758,10 @@ function CursorSection() {
   const cursorFx = useEditor((s) => s.cursorFx);
   const setCursorFx = useEditor((s) => s.setCursorFx);
   const hasCursorData = useEditor((s) => s.cursorSamples.length > 0);
+  // This clip was captured with the OS cursor hidden — it has no baked cursor,
+  // so turning Smooth cursor off leaves NO cursor at all. Warn instead of
+  // silently showing an empty pointer-less video.
+  const hideCursorClip = useEditor((s) => !!s.recording?.hideCursor);
   return (
     <div className="space-y-3">
       <div data-cursorctl="enabled">
@@ -792,9 +796,13 @@ function CursorSection() {
           </div>
         </>
       )}
-      <p className="text-[11px] text-white/40">
-        {cursorFx.enabled && !hasCursorData ? t('side.cursorNoData') : t('side.cursorTip')}
-      </p>
+      {hideCursorClip && !cursorFx.enabled ? (
+        <p className="text-[11px] text-amber-400/80">{t('side.cursorHiddenNote')}</p>
+      ) : (
+        <p className="text-[11px] text-white/40">
+          {cursorFx.enabled && !hasCursorData ? t('side.cursorNoData') : t('side.cursorTip')}
+        </p>
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ export default {
   'side.clickHighlights': "Klick-Hervorhebung",
   'side.cursorTip': "Zeichnet einen sanften, vergrößerten Cursor, der entlang deiner aufgezeichneten Bewegung gleitet.",
   'side.cursorNoData': "Für diese Aufnahme wurden keine Cursordaten erfasst.",
+  'side.cursorHiddenNote': "Mit ausgeblendetem Cursor aufgenommen — dieser Clip hat keinen eigenen Cursor. Aktiviere den Sanften Cursor (Glättung auf Aus für einen exakten Cursor).",
   'export.cheer1': "Encoder wird aufgewärmt…",
   'export.cheer2': "Deine Frames werden zusammengesetzt…",
   'export.cheer3': "Sieht super aus, gleich fertig…",

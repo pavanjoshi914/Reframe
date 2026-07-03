@@ -8,6 +8,7 @@ export default {
   'side.clickHighlights': "Sorotan klik",
   'side.cursorTip': "Menggambar kursor halus dan diperbesar yang meluncur mengikuti gerakan rekaman Anda.",
   'side.cursorNoData': "Tidak ada data kursor yang terekam untuk rekaman ini.",
+  'side.cursorHiddenNote': "Direkam dengan kursor disembunyikan — klip ini tidak punya kursor sendiri. Aktifkan Kursor halus (setel Penghalusan ke Nonaktif untuk kursor persis).",
   'export.cheer1': "Memanaskan encoder…",
   'export.cheer2': "Menyusun bingkai Anda…",
   'export.cheer3': "Terlihat bagus, tunggu sebentar…",

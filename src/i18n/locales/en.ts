@@ -111,6 +111,7 @@ export default {
   'side.clickHighlights': 'Click highlights',
   'side.cursorTip': 'Draws a smooth, enlarged cursor that glides along your recorded movement.',
   'side.cursorNoData': 'No cursor data was captured for this recording.',
+  'side.cursorHiddenNote': 'Recorded with the cursor hidden — this clip has no cursor of its own. Turn on Smooth cursor (set Smoothing to Off for an exact cursor).',
   'side.cropVideo': 'Crop Video',
   'side.editCrop': 'Edit Crop',
   'side.clearCrop': 'Clear crop',

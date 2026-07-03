@@ -8,6 +8,7 @@ export default {
   'side.clickHighlights': "Làm nổi bật nhấp chuột",
   'side.cursorTip': "Vẽ một con trỏ mượt mà, phóng to lướt theo chuyển động đã ghi của bạn.",
   'side.cursorNoData': "Không có dữ liệu con trỏ nào được ghi cho bản ghi này.",
+  'side.cursorHiddenNote': "Được quay với con trỏ ẩn — clip này không có con trỏ riêng. Bật Con trỏ mượt (đặt Làm mượt thành Tắt để có con trỏ chính xác).",
   'export.cheer1': "Đang khởi động bộ mã hóa…",
   'export.cheer2': "Đang ghép các khung hình…",
   'export.cheer3': "Trông tuyệt lắm, chờ chút nhé…",

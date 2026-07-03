@@ -8,6 +8,7 @@ export default {
   'side.clickHighlights': "Tıklama vurgusu",
   'side.cursorTip': "Kaydedilen hareketiniz boyunca süzülen yumuşak, büyütülmüş bir imleç çizer.",
   'side.cursorNoData': "Bu kayıt için imleç verisi yakalanmadı.",
+  'side.cursorHiddenNote': "İmleç gizlenerek kaydedildi — bu klibin kendine ait imleci yok. Yumuşak imleci açın (birebir imleç için Yumuşatma'yı Kapalı yapın).",
   'export.cheer1': "Kodlayıcı ısınıyor…",
   'export.cheer2': "Kareleriniz birleştiriliyor…",
   'export.cheer3': "Harika görünüyor, bekleyin…",

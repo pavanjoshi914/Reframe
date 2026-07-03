@@ -8,6 +8,7 @@ export default {
   'side.clickHighlights': "点击高亮",
   'side.cursorTip': "绘制一个平滑放大的光标，沿录制的移动轨迹滑动。",
   'side.cursorNoData': "此录制未捕获光标数据。",
+  'side.cursorHiddenNote': "录制时隐藏了光标 — 此片段没有自己的光标。请开启平滑光标（将平滑设为关闭可获得精确光标）。",
   'export.cheer1': "正在预热编码器…",
   'export.cheer2': "正在合成画面…",
   'export.cheer3': "画面很棒，请稍候…",

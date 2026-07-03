@@ -8,6 +8,7 @@ export default {
   'side.clickHighlights': "Evidenziazione clic",
   'side.cursorTip': "Disegna un cursore fluido e ingrandito che scorre lungo il movimento registrato.",
   'side.cursorNoData': "Nessun dato del cursore è stato acquisito per questa registrazione.",
+  'side.cursorHiddenNote': "Registrato con il cursore nascosto — questo clip non ha un cursore proprio. Attiva il Cursore fluido (imposta Levigatura su Off per un cursore esatto).",
   'export.cheer1': "Riscaldamento dell’encoder…",
   'export.cheer2': "Composizione dei tuoi fotogrammi…",
   'export.cheer3': "Sta venendo benissimo, un attimo…",

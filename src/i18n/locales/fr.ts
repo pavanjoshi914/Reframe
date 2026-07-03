@@ -8,6 +8,7 @@ export default {
   'side.clickHighlights': "Surbrillance des clics",
   'side.cursorTip': "Dessine un curseur fluide et agrandi qui glisse le long de votre mouvement enregistré.",
   'side.cursorNoData': "Aucune donnée de curseur n’a été capturée pour cet enregistrement.",
+  'side.cursorHiddenNote': "Enregistré avec le curseur masqué — ce clip n'a pas de curseur propre. Activez le Curseur fluide (réglez le Lissage sur Désactivé pour un curseur exact).",
   'export.cheer1': "Préchauffage de l’encodeur…",
   'export.cheer2': "Composition de vos images…",
   'export.cheer3': "C’est superbe, patientez…",

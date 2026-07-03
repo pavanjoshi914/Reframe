@@ -8,6 +8,7 @@ export default {
   'side.clickHighlights': "클릭 하이라이트",
   'side.cursorTip': "녹화된 움직임을 따라 부드럽게 미끄러지는 확대된 커서를 그립니다.",
   'side.cursorNoData': "이 녹화에는 커서 데이터가 기록되지 않았습니다.",
+  'side.cursorHiddenNote': "커서를 숨긴 채로 녹화됨 — 이 클립에는 자체 커서가 없습니다. 부드러운 커서를 켜세요(정확한 커서를 원하면 부드럽게를 끄기로 설정).",
   'export.cheer1': "인코더를 준비하는 중…",
   'export.cheer2': "프레임을 합성하는 중…",
   'export.cheer3': "멋지네요, 조금만 기다려 주세요…",
