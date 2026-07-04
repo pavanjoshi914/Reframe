@@ -923,11 +923,89 @@ export function drawFrame(
     }
   }
 
+  // Redaction: blur/pixelate any active blur regions over the composited frame
+  // (above the video + cursor, below annotations) so sensitive areas are hidden.
+  drawBlurRegions(ctx, items, ms, outW, outH);
+
   if (activeAnnotation && activeAnnotation.text) {
     drawAnnotation(ctx, activeAnnotation, outW, outH);
   }
 
   ctx.restore();
+}
+
+// Reusable offscreen scratch for blur/pixelate so we don't allocate a canvas
+// every frame during export.
+let blurScratch: OffscreenCanvas | null = null;
+function scratchCanvas(w: number, h: number): OffscreenCanvas {
+  const cw = Math.max(1, Math.ceil(w));
+  const ch = Math.max(1, Math.ceil(h));
+  if (!blurScratch) blurScratch = new OffscreenCanvas(cw, ch);
+  else if (blurScratch.width < cw || blurScratch.height < ch) {
+    blurScratch.width = Math.max(blurScratch.width, cw);
+    blurScratch.height = Math.max(blurScratch.height, ch);
+  }
+  return blurScratch;
+}
+
+// Blur (or pixelate) each active blur region's rectangle in output space. The
+// rect is stored as fractions (0..1) of the output frame. Gaussian blur copies
+// the rect PLUS a margin to a scratch canvas and draws it back through a blur
+// filter clipped to the rect (so edges sample real neighbouring pixels — no
+// halo); pixelate down- then up-scales with smoothing off.
+function drawBlurRegions(
+  ctx: CanvasRenderingContext2D,
+  items: DrawCtx['items'],
+  ms: number,
+  outW: number,
+  outH: number
+) {
+  for (const it of items) {
+    if (it.kind !== 'blur' || ms < it.startMs || ms > it.endMs) continue;
+    const rx = Math.round((it.rectX ?? 0.34) * outW);
+    const ry = Math.round((it.rectY ?? 0.4) * outH);
+    const rw = Math.round((it.rectW ?? 0.32) * outW);
+    const rh = Math.round((it.rectH ?? 0.14) * outH);
+    if (rw <= 1 || rh <= 1) continue;
+    const strength = Math.max(0, Math.min(1, it.blurStrength ?? 0.5));
+    const sc = outH / 1080;
+    if ((it.blurStyle ?? 'blur') === 'pixelate') {
+      const block = Math.max(4, Math.round((6 + strength * 30) * sc));
+      const dw = Math.max(1, Math.round(rw / block));
+      const dh = Math.max(1, Math.round(rh / block));
+      const tmp = scratchCanvas(dw, dh);
+      const tctx = tmp.getContext('2d') as OffscreenCanvasRenderingContext2D;
+      tctx.imageSmoothingEnabled = false;
+      tctx.clearRect(0, 0, dw, dh);
+      tctx.drawImage(ctx.canvas, rx, ry, rw, rh, 0, 0, dw, dh);
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.beginPath();
+      ctx.rect(rx, ry, rw, rh);
+      ctx.clip();
+      ctx.drawImage(tmp, 0, 0, dw, dh, rx, ry, rw, rh);
+      ctx.restore();
+    } else {
+      const px = Math.max(2, Math.round((6 + strength * 34) * sc));
+      const m = px * 2;
+      const sx = Math.max(0, rx - m);
+      const sy = Math.max(0, ry - m);
+      const sw = Math.min(outW, rx + rw + m) - sx;
+      const sh = Math.min(outH, ry + rh + m) - sy;
+      const tmp = scratchCanvas(sw, sh);
+      const tctx = tmp.getContext('2d') as OffscreenCanvasRenderingContext2D;
+      tctx.clearRect(0, 0, sw, sh);
+      tctx.drawImage(ctx.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rx, ry, rw, rh);
+      ctx.clip();
+      ctx.filter = `blur(${px}px)`;
+      ctx.drawImage(tmp, 0, 0, sw, sh, sx, sy, sw, sh);
+      ctx.filter = 'none';
+      ctx.restore();
+    }
+  }
 }
 
 function drawVideoBox(

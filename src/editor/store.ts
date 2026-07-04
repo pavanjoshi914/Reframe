@@ -3,7 +3,9 @@ import type { RecordingMeta, CursorSample, ClickSample } from '@shared/ipc';
 import { suggestZoomsFromActivity } from './autoZoom';
 
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
-export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed' | 'magnify' | 'spotlight';
+export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed' | 'magnify' | 'spotlight' | 'blur';
+// Redaction style for a blur region.
+export type BlurStyle = 'blur' | 'pixelate';
 // Synthetic-cursor pointer masks: an OS-like arrow, a bolder stylized arrow,
 // a hollow ring, and a filled dot. Rendered by the compositor (export.ts).
 export type CursorStyle = 'system' | 'arrow' | 'ring' | 'dot';
@@ -41,6 +43,14 @@ export type LaneItem = {
   // posX/posY (fractions of the output frame), which the user drags on the
   // preview. Whole-video application is just a region spanning 0..durationMs.
   track?: 'cursor' | 'manual';
+  // Blur (redaction) region: rectangle in output-frame fractions (0..1) blurred
+  // or pixelated over its time range to hide sensitive info (emails, passwords).
+  rectX?: number;
+  rectY?: number;
+  rectW?: number;
+  rectH?: number;
+  blurStyle?: BlurStyle;
+  blurStrength?: number; // 0..1
 } & AnnotationStyle;
 
 // Defaults applied when an annotation has no explicit value for a field.
@@ -485,7 +495,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       ...(kind === 'speed' ? { speed: 1.5 } : {}),
       // New cursor effects follow the recorded cursor by default.
       ...(kind === 'magnify' || kind === 'spotlight' ? { track: 'cursor' as const } : {}),
-      ...(kind === 'annotation' ? { text: '' } : {})
+      ...(kind === 'annotation' ? { text: '' } : {}),
+      ...(kind === 'blur'
+        ? { rectX: 0.34, rectY: 0.4, rectW: 0.32, rectH: 0.14, blurStyle: 'blur' as const, blurStrength: 0.5 }
+        : {})
     };
     // Jump the preview straight to the new item and pause, so the user sees it
     // immediately instead of having to manually seek to where they added it.

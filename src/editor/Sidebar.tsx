@@ -16,7 +16,8 @@ export function Sidebar() {
     selectedItem.kind === 'speed' ||
     selectedItem.kind === 'annotation' ||
     selectedItem.kind === 'magnify' ||
-    selectedItem.kind === 'spotlight'
+    selectedItem.kind === 'spotlight' ||
+    selectedItem.kind === 'blur'
   );
 
   return (
@@ -101,6 +102,32 @@ function SelectionSection() {
         </div>
         <p className="text-[11px] text-white/40">{t('side.focusTip')}</p>
         <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label={t('side.deleteZoom')} />
+      </div>
+    );
+  }
+
+  if (item.kind === 'blur') {
+    const style = item.blurStyle ?? 'blur';
+    return (
+      <div className="space-y-3">
+        <p className="text-[11px] text-white/50">{t('side.blurTip')}</p>
+        <div>
+          <Label>{t('side.style')}</Label>
+          <div className="grid grid-cols-2 gap-1.5">
+            <CursorStyleBtn active={style === 'blur'} onClick={() => updateItem(item.id, { blurStyle: 'blur' })} label={t('side.blurGaussian')} />
+            <CursorStyleBtn active={style === 'pixelate'} onClick={() => updateItem(item.id, { blurStyle: 'pixelate' })} label={t('side.blurPixelate')} />
+          </div>
+        </div>
+        <RangeRow
+          label={t('side.blurStrength')}
+          value={Math.round((item.blurStrength ?? 0.5) * 100)}
+          min={10}
+          max={100}
+          step={5}
+          onChange={(v) => updateItem(item.id, { blurStrength: v / 100 })}
+          fmt={(v) => `${v}%`}
+        />
+        <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label={t('side.deleteBlur')} />
       </div>
     );
   }

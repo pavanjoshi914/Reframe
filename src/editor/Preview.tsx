@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { useEditor, ANNOTATION_DEFAULTS } from './store';
+import { useEditor, ANNOTATION_DEFAULTS, type LaneItem } from './store';
 import { primeVideo } from './videoPrime';
 import { drawFrame } from './export';
 import { useT } from '../i18n';
@@ -462,6 +462,65 @@ export function Preview() {
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   }
 
+  // Blur (redaction) rectangle — move + resize in stage (output-frame) fractions,
+  // the same coordinates the exporter reads (rectX/rectY/rectW/rectH).
+  const blurMoveRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; id: string } | null>(null);
+  function onBlurDown(e: React.PointerEvent, item: LaneItem) {
+    if (!stageRef.current) return;
+    e.stopPropagation();
+    e.preventDefault();
+    selectItem(item.id);
+    blurMoveRef.current = { startX: e.clientX, startY: e.clientY, baseX: item.rectX ?? 0.34, baseY: item.rectY ?? 0.4, id: item.id };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function onBlurMove(e: React.PointerEvent) {
+    const d = blurMoveRef.current;
+    const stage = stageRef.current;
+    if (!d || !stage) return;
+    const r = stage.getBoundingClientRect();
+    const dx = (e.clientX - d.startX) / r.width;
+    const dy = (e.clientY - d.startY) / r.height;
+    const it = items.find((i) => i.id === d.id);
+    const w = it?.rectW ?? 0.32;
+    const h = it?.rectH ?? 0.14;
+    updateItem(d.id, {
+      rectX: Math.max(0, Math.min(1 - w, d.baseX + dx)),
+      rectY: Math.max(0, Math.min(1 - h, d.baseY + dy))
+    });
+  }
+  function onBlurUp(e: React.PointerEvent) {
+    if (!blurMoveRef.current) return;
+    blurMoveRef.current = null;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  }
+  const blurResizeRef = useRef<{ startX: number; startY: number; baseW: number; baseH: number; x: number; y: number; id: string } | null>(null);
+  function onBlurResizeDown(e: React.PointerEvent, item: LaneItem) {
+    if (!stageRef.current) return;
+    e.stopPropagation();
+    e.preventDefault();
+    selectItem(item.id);
+    blurResizeRef.current = { startX: e.clientX, startY: e.clientY, baseW: item.rectW ?? 0.32, baseH: item.rectH ?? 0.14, x: item.rectX ?? 0.34, y: item.rectY ?? 0.4, id: item.id };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function onBlurResizeMove(e: React.PointerEvent) {
+    const d = blurResizeRef.current;
+    const stage = stageRef.current;
+    if (!d || !stage) return;
+    const r = stage.getBoundingClientRect();
+    const dx = (e.clientX - d.startX) / r.width;
+    const dy = (e.clientY - d.startY) / r.height;
+    updateItem(d.id, {
+      rectW: Math.max(0.03, Math.min(1 - d.x, d.baseW + dx)),
+      rectH: Math.max(0.03, Math.min(1 - d.y, d.baseH + dy))
+    });
+  }
+  function onBlurResizeUp(e: React.PointerEvent) {
+    if (!blurResizeRef.current) return;
+    blurResizeRef.current = null;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  }
+  const activeBlurs = items.filter((it) => it.kind === 'blur' && currentMs >= it.startMs && currentMs <= it.endMs);
+
   // Focus crosshair drag — converts pointer position on the stage to a
   // (zoomTargetX, zoomTargetY) pair in the unzoomed-inner reference frame.
   // The crosshair sits in stage coordinates so it's unaffected by an active
@@ -635,6 +694,39 @@ export function Preview() {
             </div>
           );
         })()}
+
+        {/* Blur (redaction) rectangles — the blur itself is drawn on the canvas
+            by drawFrame; these are just the move/resize handles for editing. */}
+        {fileUrl && activeBlurs.map((item) => {
+          const selected = selectedItemId === item.id;
+          return (
+            <div
+              key={item.id}
+              onPointerDown={(e) => onBlurDown(e, item)}
+              onPointerMove={onBlurMove}
+              onPointerUp={onBlurUp}
+              onPointerCancel={onBlurUp}
+              className="absolute z-10 cursor-move"
+              style={{
+                left: `${(item.rectX ?? 0.34) * 100}%`,
+                top: `${(item.rectY ?? 0.4) * 100}%`,
+                width: `${(item.rectW ?? 0.32) * 100}%`,
+                height: `${(item.rectH ?? 0.14) * 100}%`,
+                outline: selected ? '2px dashed rgba(255,255,255,0.95)' : '1px dashed rgba(255,255,255,0.6)',
+                outlineOffset: '-1px'
+              }}
+              title={t('editor.dragReposition')}
+            >
+              <div
+                onPointerDown={(e) => onBlurResizeDown(e, item)}
+                onPointerMove={onBlurResizeMove}
+                onPointerUp={onBlurResizeUp}
+                onPointerCancel={onBlurResizeUp}
+                className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 cursor-nwse-resize rounded-sm bg-white ring-1 ring-black/50"
+              />
+            </div>
+          );
+        })}
 
         {selectedManualLens && (() => {
           const it = selectedManualLens;

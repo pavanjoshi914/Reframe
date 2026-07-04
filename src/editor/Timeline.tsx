@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Minus, ZoomIn, Scissors, MessageSquare, Gauge, Trash2, Maximize2, Sparkles, Search, Flashlight, type LucideIcon } from 'lucide-react';
+import { Plus, Minus, ZoomIn, Scissors, MessageSquare, Gauge, Trash2, Maximize2, Sparkles, Search, Flashlight, EyeOff, type LucideIcon } from 'lucide-react';
 import { useEditor, type LaneItem, type LaneKind } from './store';
 import { useT } from '../i18n';
 
@@ -9,7 +9,8 @@ const LANES: { kind: LaneKind; label: string; key: string; icon: LucideIcon; col
   { kind: 'annotation', label: 'Annotation', key: 'A', icon: MessageSquare, color: 'border-amber-400', chip: 'bg-amber-500/30' },
   { kind: 'speed', label: 'Speed', key: 'S', icon: Gauge, color: 'border-sky-400', chip: 'bg-sky-500/30' },
   { kind: 'magnify', label: 'Magnify', key: 'M', icon: Search, color: 'border-fuchsia-400', chip: 'bg-fuchsia-500/30' },
-  { kind: 'spotlight', label: 'Spotlight', key: 'L', icon: Flashlight, color: 'border-violet-400', chip: 'bg-violet-500/30' }
+  { kind: 'spotlight', label: 'Spotlight', key: 'L', icon: Flashlight, color: 'border-violet-400', chip: 'bg-violet-500/30' },
+  { kind: 'blur', label: 'Blur', key: 'B', icon: EyeOff, color: 'border-slate-300', chip: 'bg-slate-400/30' }
 ];
 
 const LANE_LABEL_W = 100;
@@ -100,7 +101,7 @@ export function Timeline() {
       // Let modifier combos through (Ctrl+Z undo, Ctrl+S save, …) — only bare
       // letter keys add lane items.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      const map: Record<string, LaneKind> = { z: 'zoom', t: 'trim', a: 'annotation', s: 'speed', m: 'magnify', l: 'spotlight' };
+      const map: Record<string, LaneKind> = { z: 'zoom', t: 'trim', a: 'annotation', s: 'speed', m: 'magnify', l: 'spotlight', b: 'blur' };
       const k = e.key.toLowerCase();
       // Shift+L / Shift+M apply a cursor-tracked spotlight/magnify to the WHOLE
       // video (bare L / M still drop a region on part of it).
@@ -435,6 +436,7 @@ function ItemChip({
     item.kind === 'speed' ? `${item.speed?.toFixed(2)}×` :
     item.kind === 'magnify' ? t('tl.magnify') :
     item.kind === 'spotlight' ? t('tl.spotlight') :
+    item.kind === 'blur' ? t('tl.blur') :
     item.kind === 'annotation' ? (item.text?.trim() || t('tl.annotationPlaceholder')) :
     t('tl.cut');
 
