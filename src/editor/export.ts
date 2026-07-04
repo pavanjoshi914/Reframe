@@ -106,47 +106,100 @@ function easeInOutCubic(t: number): number {
 
 type ZoomItem = { startMs: number; endMs: number; zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number };
 
-// Returns the effective zoom (level + target) at `ms`, with the zoomLevel
-// eased in over the first ZOOM_TRANSITION_MS of the active zoom item and
-// eased out over the ZOOM_TRANSITION_MS following its end. Returns null when
-// no zoom is active and we're past any recently-ended one.
+// Consecutive zoom regions this close (ms) are treated as ONE continuous zoom:
+// the camera stays zoomed in and PANS from one focus to the next instead of
+// zooming back out to 1× and in again between them (the ugly pump you get from
+// back-to-back click-zooms). A real gap larger than this still zooms out.
+const ZOOM_CONNECT_GAP_MS = 300;
+
+type FocusLevel = { fx: number; fy: number; target: number };
+const focusOf = (it: ZoomItem): FocusLevel => ({
+  fx: it.zoomTargetX ?? 0.5,
+  fy: it.zoomTargetY ?? 0.5,
+  target: it.zoomLevel ?? 1.5
+});
+const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
+const clamp01n = (n: number) => Math.max(0, Math.min(1, n));
+
+// Focus + target level within a chain at `ms`: held on each region's focus,
+// and eased from one region's focus/level to the next across a window centred
+// on their boundary (so the camera glides between clicks). The chain's outer
+// ease-in/out is applied separately, on the level only.
+function sampleChainFocus(chain: ZoomItem[], ms: number): FocusLevel {
+  const first = chain[0];
+  const last = chain[chain.length - 1];
+  if (ms <= first.startMs) return focusOf(first);
+  if (ms >= last.endMs) return focusOf(last);
+  const half = ZOOM_TRANSITION_MS / 2;
+  const panAt = (aItem: ZoomItem, bItem: ZoomItem, boundary: number): FocusLevel => {
+    const p = easeInOutCubic(clamp01n((ms - (boundary - half)) / ZOOM_TRANSITION_MS));
+    const a = focusOf(aItem);
+    const b = focusOf(bItem);
+    return { fx: lerp(a.fx, b.fx, p), fy: lerp(a.fy, b.fy, p), target: lerp(a.target, b.target, p) };
+  };
+  for (let i = 0; i < chain.length; i++) {
+    const it = chain[i];
+    if (ms >= it.startMs && ms <= it.endMs) {
+      // Near the boundary INTO the next region → pan toward it.
+      if (i < chain.length - 1 && ms >= it.endMs - half) return panAt(it, chain[i + 1], it.endMs);
+      // Near the boundary OUT OF the previous region → still panning in.
+      if (i > 0 && ms <= chain[i - 1].endMs + half) return panAt(chain[i - 1], it, chain[i - 1].endMs);
+      return focusOf(it);
+    }
+    // In a (small) gap between two connected regions → pan across it.
+    if (i < chain.length - 1 && ms > it.endMs && ms < chain[i + 1].startMs) {
+      return panAt(it, chain[i + 1], it.endMs);
+    }
+  }
+  return focusOf(last);
+}
+
+// Returns the effective zoom (level + focus) at `ms`. Adjacent zoom regions
+// (within ZOOM_CONNECT_GAP_MS) form a chain: the level eases in at the chain's
+// start and out after its end, staying fully zoomed in between while the focus
+// pans from region to region. Isolated zooms behave as before (ease in, hold,
+// ease out). Returns null when no zoom is active nor easing out.
 function computeEasedZoom(
   items: ReturnType<typeof useEditor.getState>['items'],
   ms: number
 ): ZoomItem | null {
-  // Inside an active zoom item — easing in (or fully zoomed).
-  const active = items.find(
-    (it) => it.kind === 'zoom' && ms >= it.startMs && ms <= it.endMs
-  );
-  if (active) {
-    const target = active.zoomLevel ?? 1.5;
-    const elapsed = ms - active.startMs;
-    const progress = elapsed < ZOOM_TRANSITION_MS ? easeInOutCubic(elapsed / ZOOM_TRANSITION_MS) : 1;
-    return {
-      startMs: active.startMs,
-      endMs: active.endMs,
-      zoomLevel: 1 + (target - 1) * progress,
-      zoomTargetX: active.zoomTargetX,
-      zoomTargetY: active.zoomTargetY
-    };
+  const zooms = (items.filter((it) => it.kind === 'zoom') as ZoomItem[])
+    .slice()
+    .sort((a, b) => a.startMs - b.startMs);
+  if (zooms.length === 0) return null;
+
+  // Group adjacent regions into continuous-zoom chains.
+  const chains: ZoomItem[][] = [];
+  for (const z of zooms) {
+    const chain = chains[chains.length - 1];
+    if (chain && z.startMs <= chain[chain.length - 1].endMs + ZOOM_CONNECT_GAP_MS) chain.push(z);
+    else chains.push([z]);
   }
-  // Otherwise check the most-recently-ended zoom — if we're within the ease-
-  // out window, ramp back down toward 1.
-  const justEnded = items
-    .filter((it) => it.kind === 'zoom' && ms > it.endMs && ms <= it.endMs + ZOOM_TRANSITION_MS)
-    .sort((a, b) => b.endMs - a.endMs)[0];
-  if (justEnded) {
-    const target = justEnded.zoomLevel ?? 1.5;
-    const progress = 1 - easeInOutCubic((ms - justEnded.endMs) / ZOOM_TRANSITION_MS);
-    return {
-      startMs: justEnded.startMs,
-      endMs: justEnded.endMs,
-      zoomLevel: 1 + (target - 1) * progress,
-      zoomTargetX: justEnded.zoomTargetX,
-      zoomTargetY: justEnded.zoomTargetY
-    };
-  }
-  return null;
+
+  // The chain covering ms is active from its start until ZOOM_TRANSITION_MS
+  // after its end (the ease-out tail).
+  const T = ZOOM_TRANSITION_MS;
+  const chain = chains.find((c) => ms >= c[0].startMs && ms <= c[c.length - 1].endMs + T);
+  if (!chain) return null;
+  const chainStart = chain[0].startMs;
+  const chainEnd = chain[chain.length - 1].endMs;
+
+  // Level envelope: ease in over the chain's first T, hold, ease out over the T
+  // after its end — NOT reset between the chain's own regions.
+  let env: number;
+  if (ms < chainStart + T) env = easeInOutCubic((ms - chainStart) / T);
+  else if (ms > chainEnd) env = 1 - easeInOutCubic((ms - chainEnd) / T);
+  else env = 1;
+  env = clamp01n(env);
+
+  const { fx, fy, target } = sampleChainFocus(chain, ms);
+  return {
+    startMs: chainStart,
+    endMs: chainEnd,
+    zoomLevel: 1 + (target - 1) * env,
+    zoomTargetX: fx,
+    zoomTargetY: fy
+  };
 }
 
 function srcDims(s: CanvasImageSource): { w: number; h: number } {
