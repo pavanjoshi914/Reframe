@@ -508,10 +508,19 @@ let cursorStart = 0;
 // coordinate spaces, so recording:save normalizes each accordingly.
 let cursorFromUio = false;
 
+// When an ffmpeg screen capture is running, the video's t=0 is the instant
+// ffmpeg started — which is BEFORE the renderer finishes opening the webcam and
+// calls setRecordingState(true) to begin cursor tracking. Anchoring the cursor/
+// click clock to that epoch (instead of "now") keeps clicks aligned with the
+// frame that was on screen when they actually happened, instead of landing on
+// an earlier frame. Null for the Chromium path (its clock already starts ~with
+// the recorder, so "now" is correct there).
+let captureVideoEpoch: number | null = null;
+
 function startCursorTracking() {
   stopCursorTracking();
   cursorSamples = [];
-  cursorStart = Date.now();
+  cursorStart = captureVideoEpoch ?? Date.now();
   cursorTracking = true;
   lastMoveT = 0;
   // Prefer uiohook for the cursor PATH (its coordinates match the captured
@@ -677,6 +686,7 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
   if (process.platform !== 'linux') return { ok: false, width: 0, height: 0 };
   try { ffProc?.kill('SIGKILL'); } catch { /* ignore */ }
   ffProc = null;
+  captureVideoEpoch = null;
 
   const disp = recordedDisplay ?? screen.getPrimaryDisplay();
   const scale = disp.scaleFactor || 1;
@@ -722,7 +732,7 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
     proc.stderr?.on('data', (d) => { stderr += String(d); });
     const ok = await new Promise<boolean>((resolve) => {
       let settled = false;
-      proc.once('spawn', () => { settled = true; ffStartedAt = Date.now(); resolve(true); });
+      proc.once('spawn', () => { settled = true; ffStartedAt = Date.now(); captureVideoEpoch = ffStartedAt; resolve(true); });
       proc.once('error', (err) => {
         if (!settled) { settled = true; console.warn('[main] ffmpeg spawn error', err); resolve(false); }
       });
@@ -732,7 +742,7 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
       });
       setTimeout(() => { if (!settled) { settled = true; resolve(true); } }, 700);
     });
-    if (!ok) { ffProc = null; ffOutPath = null; return { ok: false, width: 0, height: 0 }; }
+    if (!ok) { ffProc = null; ffOutPath = null; captureVideoEpoch = null; return { ok: false, width: 0, height: 0 }; }
     return { ok: true, width: w, height: h };
   } catch (err) {
     console.warn('[main] ffmpeg capture failed to start', err);
@@ -759,6 +769,9 @@ ipcMain.handle('ffcap:stop', async () => {
   });
   const out = ffOutPath;
   ffOutPath = null;
+  // Clear the video epoch so a following Chromium recording anchors its cursor
+  // clock to "now" rather than this (now-stale) ffmpeg start.
+  captureVideoEpoch = null;
   return { filePath: out, width: ffDims.width, height: ffDims.height, durationMs };
 });
 
