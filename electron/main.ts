@@ -1,7 +1,6 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import os from 'node:os';
 import { Readable } from 'node:stream';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -50,7 +49,8 @@ let lastRecording: import('../src/shared/ipc.js').RecordingMeta | null = null;
 
 // Three directories, three jobs:
 //
-//   recordingsTempDir — internal scratch for raw .webm screen captures. Lives
+//   recordingsTempDir — internal scratch for raw screen captures (.mp4 from the
+//                       Linux ffmpeg path, .webm from the Chromium path). Lives
 //                       in OS app-data (~/.config/Reframe/recordings on Linux,
 //                       ~/Library/Application Support/Reframe/recordings on
 //                       macOS, %APPDATA%\Reframe\recordings on Windows). The
@@ -699,7 +699,7 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
   const display = process.env.DISPLAY || ':0';
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  ffOutPath = path.join(recordingsTempDir, `${ts}-screen.webm`);
+  ffOutPath = path.join(recordingsTempDir, `${ts}-screen.mp4`);
 
   const { monitor, source } = pulseDefaults();
   const wantSys = !!opts.withSystemAudio && !!monitor;
@@ -720,17 +720,21 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
   } else {
     args.push('-map', '0:v');
   }
-  // VP8/webm at realtime deadline so software encoding keeps up with capture.
-  // cpu-used 8 + multithreading are REQUIRED to hold 30fps at 1080p: cpu-used 4
-  // only manages ~10-16fps on this class of machine, dropping ~2/3 of frames —
-  // which is the "recorder feels slow / laggy / misses fast UI" symptom. VP8
-  // (not a HW H.264 encoder) keeps the codec/container the editor can demux.
-  const encThreads = Math.max(2, Math.min(6, (os.cpus()?.length || 4) - 2));
+  // Encode with libx264 (software H.264) at 'ultrafast'. This is the crux of the
+  // capture-quality fix: libvpx/VP8 realtime tops out at ~15fps at 1080p and
+  // COLLAPSES to ~1fps under real load (busy page + webcam + app), dropping the
+  // vast majority of frames — the "recorder feels slow/laggy, misses fast UI
+  // (typed text, popups)" bug. x264 ultrafast holds a rock-solid 30fps on the
+  // same content. H.264/MP4 decodes fine in the editor's <video> + mediabunny
+  // (Electron ships proprietary codecs; the media:// handler sets video/mp4),
+  // and a FRAGMENTED mp4 stays playable even if ffmpeg is force-killed on stop
+  // (no trailing moov atom needed). No HW encoder here (no CUDA/VAAPI profile).
   args.push(
-    '-c:v', 'libvpx', '-b:v', '8M', '-deadline', 'realtime', '-cpu-used', '8',
-    '-threads', String(encThreads), '-pix_fmt', 'yuv420p'
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-pix_fmt', 'yuv420p',
+    '-g', '60', // keyframe every ~2s → snappy editor scrubbing/seeking + export
+    '-movflags', '+frag_keyframe+empty_moov+default_base_moof'
   );
-  if (wantSys || wantMic) args.push('-c:a', 'libopus', '-b:a', '128k');
+  if (wantSys || wantMic) args.push('-c:a', 'aac', '-b:a', '128k');
   args.push(ffOutPath);
 
   try {
@@ -1012,6 +1016,12 @@ app.whenReady().then(async () => {
     console.warn('[main] setDisplayMediaRequestHandler unavailable', err);
   }
 
+  const mediaMime = (p: string): string => {
+    const ext = path.extname(p).toLowerCase();
+    if (ext === '.mp4' || ext === '.m4v') return 'video/mp4';
+    if (ext === '.mov') return 'video/quicktime';
+    return 'video/webm';
+  };
   protocol.handle('media', async (req) => {
     const url = new URL(req.url);
     const filePath = decodeURIComponent(url.pathname);
@@ -1047,7 +1057,7 @@ app.whenReady().then(async () => {
         return new Response(Readable.toWeb(stream) as ReadableStream, {
           status: 206,
           headers: {
-            'Content-Type': 'video/webm',
+            'Content-Type': mediaMime(resolved),
             'Content-Length': String(end - start + 1),
             'Content-Range': `bytes ${start}-${end}/${total}`,
             'Accept-Ranges': 'bytes'
@@ -1059,7 +1069,7 @@ app.whenReady().then(async () => {
       return new Response(Readable.toWeb(stream) as ReadableStream, {
         status: 200,
         headers: {
-          'Content-Type': 'video/webm',
+          'Content-Type': mediaMime(resolved),
           'Content-Length': String(total),
           'Accept-Ranges': 'bytes'
         }
