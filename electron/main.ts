@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { Readable } from 'node:stream';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -719,9 +720,16 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
   } else {
     args.push('-map', '0:v');
   }
-  // VP8/webm at realtime deadline so software encoding keeps up with capture;
-  // matches the codec/container the editor + exporter already ingest.
-  args.push('-c:v', 'libvpx', '-b:v', '8M', '-deadline', 'realtime', '-cpu-used', '4', '-pix_fmt', 'yuv420p');
+  // VP8/webm at realtime deadline so software encoding keeps up with capture.
+  // cpu-used 8 + multithreading are REQUIRED to hold 30fps at 1080p: cpu-used 4
+  // only manages ~10-16fps on this class of machine, dropping ~2/3 of frames —
+  // which is the "recorder feels slow / laggy / misses fast UI" symptom. VP8
+  // (not a HW H.264 encoder) keeps the codec/container the editor can demux.
+  const encThreads = Math.max(2, Math.min(6, (os.cpus()?.length || 4) - 2));
+  args.push(
+    '-c:v', 'libvpx', '-b:v', '8M', '-deadline', 'realtime', '-cpu-used', '8',
+    '-threads', String(encThreads), '-pix_fmt', 'yuv420p'
+  );
   if (wantSys || wantMic) args.push('-c:a', 'libopus', '-b:a', '128k');
   args.push(ffOutPath);
 
