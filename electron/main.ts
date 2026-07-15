@@ -683,6 +683,56 @@ function ffmpegBin(): string {
   return 'ffmpeg';
 }
 
+// ffprobe alongside the ffmpeg binary (ffmpeg-static ships ffprobe-static
+// separately, so fall back to a sibling 'ffprobe', then system 'ffprobe').
+function ffprobeBin(): string {
+  const ff = ffmpegBin();
+  if (ff !== 'ffmpeg' && ff.includes(path.sep)) {
+    const sibling = path.join(path.dirname(ff), process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
+    if (fs.existsSync(sibling)) return sibling;
+  }
+  return 'ffprobe';
+}
+
+// PulseAudio starts capturing a couple seconds AFTER x11grab, so ffmpeg labels
+// the first (late) audio packet as PTS 0 — leaving the audio track shorter than
+// the video and shifted EARLY (you hear everything a few seconds before it
+// happens, and the tail is silent). Re-mux delaying the audio by exactly the
+// shortfall (video_dur - audio_dur) so it lines up, with the lead-in filled by
+// silence. Best-effort: any failure (no ffprobe, no audio, etc.) keeps the
+// original file untouched. Returns the path to use.
+function fixAudioSync(filePath: string): string {
+  try {
+    const dur = (stream: string): number => {
+      const out = execFileSync(
+        ffprobeBin(),
+        ['-v', 'error', '-select_streams', stream, '-show_entries', 'stream=duration', '-of', 'default=nw=1:nk=1', filePath],
+        { encoding: 'utf8' }
+      ).trim();
+      return parseFloat(out);
+    };
+    const vdur = dur('v:0');
+    const adur = dur('a:0');
+    if (!isFinite(vdur) || !isFinite(adur)) return filePath; // no audio / probe unavailable
+    const delayMs = Math.round((vdur - adur) * 1000);
+    if (delayMs < 250) return filePath; // already aligned closely enough
+    const fixed = filePath.replace(/\.mp4$/, '.sync.mp4');
+    execFileSync(
+      ffmpegBin(),
+      ['-y', '-hide_banner', '-loglevel', 'error', '-i', filePath,
+        '-af', `adelay=${delayMs}:all=1`, '-c:v', 'copy', '-c:a', 'aac', '-movflags', '+faststart', fixed],
+      { stdio: 'ignore' }
+    );
+    fs.rmSync(filePath, { force: true });
+    fs.renameSync(fixed, filePath);
+    console.log(`[main] audio sync: delayed audio by ${delayMs}ms to match ${vdur.toFixed(2)}s video`);
+    return filePath;
+  } catch (err) {
+    console.warn('[main] audio sync fix skipped', err);
+    return filePath;
+  }
+}
+
 ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; withMic: boolean }) => {
   if (process.platform !== 'linux') return { ok: false, width: 0, height: 0 };
   try { ffProc?.kill('SIGKILL'); } catch { /* ignore */ }
@@ -784,6 +834,8 @@ ipcMain.handle('ffcap:stop', async () => {
   // Clear the video epoch so a following Chromium recording anchors its cursor
   // clock to "now" rather than this (now-stale) ffmpeg start.
   captureVideoEpoch = null;
+  // Correct the PulseAudio late-start A/V drift before handing the file off.
+  fixAudioSync(out);
   return { filePath: out, width: ffDims.width, height: ffDims.height, durationMs };
 });
 
