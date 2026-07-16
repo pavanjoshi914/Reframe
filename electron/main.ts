@@ -50,7 +50,8 @@ let lastRecording: import('../src/shared/ipc.js').RecordingMeta | null = null;
 // Three directories, three jobs:
 //
 //   recordingsTempDir — internal scratch for raw screen captures (.mp4 from the
-//                       Linux ffmpeg path, .webm from the Chromium path). Lives
+//                       Linux PipeWire path and from Chromium where it encodes
+//                       H.264, .webm from Chromium's VP8). Lives
 //                       in OS app-data (~/.config/Reframe/recordings on Linux,
 //                       ~/Library/Application Support/Reframe/recordings on
 //                       macOS, %APPDATA%\Reframe\recordings on Windows). The
@@ -375,9 +376,18 @@ ipcMain.handle('picker:cancel', () => {
   pickerWindow?.close();
 });
 
-// Shared tail of the save flow: given a finalized on-disk screen webm (whether
-// written from a renderer MediaRecorder blob or produced by ffmpeg), attach the
-// optional webcam clip + cursor/click sidecar and return the RecordingMeta.
+// Container extension for a MediaRecorder mimeType. The renderer encodes H.264
+// /MP4 where the OS has a hardware encoder and VP8/WebM otherwise, so the
+// extension has to follow what was actually encoded: media:// picks the MIME it
+// serves from the extension, and a mismatch makes <video> reject the file.
+function extForMime(mime: string | undefined): string {
+  return mime && mime.includes('mp4') ? 'mp4' : 'webm';
+}
+
+// Shared tail of the save flow: given a finalized on-disk screen recording
+// (whether written from a renderer MediaRecorder blob or produced by the
+// PipeWire helper), attach the optional webcam clip + cursor/click sidecar and
+// return the RecordingMeta.
 function writeRecordingSidecars(
   filePath: string,
   meta: import('../src/shared/ipc.js').SaveRecordingMeta
@@ -385,7 +395,7 @@ function writeRecordingSidecars(
   const ts = new Date(meta.startedAt).toISOString().replace(/[:.]/g, '-');
   let webcamFilePath: string | undefined;
   if (meta.webcamData) {
-    webcamFilePath = path.join(recordingsTempDir, `${ts}-webcam.webm`);
+    webcamFilePath = path.join(recordingsTempDir, `${ts}-webcam.${extForMime(meta.webcamMimeType)}`);
     fs.writeFileSync(webcamFilePath, Buffer.from(meta.webcamData));
   }
   // Persist cursor samples + clicks captured during this recording as a sidecar
@@ -440,13 +450,14 @@ function writeRecordingSidecars(
 
 ipcMain.handle('recording:save', async (_evt, data: ArrayBuffer, meta: import('../src/shared/ipc.js').SaveRecordingMeta) => {
   const ts = new Date(meta.startedAt).toISOString().replace(/[:.]/g, '-');
-  const filePath = path.join(recordingsTempDir, `${ts}.webm`);
+  const filePath = path.join(recordingsTempDir, `${ts}.${extForMime(meta.mimeType)}`);
   fs.writeFileSync(filePath, Buffer.from(data));
   return writeRecordingSidecars(filePath, meta);
 });
 
-// Save path for the ffmpeg cursor-hidden capture: the screen webm already exists
-// on disk (ffmpeg wrote it), so we skip the blob write and just attach sidecars.
+// Save path for the cursor-hidden capture: the screen file already exists on
+// disk (the PipeWire helper wrote it), so skip the blob write and just attach
+// sidecars.
 ipcMain.handle('recording:saveFromFile', async (_evt, screenFilePath: string, meta: import('../src/shared/ipc.js').SaveRecordingMeta) => {
   return writeRecordingSidecars(screenFilePath, meta);
 });

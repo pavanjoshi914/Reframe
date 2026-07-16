@@ -53,14 +53,22 @@ export type RecordingMeta = {
   // Path to the sidecar .cursor.json (array of CursorSample) captured during
   // recording, if cursor tracking produced any samples.
   cursorFilePath?: string;
-  // True when captured with the OS cursor hidden (ffmpeg x11grab on Linux, or
-  // getDisplayMedia cursor:'never' elsewhere). The video has NO baked cursor,
-  // so the editor auto-enables the synthetic Smooth cursor for this recording.
+  // True when captured with the OS cursor hidden (the PipeWire ScreenCast
+  // helper on Linux, or getDisplayMedia cursor:'never' elsewhere). The video
+  // has NO baked cursor, so the editor auto-enables the synthetic Smooth
+  // cursor for this recording.
   hideCursor?: boolean;
 };
 
 export type SaveRecordingMeta = Omit<RecordingMeta, 'filePath' | 'webcamFilePath'> & {
   webcamData?: ArrayBuffer;
+  // MediaRecorder mimeType each blob was actually encoded as. The container
+  // varies by platform (H.264/MP4 where there's a hardware encoder, VP8/WebM
+  // otherwise), and main writes the file extension from this — a wrong
+  // extension makes the media:// handler serve the wrong MIME and <video>
+  // reject the file. Absent on the PipeWire path, which hands over a real path.
+  mimeType?: string;
+  webcamMimeType?: string;
 };
 
 // Sent from main → HUD when the user confirms a region selection.
@@ -94,8 +102,8 @@ export type Api = {
   cancelRegionSelector: () => Promise<void>;
   onRegionSelected: (cb: (selection: RegionSelection) => void) => () => void;
   saveRecording: (data: ArrayBuffer, meta: SaveRecordingMeta) => Promise<RecordingMeta>;
-  // Save path for the ffmpeg cursor-hidden capture: the screen webm already
-  // exists on disk (ffmpeg wrote it), so we pass its path instead of a blob.
+  // Save path for the cursor-hidden capture: the screen file already exists
+  // on disk (the PipeWire helper wrote it), so we pass its path, not a blob.
   saveRecordingFromFile: (screenFilePath: string, meta: SaveRecordingMeta) => Promise<RecordingMeta>;
   openEditor: (recording: RecordingMeta) => Promise<void>;
   getRecordingMeta: () => Promise<RecordingMeta | null>;
@@ -130,12 +138,12 @@ export type Api = {
   // Tell main which desktopCapturer source the next getDisplayMedia call (used
   // for cursor-hidden capture) should resolve to.
   setPendingCaptureSource: (sourceId: string) => Promise<void>;
-  // process.platform, exposed so the renderer can pick the Linux-only ffmpeg
-  // cursor-hidden capture path without an async round-trip.
+  // process.platform, exposed so the renderer can pick the Linux-only
+  // cursor-hidden capture path (and its codec) without an async round-trip.
   platform: string;
-  // Start/stop the ffmpeg x11grab cursor-hidden screen capture (Linux only).
+  // Start/stop the PipeWire ScreenCast cursor-hidden screen capture (Linux only).
   // start returns { ok:false } when unavailable so the caller can fall back to
-  // the normal Chromium capture; stop returns the finalized screen webm path.
+  // the normal Chromium capture; stop returns the finalized screen mp4 path.
   ffcapStart: (opts: { withSystemAudio: boolean; withMic: boolean }) => Promise<{ ok: boolean; width: number; height: number }>;
   ffcapStop: () => Promise<{ filePath: string; width: number; height: number; durationMs: number } | null>;
   onStopShortcut: (cb: () => void) => () => void;

@@ -23,7 +23,7 @@ import fixWebmDuration from 'fix-webm-duration';
 export type RecordingHandle = {
   stop: () => Promise<{
     // Exactly one of `blob` (Chromium MediaRecorder path) or `screenFilePath`
-    // (ffmpeg cursor-hidden path — the webm already exists on disk) is set.
+    // (cursor-hidden path — the file already exists on disk) is set.
     blob?: Blob;
     screenFilePath?: string;
     webcamBlob?: Blob;
@@ -49,10 +49,37 @@ async function repairWebmDuration(blob: Blob, durationMs: number): Promise<Blob>
   }
 }
 
-// Codec preference for MediaRecorder — VP8 first (see the long note in the
-// screen recorder below for why it must be VP8/VP9, never H.264-in-WebM).
+// Codec choice for MediaRecorder (screen AND webcam — one mimeType drives both).
+//
+// H.264 in MP4 on macOS/Windows: there the OS gives Chromium a HARDWARE H.264
+// encoder (VideoToolbox / Media Foundation), so encoding costs almost no CPU and
+// holds frame rate on high-resolution displays. VP8 has no hardware encoder
+// anywhere and is encoded in software, which is what starves the frame rate on
+// Retina and 4K screens.
+//
+// The container matters as much as the codec. H.264 must go in MP4, NEVER in
+// WebM: MediaRecorder will happily produce `video/webm;codecs=h264`, but
+// Chromium's <video> cannot reliably demux that non-standard combination — it
+// decodes a fraction of a second then declares the clip "ended", which made the
+// editor preview flaky and broke export (the exporter plays the recording
+// through a <video> to composite frames). H.264-in-MP4 is the standard pairing:
+// duration, seeking and playback are all sound, and MP4 carries its own duration
+// so it needs no fixWebmDuration repair.
+//
+// Linux keeps VP8/WebM. Chromium there usually has no hardware H.264 encoder and
+// falls back to software, so switching would risk a regression with nothing to
+// gain — and the cursor-hidden path doesn't use MediaRecorder at all (it goes
+// through the PipeWire helper in the main process). VP8-in-WebM is the most
+// battle-tested combo in Chromium; VP9 is the fallback. The audio codec is left
+// implicit so the same mimeType also works for the audio-less webcam recorder.
 function pickMime(): string {
-  const candidates = ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm'];
+  const hwH264 = window.api.platform === 'darwin' || window.api.platform === 'win32';
+  const candidates = [
+    ...(hwH264 ? ['video/mp4;codecs=avc1.42E01E'] : []),
+    'video/webm;codecs=vp8',
+    'video/webm;codecs=vp9',
+    'video/webm'
+  ];
   return candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? 'video/webm';
 }
 
@@ -87,10 +114,11 @@ async function openWebcam(
   }
 }
 
-// Cursor-hidden capture path (Linux/X11): the screen (+ system/mic audio) is
-// grabbed by ffmpeg in the main process with the OS cursor omitted; only the
-// webcam is recorded here in the renderer. See electron/main.ts ffcap:start.
-async function startFfmpegRecording(
+// Cursor-hidden capture path (Linux): the screen (+ system/mic audio) is
+// captured by the PipeWire ScreenCast helper in the main process with the OS
+// cursor omitted; only the webcam is recorded here in the renderer. See
+// electron/main.ts ffcap:start.
+async function startHelperRecording(
   opts: RecordingOptions,
   started: { width: number; height: number }
 ): Promise<RecordingHandle> {
@@ -126,10 +154,10 @@ async function startFfmpegRecording(
 }
 
 export async function startRecording(opts: RecordingOptions): Promise<RecordingHandle> {
-  // Linux + "Hide cursor": capture the screen via ffmpeg `x11grab -draw_mouse 0`
-  // in the main process — the only reliable way to omit the OS cursor on X11
+  // Linux + "Hide cursor": capture the screen via a PipeWire ScreenCast in the
+  // main process — the only reliable way to omit the OS cursor on X11
   // (Chromium's getDisplayMedia cursor:'never' is silently ignored there). If
-  // ffmpeg is unavailable or fails to start, fall through to the normal path.
+  // no ScreenCast is available, fall through to the normal path.
   if (opts.hideCursor && window.api.platform === 'linux') {
     try {
       await window.api.setPendingCaptureSource(opts.sourceId);
@@ -137,10 +165,10 @@ export async function startRecording(opts: RecordingOptions): Promise<RecordingH
         withSystemAudio: !!opts.withSystemAudio,
         withMic: !!opts.withMic
       });
-      if (started?.ok) return await startFfmpegRecording(opts, started);
-      console.warn('[recording] ffmpeg cursor-hidden capture unavailable; using normal capture');
+      if (started?.ok) return await startHelperRecording(opts, started);
+      console.warn('[recording] cursor-hidden capture unavailable; using normal capture');
     } catch (err) {
-      console.warn('[recording] ffmpeg cursor-hidden capture failed; using normal capture', err);
+      console.warn('[recording] cursor-hidden capture failed; using normal capture', err);
     }
   }
 
@@ -218,26 +246,7 @@ export async function startRecording(opts: RecordingOptions): Promise<RecordingH
   const width = settings.width ?? 1920;
   const height = settings.height ?? 1080;
 
-  // Codec preference: VP8 first. It must be VP8/VP9 — NOT H.264.
-  //
-  // MediaRecorder will happily produce `video/webm;codecs=h264` (H.264 video
-  // inside a WebM/Matroska container), and it's tempting because H.264 has
-  // hardware encoders. But it's a non-standard combination: Chromium's
-  // <video> element cannot reliably DEMUX H.264-in-WebM for playback — it
-  // decodes a fraction of a second then declares the clip "ended". That made
-  // the editor preview flaky and broke export entirely (the exporter plays
-  // the recording through a <video> element to composite frames).
-  //
-  // VP8-in-WebM is the most battle-tested codec/container combo in Chromium;
-  // playback + seeking are rock-solid. VP8 software encoding is cheap enough
-  // for screen capture. VP9 is the fallback. Audio codec is left implicit so
-  // the same mimeType works for the audio-less webcam recorder.
-  const mimeCandidates = [
-    'video/webm;codecs=vp8',
-    'video/webm;codecs=vp9',
-    'video/webm'
-  ];
-  const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? 'video/webm';
+  const mimeType = pickMime();
 
   const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 8_000_000 });
   const chunks: BlobPart[] = [];
