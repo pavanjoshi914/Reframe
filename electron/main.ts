@@ -694,41 +694,72 @@ function ffprobeBin(): string {
   return 'ffprobe';
 }
 
-// PulseAudio starts capturing a couple seconds AFTER x11grab, so ffmpeg labels
-// the first (late) audio packet as PTS 0 — leaving the audio track shorter than
-// the video and shifted EARLY (you hear everything a few seconds before it
-// happens, and the tail is silent). Re-mux delaying the audio by exactly the
-// shortfall (video_dur - audio_dur) so it lines up, with the lead-in filled by
-// silence. Best-effort: any failure (no ffprobe, no audio, etc.) keeps the
-// original file untouched. Returns the path to use.
-function fixAudioSync(filePath: string): string {
+// Finalize the raw capture into a clean, editor-friendly file. Two jobs:
+//
+//  1) SEEKABILITY. The capture is a FRAGMENTED mp4 (kill-safe during recording)
+//     with dense keyframes. Re-muxing to a normal mp4 with '+faststart' writes a
+//     complete moov index (keyframe table) at the FRONT, so the editor can jump
+//     to any keyframe instantly — pro-editor-fast scrubbing. Video is stream-
+//     COPIED (no re-encode), so this is quick.
+//
+//  2) AUDIO SYNC. PulseAudio starts capturing a couple seconds AFTER x11grab, so
+//     ffmpeg labels the first (late) audio packet as PTS 0 — leaving the audio
+//     shorter than the video and shifted EARLY. Delay the audio by exactly the
+//     shortfall so it lines up (silence fills the lead-in).
+//
+// Best-effort: any failure (no ffprobe/ffmpeg, etc.) keeps the original file.
+function finalizeRecording(filePath: string): string {
   try {
-    const dur = (stream: string): number => {
-      const out = execFileSync(
-        ffprobeBin(),
-        ['-v', 'error', '-select_streams', stream, '-show_entries', 'stream=duration', '-of', 'default=nw=1:nk=1', filePath],
-        { encoding: 'utf8' }
-      ).trim();
-      return parseFloat(out);
-    };
-    const vdur = dur('v:0');
-    const adur = dur('a:0');
-    if (!isFinite(vdur) || !isFinite(adur)) return filePath; // no audio / probe unavailable
-    const delayMs = Math.round((vdur - adur) * 1000);
-    if (delayMs < 250) return filePath; // already aligned closely enough
-    const fixed = filePath.replace(/\.mp4$/, '.sync.mp4');
+    // Step 1 — remux the FRAGMENTED capture to a normal, faststart mp4. This
+    // gives a complete front-loaded seek index AND reliable per-stream durations
+    // (ffprobe on a fragmented mp4 reports audio duration unreliably). Video is
+    // stream-copied, so it's quick.
+    const remuxed = filePath.replace(/\.mp4$/, '.f1.mp4');
     execFileSync(
       ffmpegBin(),
-      ['-y', '-hide_banner', '-loglevel', 'error', '-i', filePath,
-        '-af', `adelay=${delayMs}:all=1`, '-c:v', 'copy', '-c:a', 'aac', '-movflags', '+faststart', fixed],
+      ['-y', '-hide_banner', '-loglevel', 'error', '-i', filePath, '-c', 'copy', '-movflags', '+faststart', remuxed],
       { stdio: 'ignore' }
     );
-    fs.rmSync(filePath, { force: true });
-    fs.renameSync(fixed, filePath);
-    console.log(`[main] audio sync: delayed audio by ${delayMs}ms to match ${vdur.toFixed(2)}s video`);
+
+    // Step 2 — measure the PulseAudio late-start drift by DECODING, not by trusting
+    // container metadata: a just-remuxed mp4 sometimes reports the audio stream's
+    // `duration` as the container (video) length, which would hide the drift and
+    // skip the fix (the bug that made this flaky). Video length = the container
+    // duration (video is the longer track); audio length = actual decoded sample
+    // count / rate — exact and immune to metadata quirks.
+    const runProbe = (args: string[]): string =>
+      execFileSync(ffprobeBin(), ['-v', 'error', ...args, remuxed], { encoding: 'utf8' });
+    // Video length = container duration (video is the longer track). Audio length
+    // = decoded AAC frame count × 1024 samples/frame ÷ rate — the stream `duration`
+    // field over-reports (observed 5.11s vs a true 4.01s), which is what made the
+    // fix flaky. `-count_frames` (not `-count_samples`, absent on ffprobe 4.x).
+    const vdur = parseFloat(runProbe(['-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1']).trim());
+    const aInfo = runProbe(['-select_streams', 'a:0', '-count_frames', '-show_entries', 'stream=nb_read_frames,sample_rate', '-of', 'default=nw=1']);
+    const aFrames = parseFloat((/nb_read_frames=(\d+)/.exec(aInfo) || [])[1]);
+    const aRate = parseFloat((/sample_rate=(\d+)/.exec(aInfo) || [])[1]);
+    const adur = (aFrames * 1024) / aRate; // AAC-LC = 1024 samples per frame
+    const delayMs = isFinite(vdur) && isFinite(adur) ? Math.round((vdur - adur) * 1000) : 0;
+
+    if (delayMs >= 250) {
+      const synced = filePath.replace(/\.mp4$/, '.f2.mp4');
+      execFileSync(
+        ffmpegBin(),
+        ['-y', '-hide_banner', '-loglevel', 'error', '-i', remuxed,
+          '-af', `adelay=${delayMs}:all=1`, '-c:v', 'copy', '-c:a', 'aac', '-movflags', '+faststart', synced],
+        { stdio: 'ignore' }
+      );
+      fs.rmSync(remuxed, { force: true });
+      fs.rmSync(filePath, { force: true });
+      fs.renameSync(synced, filePath);
+      console.log(`[main] finalize: faststart index + delayed audio ${delayMs}ms`);
+    } else {
+      fs.rmSync(filePath, { force: true });
+      fs.renameSync(remuxed, filePath);
+      console.log('[main] finalize: faststart index');
+    }
     return filePath;
   } catch (err) {
-    console.warn('[main] audio sync fix skipped', err);
+    console.warn('[main] finalize (faststart/audio-sync) skipped', err);
     return filePath;
   }
 }
@@ -781,7 +812,11 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
   // (no trailing moov atom needed). No HW encoder here (no CUDA/VAAPI profile).
   args.push(
     '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-pix_fmt', 'yuv420p',
-    '-g', '60', // keyframe every ~2s → snappy editor scrubbing/seeking + export
+    // Keyframe every ~0.5s (15 frames @30fps). Dense keyframes = near-instant
+    // editor scrubbing/seeking (a seek only decodes up to half a second of
+    // frames), the way pro editors feel. keyint_min=1 lets a keyframe land
+    // exactly on the interval. Small file-size cost, re-encoded away on export.
+    '-g', '15', '-keyint_min', '15',
     '-movflags', '+frag_keyframe+empty_moov+default_base_moof'
   );
   if (wantSys || wantMic) args.push('-c:a', 'aac', '-b:a', '128k');
@@ -834,8 +869,8 @@ ipcMain.handle('ffcap:stop', async () => {
   // Clear the video epoch so a following Chromium recording anchors its cursor
   // clock to "now" rather than this (now-stale) ffmpeg start.
   captureVideoEpoch = null;
-  // Correct the PulseAudio late-start A/V drift before handing the file off.
-  fixAudioSync(out);
+  // Finalize: front-load the seek index (faststart) + correct PulseAudio drift.
+  finalizeRecording(out);
   return { filePath: out, width: ffDims.width, height: ffDims.height, durationMs };
 });
 
