@@ -659,6 +659,43 @@ let ffOutPath: string | null = null;
 let ffStartedAt = 0;
 let ffDims = { width: 1920, height: 1080 };
 
+// Which cursor-hidden capture backend is live: the PipeWire/GStreamer helper
+// (preferred — grabs COMPOSITED frames, so it stays fresh under load) or the
+// legacy ffmpeg x11grab fallback (reads a stale root pixmap under a compositor).
+let captureMode: 'pipewire' | 'x11grab' | null = null;
+let pwProc: ChildProcess | null = null;      // python video helper (linux-capture.py)
+let pwAudioProc: ChildProcess | null = null; // separate ffmpeg for the mic (see below)
+let pwVideoPath: string | null = null;       // the .mkv the helper writes
+let pwAudioPath: string | null = null;       // separate mic/audio .m4a, or null if audio is in the mkv
+
+// Locate the PipeWire capture helper: alongside the source in dev, or in the
+// packaged app's resources. Returns null when it isn't present (→ x11grab).
+function helperScriptPath(): string | null {
+  const candidates = [
+    path.join(__dirname, '..', 'electron', 'linux-capture.py'),
+    path.join(process.resourcesPath || '', 'linux-capture.py'),
+  ];
+  for (const c of candidates) {
+    try { if (c && fs.existsSync(c)) return c; } catch { /* ignore */ }
+  }
+  return null;
+}
+
+// Environment for the GStreamer helper. If REFRAME_GST_PREFIX points at a lib
+// dir that carries x264enc (e.g. a no-root local install of
+// gstreamer1.0-plugins-ugly during dev), prepend it so the helper can find the
+// H.264 encoder; otherwise the system GStreamer is used as-is.
+function gstEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  const prefix = process.env.REFRAME_GST_PREFIX;
+  if (prefix) {
+    const plug = path.join(prefix, 'gstreamer-1.0');
+    env.GST_PLUGIN_PATH = env.GST_PLUGIN_PATH ? `${plug}:${env.GST_PLUGIN_PATH}` : plug;
+    env.LD_LIBRARY_PATH = env.LD_LIBRARY_PATH ? `${prefix}:${env.LD_LIBRARY_PATH}` : prefix;
+  }
+  return env;
+}
+
 // Resolve the default PulseAudio sink monitor (system audio) + source (mic).
 function pulseDefaults(): { monitor: string | null; source: string | null } {
   try {
@@ -692,6 +729,171 @@ function ffprobeBin(): string {
     if (fs.existsSync(sibling)) return sibling;
   }
   return 'ffprobe';
+}
+
+// Record the mic ALONE in a separate ffmpeg/PulseAudio process. A microphone is
+// a distinct hardware capture clock: it deadlocks pipewiresrc if muxed into the
+// same GStreamer pipeline, and mixing it with the system monitor as a second
+// LIVE ffmpeg input is unreliable too (the monitor can starve amix). So the mic
+// is captured on its own here and combined with the video (and system audio, if
+// any) OFFLINE at finalize, where mixing is deterministic. Returns the AAC file
+// path, or null on failure (recording continues without the mic).
+function startSeparateMicAudio(ts: string, source: string): { proc: ChildProcess; path: string } | null {
+  const outPath = path.join(recordingsTempDir, `${ts}-mic.m4a`);
+  const args = [
+    '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'pulse', '-i', source, '-map', '0:a', '-c:a', 'aac', '-b:a', '128k', outPath,
+  ];
+  try {
+    const proc = spawn(ffmpegBin(), args, { stdio: ['pipe', 'ignore', 'ignore'] });
+    return { proc, path: outPath };
+  } catch (err) {
+    console.warn('[main] separate mic capture failed to start', err);
+    return null;
+  }
+}
+
+// Try the PipeWire/GStreamer helper for cursor-hidden capture. Spawns the helper
+// (which negotiates a Mutter ScreenCast with the cursor hidden and encodes
+// H.264+MP3 into Matroska), waiting for its "READY" line. On success the mic (if
+// requested) is started as a separate process and { ok:true } is returned; on
+// any failure everything is torn down and { ok:false } lets the caller fall back
+// to x11grab.
+async function tryStartPipewire(
+  geom: { w: number; h: number; x: number; y: number },
+  audio: { monitor: string | null; source: string | null; wantSys: boolean; wantMic: boolean },
+  ts: string
+): Promise<{ ok: boolean }> {
+  const script = helperScriptPath();
+  if (!script) return { ok: false };
+
+  // The system monitor shares PipeWire's clock, so it always goes IN the gst
+  // pipeline when requested (perfectly synced there). The mic, when on, is a
+  // separate process and is mixed in offline at finalize.
+  const monitorInGst = audio.wantSys ? audio.monitor : null;
+  const videoPath = path.join(recordingsTempDir, `${ts}-screen.mkv`);
+  const helperArgs = [
+    script, String(geom.x), String(geom.y), String(geom.w), String(geom.h),
+    '30', videoPath,
+  ];
+  if (monitorInGst) helperArgs.push(monitorInGst);
+
+  let proc: ChildProcess;
+  try {
+    proc = spawn('python3', helperArgs, { env: gstEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (err) {
+    console.warn('[main] pipewire helper spawn threw', err);
+    return { ok: false };
+  }
+
+  let stdout = '';
+  let stderr = '';
+  proc.stdout?.on('data', (d) => { stdout += String(d); });
+  proc.stderr?.on('data', (d) => { stderr += String(d); });
+
+  const ready = await new Promise<boolean>((resolve) => {
+    let settled = false;
+    const done = (v: boolean) => { if (!settled) { settled = true; resolve(v); } };
+    proc.stdout?.on('data', () => {
+      if (/^READY/m.test(stdout)) done(true);
+      else if (/^FAIL/m.test(stdout)) done(false);
+    });
+    proc.once('error', () => done(false));
+    proc.once('exit', () => done(false)); // exited before READY = failure
+    setTimeout(() => done(false), 8000);  // negotiation must finish well within this
+  });
+
+  if (!ready) {
+    console.warn('[main] pipewire helper did not start:', stdout.trim(), stderr.trim());
+    try { proc.kill('SIGKILL'); } catch { /* ignore */ }
+    try { fs.rmSync(videoPath, { force: true }); } catch { /* ignore */ }
+    return { ok: false };
+  }
+
+  // Video is rolling. Anchor the cursor clock and, if requested, start the mic.
+  captureMode = 'pipewire';
+  pwProc = proc;
+  pwVideoPath = videoPath;
+  ffStartedAt = Date.now();
+  captureVideoEpoch = ffStartedAt;
+  ffDims = { width: geom.w, height: geom.h };
+  pwAudioProc = null;
+  pwAudioPath = null;
+  if (audio.wantMic && audio.source) {
+    const mic = startSeparateMicAudio(ts, audio.source);
+    if (mic) { pwAudioProc = mic.proc; pwAudioPath = mic.path; }
+  }
+  // If the helper dies unexpectedly mid-recording, don't leave a dangling handle.
+  proc.once('exit', (code) => {
+    if (captureMode === 'pipewire' && pwProc === proc && code !== 0 && code !== null) {
+      console.warn('[main] pipewire helper exited unexpectedly', code, stderr.trim());
+    }
+  });
+  return { ok: true };
+}
+
+// Finalize a PipeWire capture (Matroska) into the editor-friendly faststart mp4.
+// Video is always stream-copied (H.264). Audio has three shapes:
+//   • system only  — already in the mkv, perfectly synced on the shared clock;
+//                    just transcode MP3→AAC.
+//   • mic only     — separate file, muxed in delayed by its later start.
+//   • system + mic — the mkv's system track + the (delayed) mic file, mixed
+//                    OFFLINE (deterministic, unlike live mixing).
+// The mic starts slightly AFTER the video, so it's delayed by the shortfall
+// (video length − mic length) to line up. Best-effort: returns a usable path.
+function finalizePipewire(videoMkv: string, micFile: string | null): string {
+  const outMp4 = videoMkv.replace(/\.mkv$/, '.mp4');
+  try {
+    const probe = (file: string, args: string[]): string =>
+      execFileSync(ffprobeBin(), ['-v', 'error', ...args, file], { encoding: 'utf8' });
+    const mkvHasAudio = /audio/.test(
+      probe(videoMkv, ['-select_streams', 'a', '-show_entries', 'stream=codec_type', '-of', 'default=nw=1'])
+    );
+    const haveMic = !!micFile && fs.existsSync(micFile);
+
+    // Mic's late-start delay = how much shorter it is than the video.
+    let micDelayMs = 0;
+    if (haveMic) {
+      const vdur = parseFloat(probe(videoMkv, ['-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1']).trim());
+      const aInfo = probe(micFile as string, ['-select_streams', 'a:0', '-count_frames', '-show_entries', 'stream=nb_read_frames,sample_rate', '-of', 'default=nw=1']);
+      const aFrames = parseFloat((/nb_read_frames=(\d+)/.exec(aInfo) || [])[1]);
+      const aRate = parseFloat((/sample_rate=(\d+)/.exec(aInfo) || [])[1]);
+      const adur = (aFrames * 1024) / aRate;
+      micDelayMs = isFinite(vdur) && isFinite(adur) ? Math.max(0, Math.round((vdur - adur) * 1000)) : 0;
+    }
+
+    const args = ['-y', '-hide_banner', '-loglevel', 'error', '-i', videoMkv];
+    if (haveMic) args.push('-i', micFile as string);
+
+    if (haveMic && mkvHasAudio) {
+      // system (mkv 0:a) + mic (1:a, delayed) → single mixed track, offline.
+      const delay = micDelayMs >= 250 ? `adelay=${micDelayMs}:all=1,` : '';
+      args.push(
+        '-filter_complex', `[1:a]${delay}aresample=async=1[m];[0:a][m]amix=inputs=2:duration=first[a]`,
+        '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac'
+      );
+      console.log(`[main] finalize(pipewire): system+mic offline mix, mic delay ${micDelayMs}ms`);
+    } else if (haveMic) {
+      // mic only: mux it in, delayed to line up.
+      if (micDelayMs >= 250) args.push('-af', `adelay=${micDelayMs}:all=1`);
+      args.push('-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac');
+      console.log(`[main] finalize(pipewire): muxed mic, delay ${micDelayMs}ms`);
+    } else {
+      // system audio (if any) is already in sync; just remux.
+      args.push('-c:v', 'copy');
+      if (mkvHasAudio) args.push('-c:a', 'aac');
+      console.log('[main] finalize(pipewire): faststart remux');
+    }
+    args.push('-movflags', '+faststart', outMp4);
+    execFileSync(ffmpegBin(), args, { stdio: 'ignore' });
+
+    fs.rmSync(videoMkv, { force: true });
+    if (micFile) fs.rmSync(micFile, { force: true });
+    return outMp4;
+  } catch (err) {
+    console.warn('[main] finalize(pipewire) failed; keeping raw mkv', err);
+    return fs.existsSync(outMp4) ? outMp4 : videoMkv;
+  }
 }
 
 // Finalize the raw capture into a clean, editor-friendly file. Two jobs:
@@ -767,7 +969,12 @@ function finalizeRecording(filePath: string): string {
 ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; withMic: boolean }) => {
   if (process.platform !== 'linux') return { ok: false, width: 0, height: 0 };
   try { ffProc?.kill('SIGKILL'); } catch { /* ignore */ }
+  try { pwProc?.kill('SIGKILL'); } catch { /* ignore */ }
+  try { pwAudioProc?.kill('SIGKILL'); } catch { /* ignore */ }
   ffProc = null;
+  pwProc = null;
+  pwAudioProc = null;
+  captureMode = null;
   captureVideoEpoch = null;
 
   const disp = recordedDisplay ?? screen.getPrimaryDisplay();
@@ -780,11 +987,23 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
   const display = process.env.DISPLAY || ':0';
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  ffOutPath = path.join(recordingsTempDir, `${ts}-screen.mp4`);
 
   const { monitor, source } = pulseDefaults();
   const wantSys = !!opts.withSystemAudio && !!monitor;
   const wantMic = !!opts.withMic && !!source;
+
+  // Preferred path: PipeWire/GStreamer (composited frames → fresh under load,
+  // cursor hidden at the source). Falls through to x11grab if unavailable.
+  const pw = await tryStartPipewire(
+    { w, h, x, y },
+    { monitor, source, wantSys, wantMic },
+    ts
+  );
+  if (pw.ok) return { ok: true, width: w, height: h };
+
+  // Fallback path: ffmpeg x11grab.
+  captureMode = 'x11grab';
+  ffOutPath = path.join(recordingsTempDir, `${ts}-screen.mp4`);
 
   const args: string[] = [
     '-hide_banner', '-loglevel', 'error', '-y',
@@ -839,26 +1058,66 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
       });
       setTimeout(() => { if (!settled) { settled = true; resolve(true); } }, 700);
     });
-    if (!ok) { ffProc = null; ffOutPath = null; captureVideoEpoch = null; return { ok: false, width: 0, height: 0 }; }
+    if (!ok) { ffProc = null; ffOutPath = null; captureMode = null; captureVideoEpoch = null; return { ok: false, width: 0, height: 0 }; }
     return { ok: true, width: w, height: h };
   } catch (err) {
     console.warn('[main] ffmpeg capture failed to start', err);
     ffProc = null;
     ffOutPath = null;
+    captureMode = null;
     return { ok: false, width: 0, height: 0 };
   }
 });
 
 ipcMain.handle('ffcap:stop', async () => {
+  const durationMs = Date.now() - ffStartedAt;
+
+  // ── PipeWire path ──────────────────────────────────────────────────────────
+  if (captureMode === 'pipewire' && pwProc && pwVideoPath) {
+    const vproc = pwProc;
+    const aproc = pwAudioProc;
+    const videoPath = pwVideoPath;
+    const audioPath = pwAudioPath;
+    pwProc = null;
+    pwAudioProc = null;
+    pwVideoPath = null;
+    pwAudioPath = null;
+    captureMode = null;
+    captureVideoEpoch = null;
+
+    // Stop the separate mic ffmpeg (graceful 'q' → SIGINT) and the video helper
+    // (SIGTERM → it injects EOS into every source and finalizes the Matroska).
+    await Promise.all([
+      new Promise<void>((resolve) => {
+        if (!aproc) return resolve();
+        let done = false; const finish = () => { if (!done) { done = true; resolve(); } };
+        aproc.once('exit', finish);
+        try { aproc.stdin?.write('q'); } catch { /* ignore */ }
+        setTimeout(() => { try { aproc.kill('SIGINT'); } catch { /* ignore */ } }, 300);
+        setTimeout(finish, 5000);
+      }),
+      new Promise<void>((resolve) => {
+        let done = false; const finish = () => { if (!done) { done = true; resolve(); } };
+        vproc.once('exit', finish);
+        try { vproc.kill('SIGTERM'); } catch { /* ignore */ }
+        setTimeout(() => { try { vproc.kill('SIGKILL'); } catch { /* ignore */ } }, 6000);
+        setTimeout(finish, 6500);
+      }),
+    ]);
+
+    const out = finalizePipewire(videoPath, audioPath);
+    return { filePath: out, width: ffDims.width, height: ffDims.height, durationMs };
+  }
+
+  // ── x11grab fallback path ──────────────────────────────────────────────────
   const proc = ffProc;
   ffProc = null;
-  if (!proc || !ffOutPath) return null;
-  const durationMs = Date.now() - ffStartedAt;
+  if (!proc || !ffOutPath) { captureMode = null; return null; }
   await new Promise<void>((resolve) => {
     let done = false;
     const finish = () => { if (!done) { done = true; resolve(); } };
     proc.once('exit', finish);
-    // Ask ffmpeg to finalize gracefully (flush the webm index) via stdin 'q';
+    // Ask ffmpeg to finalize gracefully (flush the index) via stdin 'q';
     // then SIGINT, then a hard timeout, so stop() can never hang the HUD.
     try { proc.stdin?.write('q'); } catch { /* ignore */ }
     setTimeout(() => { try { proc.kill('SIGINT'); } catch { /* ignore */ } }, 400);
@@ -866,6 +1125,7 @@ ipcMain.handle('ffcap:stop', async () => {
   });
   const out = ffOutPath;
   ffOutPath = null;
+  captureMode = null;
   // Clear the video epoch so a following Chromium recording anchors its cursor
   // clock to "now" rather than this (now-stale) ffmpeg start.
   captureVideoEpoch = null;
