@@ -644,32 +644,34 @@ ipcMain.handle('capture:setPendingSource', async (_evt, sourceId: string) => {
   }
 });
 
-// ── Cursor-hidden screen capture via ffmpeg x11grab (Linux / X11) ────────────
+// ── Cursor-hidden screen capture via PipeWire ScreenCast (Linux) ─────────────
 // Chromium's getDisplayMedia({ cursor:'never' }) is IGNORED on X11 — the
-// compositor always bakes the OS cursor into the captured frames — so the only
-// reliable way to record WITHOUT the cursor (letting the editor's synthetic
-// smooth cursor stand in with no double-cursor) is to grab the X display
-// directly with `ffmpeg -f x11grab -draw_mouse 0`. This runs ONLY on Linux and
-// ONLY when "Hide cursor" is on; every other case keeps the Chromium path.
-// Audio (system monitor + mic) is captured via PulseAudio in the same process
-// and muxed into the webm. If ffmpeg is missing or fails to start, ffcap:start
-// returns { ok:false } and the renderer falls back to the normal capture.
-let ffProc: ChildProcess | null = null;
-let ffOutPath: string | null = null;
+// compositor bakes the OS cursor into the frames — so recording WITHOUT the
+// cursor (letting the editor's synthetic smooth cursor stand in, with no
+// double-cursor) needs a capture API that hides it at the source. That's a
+// PipeWire ScreenCast, negotiated by the linux-capture.py helper, which also
+// yields COMPOSITED frames: they stay fresh under load, unlike x11grab's stale
+// root pixmap.
+//
+// Runs ONLY on Linux and ONLY when "Hide cursor" is on. If the helper can't
+// start (no PipeWire, no GStreamer H.264 encoder, user denied the portal), we
+// return { ok:false } and the renderer falls back to its normal Chromium
+// capture — which shows the cursor, but never blocks a recording.
 let ffStartedAt = 0;
 let ffDims = { width: 1920, height: 1080 };
-
-// Which cursor-hidden capture backend is live: the PipeWire/GStreamer helper
-// (preferred — grabs COMPOSITED frames, so it stays fresh under load) or the
-// legacy ffmpeg x11grab fallback (reads a stale root pixmap under a compositor).
-let captureMode: 'pipewire' | 'x11grab' | null = null;
 let pwProc: ChildProcess | null = null;      // python video helper (linux-capture.py)
 let pwAudioProc: ChildProcess | null = null; // separate ffmpeg for the mic (see below)
 let pwVideoPath: string | null = null;       // the .mkv the helper writes
 let pwAudioPath: string | null = null;       // separate mic/audio .m4a, or null if audio is in the mkv
 
+// Where the portal's restore_token lives. The XDG portal shows a source picker;
+// handing back the token it issued lets every later recording skip that dialog.
+function restoreTokenPath(): string {
+  return path.join(app.getPath('userData'), 'screencast-restore-token');
+}
+
 // Locate the PipeWire capture helper: alongside the source in dev, or in the
-// packaged app's resources. Returns null when it isn't present (→ x11grab).
+// packaged app's resources. Returns null when it isn't present.
 function helperScriptPath(): string | null {
   const candidates = [
     path.join(__dirname, '..', 'electron', 'linux-capture.py'),
@@ -757,8 +759,8 @@ function startSeparateMicAudio(ts: string, source: string): { proc: ChildProcess
 // (which negotiates a Mutter ScreenCast with the cursor hidden and encodes
 // H.264+MP3 into Matroska), waiting for its "READY" line. On success the mic (if
 // requested) is started as a separate process and { ok:true } is returned; on
-// any failure everything is torn down and { ok:false } lets the caller fall back
-// to x11grab.
+// any failure everything is torn down and { ok:false } tells the caller no
+// cursor-hidden capture is available.
 async function tryStartPipewire(
   geom: { w: number; h: number; x: number; y: number },
   audio: { monitor: string | null; source: string | null; wantSys: boolean; wantMic: boolean },
@@ -773,7 +775,8 @@ async function tryStartPipewire(
   const monitorInGst = audio.wantSys ? audio.monitor : null;
   const videoPath = path.join(recordingsTempDir, `${ts}-screen.mkv`);
   const helperArgs = [
-    script, String(geom.x), String(geom.y), String(geom.w), String(geom.h),
+    script, '--restore-token-file', restoreTokenPath(),
+    String(geom.x), String(geom.y), String(geom.w), String(geom.h),
     '30', videoPath,
   ];
   if (monitorInGst) helperArgs.push(monitorInGst);
@@ -811,12 +814,20 @@ async function tryStartPipewire(
   }
 
   // Video is rolling. Anchor the cursor clock and, if requested, start the mic.
-  captureMode = 'pipewire';
   pwProc = proc;
   pwVideoPath = videoPath;
   ffStartedAt = Date.now();
   captureVideoEpoch = ffStartedAt;
-  ffDims = { width: geom.w, height: geom.h };
+  // The XDG portal hands back a whole monitor rather than the exact region we
+  // asked for, so trust the size the helper negotiated over the requested one.
+  const negotiated = /^SIZE (\d+)x(\d+)$/m.exec(stdout);
+  ffDims = negotiated
+    ? { width: Number(negotiated[1]), height: Number(negotiated[2]) }
+    : { width: geom.w, height: geom.h };
+  console.log(
+    `[main] capture: pipewire via ${(/^BACKEND (\w+)$/m.exec(stdout) || [, '?'])[1]}` +
+    ` @ ${ffDims.width}x${ffDims.height}`
+  );
   pwAudioProc = null;
   pwAudioPath = null;
   if (audio.wantMic && audio.source) {
@@ -825,7 +836,7 @@ async function tryStartPipewire(
   }
   // If the helper dies unexpectedly mid-recording, don't leave a dangling handle.
   proc.once('exit', (code) => {
-    if (captureMode === 'pipewire' && pwProc === proc && code !== 0 && code !== null) {
+    if (pwProc === proc && code !== 0 && code !== null) {
       console.warn('[main] pipewire helper exited unexpectedly', code, stderr.trim());
     }
   });
@@ -896,85 +907,12 @@ function finalizePipewire(videoMkv: string, micFile: string | null): string {
   }
 }
 
-// Finalize the raw capture into a clean, editor-friendly file. Two jobs:
-//
-//  1) SEEKABILITY. The capture is a FRAGMENTED mp4 (kill-safe during recording)
-//     with dense keyframes. Re-muxing to a normal mp4 with '+faststart' writes a
-//     complete moov index (keyframe table) at the FRONT, so the editor can jump
-//     to any keyframe instantly — pro-editor-fast scrubbing. Video is stream-
-//     COPIED (no re-encode), so this is quick.
-//
-//  2) AUDIO SYNC. PulseAudio starts capturing a couple seconds AFTER x11grab, so
-//     ffmpeg labels the first (late) audio packet as PTS 0 — leaving the audio
-//     shorter than the video and shifted EARLY. Delay the audio by exactly the
-//     shortfall so it lines up (silence fills the lead-in).
-//
-// Best-effort: any failure (no ffprobe/ffmpeg, etc.) keeps the original file.
-function finalizeRecording(filePath: string): string {
-  try {
-    // Step 1 — remux the FRAGMENTED capture to a normal, faststart mp4. This
-    // gives a complete front-loaded seek index AND reliable per-stream durations
-    // (ffprobe on a fragmented mp4 reports audio duration unreliably). Video is
-    // stream-copied, so it's quick.
-    const remuxed = filePath.replace(/\.mp4$/, '.f1.mp4');
-    execFileSync(
-      ffmpegBin(),
-      ['-y', '-hide_banner', '-loglevel', 'error', '-i', filePath, '-c', 'copy', '-movflags', '+faststart', remuxed],
-      { stdio: 'ignore' }
-    );
-
-    // Step 2 — measure the PulseAudio late-start drift by DECODING, not by trusting
-    // container metadata: a just-remuxed mp4 sometimes reports the audio stream's
-    // `duration` as the container (video) length, which would hide the drift and
-    // skip the fix (the bug that made this flaky). Video length = the container
-    // duration (video is the longer track); audio length = actual decoded sample
-    // count / rate — exact and immune to metadata quirks.
-    const runProbe = (args: string[]): string =>
-      execFileSync(ffprobeBin(), ['-v', 'error', ...args, remuxed], { encoding: 'utf8' });
-    // Video length = container duration (video is the longer track). Audio length
-    // = decoded AAC frame count × 1024 samples/frame ÷ rate — the stream `duration`
-    // field over-reports (observed 5.11s vs a true 4.01s), which is what made the
-    // fix flaky. `-count_frames` (not `-count_samples`, absent on ffprobe 4.x).
-    const vdur = parseFloat(runProbe(['-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1']).trim());
-    const aInfo = runProbe(['-select_streams', 'a:0', '-count_frames', '-show_entries', 'stream=nb_read_frames,sample_rate', '-of', 'default=nw=1']);
-    const aFrames = parseFloat((/nb_read_frames=(\d+)/.exec(aInfo) || [])[1]);
-    const aRate = parseFloat((/sample_rate=(\d+)/.exec(aInfo) || [])[1]);
-    const adur = (aFrames * 1024) / aRate; // AAC-LC = 1024 samples per frame
-    const delayMs = isFinite(vdur) && isFinite(adur) ? Math.round((vdur - adur) * 1000) : 0;
-
-    if (delayMs >= 250) {
-      const synced = filePath.replace(/\.mp4$/, '.f2.mp4');
-      execFileSync(
-        ffmpegBin(),
-        ['-y', '-hide_banner', '-loglevel', 'error', '-i', remuxed,
-          '-af', `adelay=${delayMs}:all=1`, '-c:v', 'copy', '-c:a', 'aac', '-movflags', '+faststart', synced],
-        { stdio: 'ignore' }
-      );
-      fs.rmSync(remuxed, { force: true });
-      fs.rmSync(filePath, { force: true });
-      fs.renameSync(synced, filePath);
-      console.log(`[main] finalize: faststart index + delayed audio ${delayMs}ms`);
-    } else {
-      fs.rmSync(filePath, { force: true });
-      fs.renameSync(remuxed, filePath);
-      console.log('[main] finalize: faststart index');
-    }
-    return filePath;
-  } catch (err) {
-    console.warn('[main] finalize (faststart/audio-sync) skipped', err);
-    return filePath;
-  }
-}
-
 ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; withMic: boolean }) => {
   if (process.platform !== 'linux') return { ok: false, width: 0, height: 0 };
-  try { ffProc?.kill('SIGKILL'); } catch { /* ignore */ }
   try { pwProc?.kill('SIGKILL'); } catch { /* ignore */ }
   try { pwAudioProc?.kill('SIGKILL'); } catch { /* ignore */ }
-  ffProc = null;
   pwProc = null;
   pwAudioProc = null;
-  captureMode = null;
   captureVideoEpoch = null;
 
   const disp = recordedDisplay ?? screen.getPrimaryDisplay();
@@ -984,153 +922,62 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
   const x = Math.round(disp.bounds.x * scale);
   const y = Math.round(disp.bounds.y * scale);
   ffDims = { width: w, height: h };
-  const display = process.env.DISPLAY || ':0';
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
-
   const { monitor, source } = pulseDefaults();
   const wantSys = !!opts.withSystemAudio && !!monitor;
   const wantMic = !!opts.withMic && !!source;
 
-  // Preferred path: PipeWire/GStreamer (composited frames → fresh under load,
-  // cursor hidden at the source). Falls through to x11grab if unavailable.
-  const pw = await tryStartPipewire(
-    { w, h, x, y },
-    { monitor, source, wantSys, wantMic },
-    ts
-  );
-  if (pw.ok) return { ok: true, width: w, height: h };
+  const pw = await tryStartPipewire({ w, h, x, y }, { monitor, source, wantSys, wantMic }, ts);
+  // tryStartPipewire trusts the size the ScreenCast actually negotiated, which
+  // the portal may pick for us, so report ffDims rather than what we asked for.
+  if (pw.ok) return { ok: true, width: ffDims.width, height: ffDims.height };
 
-  // Fallback path: ffmpeg x11grab.
-  captureMode = 'x11grab';
-  ffOutPath = path.join(recordingsTempDir, `${ts}-screen.mp4`);
-
-  const args: string[] = [
-    '-hide_banner', '-loglevel', 'error', '-y',
-    '-f', 'x11grab', '-draw_mouse', '0', '-framerate', '30',
-    '-video_size', `${w}x${h}`, '-i', `${display}+${x},${y}`
-  ];
-  if (wantSys) args.push('-f', 'pulse', '-i', monitor as string);
-  if (wantMic) args.push('-f', 'pulse', '-i', source as string);
-  // Audio inputs follow the video (input 0) in push order.
-  if (wantSys && wantMic) {
-    args.push('-filter_complex', '[1:a][2:a]amix=inputs=2:duration=longest[a]', '-map', '0:v', '-map', '[a]');
-  } else if (wantSys || wantMic) {
-    args.push('-map', '0:v', '-map', '1:a');
-  } else {
-    args.push('-map', '0:v');
-  }
-  // Encode with libx264 (software H.264) at 'ultrafast'. This is the crux of the
-  // capture-quality fix: libvpx/VP8 realtime tops out at ~15fps at 1080p and
-  // COLLAPSES to ~1fps under real load (busy page + webcam + app), dropping the
-  // vast majority of frames — the "recorder feels slow/laggy, misses fast UI
-  // (typed text, popups)" bug. x264 ultrafast holds a rock-solid 30fps on the
-  // same content. H.264/MP4 decodes fine in the editor's <video> + mediabunny
-  // (Electron ships proprietary codecs; the media:// handler sets video/mp4),
-  // and a FRAGMENTED mp4 stays playable even if ffmpeg is force-killed on stop
-  // (no trailing moov atom needed). No HW encoder here (no CUDA/VAAPI profile).
-  args.push(
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-pix_fmt', 'yuv420p',
-    // Keyframe every ~0.5s (15 frames @30fps). Dense keyframes = near-instant
-    // editor scrubbing/seeking (a seek only decodes up to half a second of
-    // frames), the way pro editors feel. keyint_min=1 lets a keyframe land
-    // exactly on the interval. Small file-size cost, re-encoded away on export.
-    '-g', '15', '-keyint_min', '15',
-    '-movflags', '+frag_keyframe+empty_moov+default_base_moof'
-  );
-  if (wantSys || wantMic) args.push('-c:a', 'aac', '-b:a', '128k');
-  args.push(ffOutPath);
-
-  try {
-    const proc = spawn(ffmpegBin(), args, { stdio: ['pipe', 'ignore', 'pipe'] });
-    ffProc = proc;
-    let stderr = '';
-    proc.stderr?.on('data', (d) => { stderr += String(d); });
-    const ok = await new Promise<boolean>((resolve) => {
-      let settled = false;
-      proc.once('spawn', () => { settled = true; ffStartedAt = Date.now(); captureVideoEpoch = ffStartedAt; resolve(true); });
-      proc.once('error', (err) => {
-        if (!settled) { settled = true; console.warn('[main] ffmpeg spawn error', err); resolve(false); }
-      });
-      // An exit within the first moment means capture failed (bad device/args).
-      proc.once('exit', (code) => {
-        if (!settled) { settled = true; console.warn('[main] ffmpeg exited early', code, stderr); resolve(false); }
-      });
-      setTimeout(() => { if (!settled) { settled = true; resolve(true); } }, 700);
-    });
-    if (!ok) { ffProc = null; ffOutPath = null; captureMode = null; captureVideoEpoch = null; return { ok: false, width: 0, height: 0 }; }
-    return { ok: true, width: w, height: h };
-  } catch (err) {
-    console.warn('[main] ffmpeg capture failed to start', err);
-    ffProc = null;
-    ffOutPath = null;
-    captureMode = null;
-    return { ok: false, width: 0, height: 0 };
-  }
+  // No ScreenCast: the renderer falls back to its Chromium capture (cursor
+  // visible). We do NOT fall back to ffmpeg x11grab — it reads a stale root
+  // pixmap under a compositor and silently drops rapid window switches, which
+  // reads as "the recorder is laggy".
+  captureVideoEpoch = null;
+  return { ok: false, width: 0, height: 0 };
 });
 
 ipcMain.handle('ffcap:stop', async () => {
+  if (!pwProc || !pwVideoPath) return null;
   const durationMs = Date.now() - ffStartedAt;
-
-  // ── PipeWire path ──────────────────────────────────────────────────────────
-  if (captureMode === 'pipewire' && pwProc && pwVideoPath) {
-    const vproc = pwProc;
-    const aproc = pwAudioProc;
-    const videoPath = pwVideoPath;
-    const audioPath = pwAudioPath;
-    pwProc = null;
-    pwAudioProc = null;
-    pwVideoPath = null;
-    pwAudioPath = null;
-    captureMode = null;
-    captureVideoEpoch = null;
-
-    // Stop the separate mic ffmpeg (graceful 'q' → SIGINT) and the video helper
-    // (SIGTERM → it injects EOS into every source and finalizes the Matroska).
-    await Promise.all([
-      new Promise<void>((resolve) => {
-        if (!aproc) return resolve();
-        let done = false; const finish = () => { if (!done) { done = true; resolve(); } };
-        aproc.once('exit', finish);
-        try { aproc.stdin?.write('q'); } catch { /* ignore */ }
-        setTimeout(() => { try { aproc.kill('SIGINT'); } catch { /* ignore */ } }, 300);
-        setTimeout(finish, 5000);
-      }),
-      new Promise<void>((resolve) => {
-        let done = false; const finish = () => { if (!done) { done = true; resolve(); } };
-        vproc.once('exit', finish);
-        try { vproc.kill('SIGTERM'); } catch { /* ignore */ }
-        setTimeout(() => { try { vproc.kill('SIGKILL'); } catch { /* ignore */ } }, 6000);
-        setTimeout(finish, 6500);
-      }),
-    ]);
-
-    const out = finalizePipewire(videoPath, audioPath);
-    return { filePath: out, width: ffDims.width, height: ffDims.height, durationMs };
-  }
-
-  // ── x11grab fallback path ──────────────────────────────────────────────────
-  const proc = ffProc;
-  ffProc = null;
-  if (!proc || !ffOutPath) { captureMode = null; return null; }
-  await new Promise<void>((resolve) => {
-    let done = false;
-    const finish = () => { if (!done) { done = true; resolve(); } };
-    proc.once('exit', finish);
-    // Ask ffmpeg to finalize gracefully (flush the index) via stdin 'q';
-    // then SIGINT, then a hard timeout, so stop() can never hang the HUD.
-    try { proc.stdin?.write('q'); } catch { /* ignore */ }
-    setTimeout(() => { try { proc.kill('SIGINT'); } catch { /* ignore */ } }, 400);
-    setTimeout(finish, 4000);
-  });
-  const out = ffOutPath;
-  ffOutPath = null;
-  captureMode = null;
+  const vproc = pwProc;
+  const aproc = pwAudioProc;
+  const videoPath = pwVideoPath;
+  const audioPath = pwAudioPath;
+  pwProc = null;
+  pwAudioProc = null;
+  pwVideoPath = null;
+  pwAudioPath = null;
   // Clear the video epoch so a following Chromium recording anchors its cursor
-  // clock to "now" rather than this (now-stale) ffmpeg start.
+  // clock to "now" rather than this (now-stale) capture start.
   captureVideoEpoch = null;
-  // Finalize: front-load the seek index (faststart) + correct PulseAudio drift.
-  finalizeRecording(out);
+
+  // Stop the separate mic ffmpeg (graceful 'q' -> SIGINT) and the video helper
+  // (SIGTERM -> it injects EOS into every source and finalizes the Matroska).
+  // Both are bounded so stop() can never hang the HUD.
+  await Promise.all([
+    new Promise<void>((resolve) => {
+      if (!aproc) return resolve();
+      let done = false; const finish = () => { if (!done) { done = true; resolve(); } };
+      aproc.once('exit', finish);
+      try { aproc.stdin?.write('q'); } catch { /* ignore */ }
+      setTimeout(() => { try { aproc.kill('SIGINT'); } catch { /* ignore */ } }, 300);
+      setTimeout(finish, 5000);
+    }),
+    new Promise<void>((resolve) => {
+      let done = false; const finish = () => { if (!done) { done = true; resolve(); } };
+      vproc.once('exit', finish);
+      try { vproc.kill('SIGTERM'); } catch { /* ignore */ }
+      setTimeout(() => { try { vproc.kill('SIGKILL'); } catch { /* ignore */ } }, 6000);
+      setTimeout(finish, 6500);
+    }),
+  ]);
+
+  const out = finalizePipewire(videoPath, audioPath);
   return { filePath: out, width: ffDims.width, height: ffDims.height, durationMs };
 });
 
