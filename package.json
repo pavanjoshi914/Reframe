@@ -82,7 +82,34 @@
         "deb"
       ],
       "category": "AudioVideo",
-      "icon": "assets/logo-transparent.png"
+      "icon": "assets/logo-transparent.png",
+      "extraResources": [
+        {
+          "from": "electron/linux-capture.py",
+          "to": "linux-capture.py"
+        }
+      ]
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "libatspi2.0-0",
+        "libsecret-1-0",
+        "libasound2",
+        "xdg-utils",
+        "ffmpeg",
+        "gstreamer1.0-pipewire",
+        "gstreamer1.0-plugins-base",
+        "gstreamer1.0-plugins-good",
+        "gstreamer1.0-plugins-ugly",
+        "python3-gi",
+        "gir1.2-glib-2.0",
+        "gir1.2-gstreamer-1.0"
+      ]
     },
     "win": {
       "target": "nsis",
