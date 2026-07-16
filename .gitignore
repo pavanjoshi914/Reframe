@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-electron/
 release/
+__pycache__/
 *.log
 *.tsbuildinfo
 .DS_Store
