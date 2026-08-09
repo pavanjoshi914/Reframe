@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { checkForUpdates } from './updater';
 
 // Custom scheme so the renderer (running on http://localhost:5173 in dev) can
 // load on-disk recordings without tripping webSecurity. Must be declared
@@ -33,6 +34,10 @@ let pickerWindow: BrowserWindow | null = null;
 let editorWindow: BrowserWindow | null = null;
 let regionSelectorWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+// Best parent window for a modal dialog (e.g. the updater's prompts): whatever's
+// focused, else the HUD, else the editor.
+const currentWindow = (): BrowserWindow | null =>
+  BrowserWindow.getFocusedWindow() ?? hudWindow ?? editorWindow;
 // Source associated with the display the user is currently selecting a region
 // from. Captured when the overlay opens so the resulting region IPC payload
 // can carry the matching desktopCapturer source id back to the HUD.
@@ -242,6 +247,7 @@ function updateTrayMenu() {
       ]
     : [
         { label: 'Open', click: showHud },
+        { label: 'Check for Updates…', click: () => checkForUpdates(currentWindow, true) },
         { type: 'separator' },
         { label: 'Quit', click: () => app.quit() }
       ];
@@ -1302,6 +1308,11 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createHud();
   });
+
+  // Check for updates a few seconds after launch, out of the startup path. The
+  // background check stays silent unless there's a new version; the tray's
+  // "Check for Updates…" runs the same thing but always reports back.
+  setTimeout(() => checkForUpdates(currentWindow, false), 5000);
 });
 
 async function sweepOrphanRecordings() {

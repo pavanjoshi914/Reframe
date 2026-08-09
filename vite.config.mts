@@ -18,7 +18,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['electron', 'uiohook-napi']
+              external: ['electron', 'uiohook-napi', 'electron-updater']
             }
           }
         }
@@ -32,7 +32,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['electron', 'uiohook-napi']
+              external: ['electron', 'uiohook-napi', 'electron-updater']
             }
           }
         }

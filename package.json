@@ -42,6 +42,7 @@
     "package:mac": "npm run build && electron-builder --mac"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "fix-webm-duration": "^1.0.6",
     "gifenc": "^1.0.3",
     "lucide-react": "^0.460.0",
@@ -67,6 +68,10 @@
     "vite-plugin-electron": "^0.28.8",
     "vite-plugin-electron-renderer": "^0.14.6"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pavanjoshi914/Reframe.git"
+  },
   "build": {
     "appId": "app.reframe.desktop",
     "productName": "Reframe",
@@ -78,6 +83,13 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "pavanjoshi914",
+        "repo": "Reframe"
+      }
+    ],
     "linux": {
       "target": [
         "AppImage",
