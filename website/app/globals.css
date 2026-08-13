@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    /* The sticky header is 4rem tall; keep in-page anchors clear of it. */
+    scroll-padding-top: 5rem;
+  }
+
+  body {
+    @apply bg-white text-ink-900 antialiased dark:bg-ink-950 dark:text-ink-100;
+  }
+
+  ::selection {
+    @apply bg-brand-500/25;
+  }
+}
+
+@layer components {
+  /* Shared surface for cards, so light and dark stay in step in one place. */
+  .surface {
+    @apply rounded-2xl border border-ink-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2
+           focus-visible:ring-offset-white dark:focus-visible:ring-offset-ink-950;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-600 text-white shadow-lg shadow-brand-600/25 hover:bg-brand-700 active:bg-brand-800;
+  }
+
+  .btn-secondary {
+    @apply btn border border-ink-200 bg-white text-ink-800 hover:bg-ink-50
+           dark:border-white/15 dark:bg-white/5 dark:text-ink-100 dark:hover:bg-white/10;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
