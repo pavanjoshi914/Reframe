@@ -162,17 +162,24 @@ export function checkForUpdates(getWindow: GetWindow, interactive = false): void
     return;
   }
   if (canSilentUpdate()) {
-    ensureAutoUpdaterWired(getWindow);
-    announceNoUpdate = interactive;
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { autoUpdater } = require('electron-updater') as typeof import('electron-updater');
-    autoUpdater.checkForUpdates().catch((e) => {
-      console.warn('[updater] checkForUpdates failed', e?.message || e);
-      if (interactive) {
-        announceNoUpdate = false;
-        infoBox(getWindow(), 'Update check failed', 'Could not check for updates right now. Please try again later.');
-      }
-    });
+    // Never let an updater failure crash the app: guard the synchronous parts
+    // (require, wiring, the initial checkForUpdates call) as well as the async.
+    try {
+      ensureAutoUpdaterWired(getWindow);
+      announceNoUpdate = interactive;
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { autoUpdater } = require('electron-updater') as typeof import('electron-updater');
+      Promise.resolve(autoUpdater.checkForUpdates()).catch((e) => {
+        console.warn('[updater] checkForUpdates failed', e?.message || e);
+        if (interactive) {
+          announceNoUpdate = false;
+          infoBox(getWindow(), 'Update check failed', 'Could not check for updates right now. Please try again later.');
+        }
+      });
+    } catch (e) {
+      console.warn('[updater] silent update unavailable', (e as Error)?.message || e);
+      if (interactive) infoBox(getWindow(), 'Update check failed', 'Could not check for updates right now. Please try again later.');
+    }
   } else {
     void notifierCheck(getWindow, interactive);
   }
