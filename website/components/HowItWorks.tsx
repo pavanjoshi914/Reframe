@@ -1,3 +1,5 @@
+import Image from 'next/image';
+
 const steps = [
   {
     n: '01',
@@ -30,6 +32,22 @@ export function HowItWorks() {
         </h2>
         <p className="mt-4 text-lg text-ink-600 dark:text-ink-300">
           From a raw capture to a demo you'd put on a landing page, in about four minutes.
+        </p>
+      </div>
+
+      {/* The recorder itself — a real capture of the HUD window, at 1:1 scale. */}
+      <div className="mt-12 flex flex-col items-center">
+        <div className="w-full max-w-xl rounded-2xl bg-gradient-to-br from-brand-500/15 to-brand-800/10 p-6 sm:p-10">
+          <Image
+            src="/screenshots/hud.webp"
+            alt="The Reframe HUD: a small pill toolbar with source, system audio, cursor, microphone, webcam and record buttons."
+            width={1240}
+            height={112}
+            className="w-full drop-shadow-2xl"
+          />
+        </div>
+        <p className="mt-4 text-sm text-ink-500 dark:text-ink-400">
+          The entire recorder — it floats above your work and stays out of the capture.
         </p>
       </div>
 

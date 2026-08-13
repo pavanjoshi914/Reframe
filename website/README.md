@@ -72,9 +72,54 @@ the `/releases/latest` page and the version badge is hidden. Nothing breaks.
 | Download cards, requirements, install steps | `app/download/page.tsx` |
 | Brand colours | `tailwind.config.ts` |
 
-## Swapping in real screenshots
+## Media assets
 
-The hero and showcase visuals are hand-built CSS illustrations of the editor
-(`components/AppMock.tsx` and the `visual()` functions in `components/Showcase.tsx`) so they
-stay sharp at any size and work in both themes. To use real captures instead, drop them in
-`public/screenshots/` and replace `<AppMock />` in `components/Hero.tsx` with a `next/image`.
+Everything visual on the site is real output from the app — no mockups, no stock imagery.
+
+### Hero video (`public/videos/`)
+
+`components/DemoVideo.tsx` paints `demo-poster.webp` immediately, keeps the `<video>` at
+`preload="none"` until an IntersectionObserver says it is within 400px of the viewport, then
+upgrades it to `preload="auto"` and cross-fades on `canplaythrough`. It is silent, so it
+autoplays muted and loops; `prefers-reduced-motion` keeps the poster and the play button.
+
+To replace the clip, re-run these against your new source:
+
+```bash
+SRC="your-demo.mp4"
+# WebM (VP9) — what Chrome and Firefox get
+ffmpeg -i "$SRC" -an -vf scale=1440:-2 -c:v libvpx-vp9 -crf 38 -b:v 0 \
+  -row-mt 1 -deadline good -cpu-used 1 -g 60 public/videos/demo.webm
+# MP4 (H.264) — Safari fallback, +faststart so it streams before it finishes downloading
+ffmpeg -i "$SRC" -an -vf scale=1440:-2 -c:v libx264 -profile:v high -crf 26 -preset slow \
+  -pix_fmt yuv420p -g 60 -movflags +faststart public/videos/demo.mp4
+# Poster — frame 0, so the fade to video is invisible
+ffmpeg -i "$SRC" -frames:v 1 -vf scale=1440:-2 -c:v libwebp -quality 82 public/videos/demo-poster.webp
+```
+
+`-an` matters: the audio track is dead weight for a muted autoplay loop. The current clip went
+from 5.7 MB to 1.4 MB (WebM) / 1.8 MB (MP4) with no visible loss at 1440px.
+
+### Editor screenshots (`public/screenshots/`)
+
+Captured from the running Electron app over the Chrome DevTools Protocol — launch it with
+`--remote-debugging-port=9222`, attach to the `editor.html` renderer, drive it (click the
+timeline, select a clip, toggle a panel), and call `Page.captureScreenshot`.
+
+There is one per tool the app ships: `zoom`, `trim`, `speed`, `annotations`, `magnify`,
+`spotlight` and `blur` for the seven timeline lanes, then `backgrounds`, `cursor`, `webcam`
+and `export` for the sidebar panels — plus `hud.webp`, taken with a transparent background
+override. `components/Showcase.tsx` groups them into the two tab strips.
+
+One trap when driving the editor: keystrokes land on whatever has focus, and the language
+`<select>` in the title bar swallows letter keys and switches the UI language. Click a neutral
+spot first, or select existing clips with the mouse instead of using the keyboard shortcuts.
+
+To refresh them, re-capture at 1920×1011 and downscale:
+
+```bash
+ffmpeg -i shot.png -vf scale=1600:-2 -c:v libwebp -quality 84 public/screenshots/<name>.webp
+```
+
+Keep them at 1600×842 — `components/Showcase.tsx` hard-codes those dimensions, and the panel
+renders them full width with a click-to-expand lightbox because the editor UI is dense.

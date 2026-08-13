@@ -35,18 +35,23 @@ const features = [
   },
   {
     icon: ScissorsIcon,
-    title: 'Trim & speed ramps',
-    body: 'Cut the dead air, speed up the boring parts and crop the frame. Every edit is non-destructive and undoable.'
+    title: 'Trim, speed & crop',
+    body: 'Cut the dead air, speed up the boring parts, crop the frame. Every edit lives on its own timeline lane and is fully undoable.'
   },
   {
     icon: CursorIcon,
-    title: 'Smooth cursor',
-    body: 'Replace the jittery OS pointer with a smoothed synthetic cursor, complete with click ripples and highlight effects.'
+    title: 'Cursor you can style',
+    body: 'Swap the jittery OS pointer for System, Arrow, Ring or Dot, then tune its size, colour and smoothing — with click highlights on top.'
+  },
+  {
+    icon: ZoomIcon,
+    title: 'Spotlight, magnify & blur',
+    body: 'Dim everything but the region that matters, magnify a detail in place, or blur a chunk of the frame to hide what should not ship.'
   },
   {
     icon: WebcamIcon,
-    title: 'Webcam bubble',
-    body: 'Record your camera as a separate track and place it as a circle or rounded rectangle anywhere in the frame.'
+    title: 'Webcam & layouts',
+    body: 'Record your camera as its own track, then place it as a circle, square or rectangle — picture-in-picture, side by side, or camera only.'
   },
   {
     icon: ExportIcon,

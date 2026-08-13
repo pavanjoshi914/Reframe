@@ -1,151 +1,204 @@
 'use client';
 
-import { useState } from 'react';
-import { AnnotateIcon, BackgroundIcon, ExportIcon, ZoomIcon } from './Icons';
+import Image from 'next/image';
+import { useEffect, useState } from 'react';
+import {
+  AnnotateIcon,
+  AutoZoomIcon,
+  BackgroundIcon,
+  BlurIcon,
+  CloseIcon,
+  CursorIcon,
+  ExportIcon,
+  ScissorsIcon,
+  SpeedIcon,
+  SpotlightIcon,
+  WebcamIcon,
+  ZoomIcon
+} from './Icons';
 
 type Tab = {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  /** Which strip the tab sits in: the timeline lanes, or the sidebar panels. */
+  group: 'timeline' | 'panel';
   title: string;
   body: string;
-  visual: () => React.ReactNode;
+  /** Real screenshot of the Reframe editor, 1600×842. */
+  src: string;
+  alt: string;
 };
 
-function Frame({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`relative aspect-[16/9] w-full overflow-hidden rounded-xl p-[6%] ${className}`}>{children}</div>
-  );
-}
-
-function Window({ children }: { children?: React.ReactNode }) {
-  return (
-    <div className="h-full w-full overflow-hidden rounded-lg bg-[#101218] shadow-2xl shadow-black/50 ring-1 ring-white/10">
-      <div className="flex h-5 items-center gap-1 border-b border-white/5 bg-[#171a22] px-2.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
-        <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
-        <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
-      </div>
-      <div className="p-3">{children}</div>
-    </div>
-  );
-}
-
-function Lines() {
-  return (
-    <div className="space-y-2">
-      <div className="h-2 w-2/5 rounded-full bg-brand-400/70" />
-      <div className="h-2 w-4/5 rounded-full bg-white/10" />
-      <div className="h-2 w-3/5 rounded-full bg-white/10" />
-      <div className="h-2 w-2/3 rounded-full bg-white/10" />
-    </div>
-  );
-}
-
+/**
+ * One tab per editing tool the app actually ships: the seven timeline lanes
+ * (Zoom, Trim, Annotation, Speed, Magnify, Spotlight, Blur) plus the sidebar
+ * panels. Every screenshot is a real capture of the editor in that state.
+ */
 const TABS: Tab[] = [
   {
     id: 'zoom',
     label: 'Auto zoom',
-    icon: ZoomIcon,
+    icon: AutoZoomIcon,
+    group: 'timeline',
     title: 'Zooms that follow your cursor',
-    body: 'Reframe records where your pointer went and where you clicked, then suggests zoom keyframes at the moments that matter. Accept them all, or drag your own on the timeline.',
-    visual: () => (
-      <Frame className="bg-gradient-to-br from-brand-500 via-brand-700 to-[#1b1550]">
-        <Window>
-          <Lines />
-        </Window>
-        <div className="absolute left-[38%] top-[34%] h-[36%] w-[34%] rounded-lg border-2 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.25)]">
-          <span className="absolute -top-6 left-0 rounded bg-white px-1.5 py-0.5 text-[10px] font-semibold text-ink-900">
-            2.0× · ease-out
-          </span>
-        </div>
-        <svg viewBox="0 0 24 24" className="absolute left-[60%] top-[58%] h-5 w-5 fill-white drop-shadow">
-          <path d="m4 3 7 17 2.5-6.5L20 11 4 3Z" />
-        </svg>
-      </Frame>
-    )
+    body: 'Reframe records where your pointer went and where you clicked. Hit "Suggest zooms" and it fills the lane with keyframes at the moments that mattered — six 2.2× zooms here, placed automatically. Drag them, restyle them, or add your own with Z.',
+    src: '/screenshots/zoom.webp',
+    alt: 'The Reframe editor with the zoom lane filled by automatically suggested 2.2× zoom keyframes across the timeline.'
   },
   {
-    id: 'background',
-    label: 'Backgrounds',
-    icon: BackgroundIcon,
-    title: 'Wallpapers, gradients and padding',
-    body: '20+ bundled wallpapers, solid colours and gradients — plus padding, corner radius, shadow and background blur. Pick 16:9, 9:16, 1:1 or 4:3 and Reframe re-lays the frame for you.',
-    visual: () => (
-      <Frame className="bg-gradient-to-br from-sky-400 via-indigo-500 to-brand-800">
-        <Window>
-          <Lines />
-        </Window>
-        <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full bg-black/40 p-1.5 backdrop-blur">
-          <span className="h-5 w-5 rounded-full bg-gradient-to-br from-brand-400 to-brand-700 ring-2 ring-white" />
-          <span className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-400 to-indigo-600" />
-          <span className="h-5 w-5 rounded-full bg-gradient-to-br from-orange-400 to-rose-600" />
-          <span className="h-5 w-5 rounded-full bg-gradient-to-br from-emerald-400 to-teal-700" />
-          <span className="h-5 w-5 rounded-full bg-ink-900" />
-        </div>
-      </Frame>
-    )
+    id: 'trim',
+    label: 'Trim',
+    icon: ScissorsIcon,
+    group: 'timeline',
+    title: 'Cut the dead air',
+    body: 'Press T to drop a cut at the playhead and drag its edges to swallow the fumbling, the tab-switching and the silence. Trims are non-destructive — the source recording is never touched.',
+    src: '/screenshots/trim.webp',
+    alt: 'The Reframe editor with a cut region selected on the trim lane of the timeline.'
+  },
+  {
+    id: 'speed',
+    label: 'Speed',
+    icon: SpeedIcon,
+    group: 'timeline',
+    title: 'Speed up the boring parts',
+    body: 'Press S for a speed ramp over any stretch — 1.5× through a long form fill, back to real time for the payoff. The audio and the cursor follow the ramp with it.',
+    src: '/screenshots/speed.webp',
+    alt: 'The Reframe editor with a 1.50× speed ramp selected on the speed lane.'
   },
   {
     id: 'annotate',
     label: 'Annotations',
     icon: AnnotateIcon,
-    title: 'Text, arrows and highlights',
-    body: 'Drop annotations on the timeline so they appear exactly when you need them. Choose the font, colour and placement — they fade in and out with the clip.',
-    visual: () => (
-      <Frame className="bg-gradient-to-br from-orange-400 via-rose-500 to-brand-800">
-        <Window>
-          <Lines />
-        </Window>
-        <span className="absolute left-[10%] top-[16%] rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-ink-900 shadow-lg">
-          Start here 👇
-        </span>
-        <svg viewBox="0 0 100 60" className="absolute left-[26%] top-[30%] h-[34%] w-[28%]" aria-hidden="true">
-          <path
-            d="M4 4 C 40 10, 70 26, 90 50"
-            fill="none"
-            stroke="white"
-            strokeWidth="5"
-            strokeLinecap="round"
-          />
-          <path d="M90 50 L 72 46 M90 50 L 84 33" fill="none" stroke="white" strokeWidth="5" strokeLinecap="round" />
-        </svg>
-      </Frame>
-    )
+    group: 'timeline',
+    title: 'Text that appears exactly when you need it',
+    body: 'Press A to drop an annotation at the playhead, then set the font, size, weight, alignment, text colour and background. Drag it anywhere on the preview; it fades in and out with its clip.',
+    src: '/screenshots/annotations.webp',
+    alt: 'The Reframe editor with a text annotation reading "Skip to the good part" on the video and the annotation styling panel open.'
+  },
+  {
+    id: 'magnify',
+    label: 'Magnify',
+    icon: ZoomIcon,
+    group: 'timeline',
+    title: 'A lens that trails your pointer',
+    body: 'Press M for a magnifier that blows up whatever is under the cursor without moving the frame. Set it to follow the recorded cursor or pin it to a fixed spot, and apply it to the whole video in one click.',
+    src: '/screenshots/magnify.webp',
+    alt: 'The Reframe editor showing a circular magnifier lens over the video, with follow-cursor tracking options in the sidebar.'
+  },
+  {
+    id: 'spotlight',
+    label: 'Spotlight',
+    icon: SpotlightIcon,
+    group: 'timeline',
+    title: 'Dim everything that is not the point',
+    body: 'Press L to darken the frame around the region that matters. Like the magnifier it can follow your recorded cursor or hold a fixed position — ideal for walking through a dense UI.',
+    src: '/screenshots/spotlight.webp',
+    alt: 'The Reframe editor with a spotlight effect darkening the area around the recording.'
+  },
+  {
+    id: 'blur',
+    label: 'Blur',
+    icon: BlurIcon,
+    group: 'timeline',
+    title: 'Hide what should not ship',
+    body: 'Press B and drag a box over an email address, an API key or a customer name. Blur or pixelate, with adjustable strength — so a good demo never leaks anything.',
+    src: '/screenshots/blur.webp',
+    alt: 'The Reframe editor with a blur region drawn over part of the recording and blur strength controls in the sidebar.'
+  },
+  {
+    id: 'background',
+    label: 'Backgrounds',
+    icon: BackgroundIcon,
+    group: 'panel',
+    title: 'Wallpapers, gradients and padding',
+    body: 'Drop the recording onto a bundled wallpaper, a gradient or a solid colour, then tune padding, corner roundness, shadow and background blur. Subtle, Soft and Dramatic presets get you there in one click.',
+    src: '/screenshots/backgrounds.webp',
+    alt: 'The Reframe editor showing a screen recording on a violet wallpaper, with the wallpaper picker and style presets in the sidebar.'
+  },
+  {
+    id: 'cursor',
+    label: 'Cursor',
+    icon: CursorIcon,
+    group: 'panel',
+    title: 'A cursor worth watching',
+    body: 'Swap the jittery OS pointer for System, Arrow, Ring or Dot, then set its colour, scale it up to 1.4× and smooth the path. Click highlights draw a ripple everywhere you actually clicked.',
+    src: '/screenshots/cursor.webp',
+    alt: 'The Reframe editor cursor panel with style, colour, size, smoothing and click highlight controls.'
+  },
+  {
+    id: 'webcam',
+    label: 'Webcam & layout',
+    icon: WebcamIcon,
+    group: 'panel',
+    title: 'Put yourself in the frame',
+    body: 'Your camera records as its own track, so you can place it afterwards: picture-in-picture in any corner, side by side, or camera only — as a circle, square or rectangle, at whatever size suits.',
+    src: '/screenshots/webcam.webp',
+    alt: 'The Reframe editor composition panel with layout presets and webcam shape and size controls.'
   },
   {
     id: 'export',
     label: 'Export',
     icon: ExportIcon,
+    group: 'panel',
     title: 'MP4, GIF or WebM — no watermark',
-    body: 'Export up to 4K with hardware encoding on macOS and Windows. Need a loop for a README? Export a GIF. Need a small web clip? WebM. Nothing is stamped on your video.',
-    visual: () => (
-      <Frame className="bg-gradient-to-br from-emerald-400 via-teal-600 to-brand-900">
-        <Window>
-          <Lines />
-        </Window>
-        <div className="absolute inset-x-[12%] bottom-[10%] rounded-xl bg-[#0e0f12]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur">
-          <div className="flex gap-1.5">
-            <span className="flex-1 rounded-md bg-brand-600 py-1 text-center text-[10px] font-semibold text-white">
-              MP4
-            </span>
-            <span className="flex-1 rounded-md bg-white/[0.06] py-1 text-center text-[10px] text-white/60">GIF</span>
-            <span className="flex-1 rounded-md bg-white/[0.06] py-1 text-center text-[10px] text-white/60">WebM</span>
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            <div className="h-1 flex-1 rounded-full bg-white/10">
-              <div className="h-1 w-2/3 rounded-full bg-brand-500" />
-            </div>
-            <span className="text-[9px] text-white/50">1080p · 60 fps</span>
-          </div>
-        </div>
-      </Frame>
-    )
+    body: 'Pick a format and a quality tier and export straight to disk. GPU-accelerated on macOS and Windows, up to 4K. Need a loop for a README? GIF. Need a small web clip? WebM. Nothing is stamped on your video.',
+    src: '/screenshots/export.webp',
+    alt: 'The Reframe editor export panel with MP4, WebM and GIF format options, quality tiers and an Export Video button.'
   }
 ];
 
+const GROUPS: { id: Tab['group']; label: string }[] = [
+  { id: 'timeline', label: 'Timeline lanes' },
+  { id: 'panel', label: 'Composition & export' }
+];
+
+function Lightbox({ tab, onClose }: { tab: Tab; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={tab.title}
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm sm:p-8"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close"
+        className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+      >
+        <CloseIcon className="h-5 w-5" />
+      </button>
+      {/* On a phone a 1600px-wide editor capture scaled to fit is unreadable, so
+          below `sm` the image keeps a usable width and the box pans instead. */}
+      <div className="max-h-full max-w-full overflow-auto" onClick={(e) => e.stopPropagation()}>
+        <Image
+          src={tab.src}
+          alt={tab.alt}
+          width={1600}
+          height={842}
+          className="w-[900px] max-w-none rounded-lg shadow-2xl sm:max-h-[85vh] sm:w-auto sm:max-w-full"
+        />
+      </div>
+    </div>
+  );
+}
+
 export function Showcase() {
   const [active, setActive] = useState(TABS[0].id);
+  const [expanded, setExpanded] = useState<Tab | null>(null);
   const tab = TABS.find((t) => t.id === active) ?? TABS[0];
 
   return (
@@ -153,48 +206,75 @@ export function Showcase() {
       <div className="mx-auto max-w-2xl text-center">
         <h2 className="text-3xl font-bold tracking-tight text-ink-900 dark:text-white sm:text-4xl">See it in action</h2>
         <p className="mt-4 text-lg text-ink-600 dark:text-ink-300">
-          Everything below happens after you stop recording — the raw capture is never re-encoded until you export.
+          Eleven real screenshots of the editor — one for every tool it ships with.
         </p>
       </div>
 
-      <div className="mt-10 flex flex-wrap justify-center gap-2" role="tablist" aria-label="Reframe features">
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          const selected = t.id === active;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              id={`tab-${t.id}`}
-              aria-selected={selected}
-              aria-controls={`panel-${t.id}`}
-              onClick={() => setActive(t.id)}
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
-                selected
-                  ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/25'
-                  : 'border border-ink-200 text-ink-600 hover:bg-ink-50 dark:border-white/10 dark:text-ink-300 dark:hover:bg-white/5'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {t.label}
-            </button>
-          );
-        })}
+      <div className="mt-10 space-y-4" role="tablist" aria-label="Reframe features">
+        {GROUPS.map((group) => (
+          <div key={group.id} className="flex flex-col items-center gap-2 sm:flex-row sm:justify-center">
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-ink-400 sm:w-40 sm:shrink-0 sm:text-right dark:text-ink-500">
+              {group.label}
+            </span>
+            <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
+              {TABS.filter((t) => t.group === group.id).map((t) => {
+                const Icon = t.icon;
+                const selected = t.id === active;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="tab"
+                    id={`tab-${t.id}`}
+                    aria-selected={selected}
+                    aria-controls={`panel-${t.id}`}
+                    onClick={() => setActive(t.id)}
+                    className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition ${
+                      selected
+                        ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/25'
+                        : 'border border-ink-200 text-ink-600 hover:bg-ink-50 dark:border-white/10 dark:text-ink-300 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div
-        role="tabpanel"
-        id={`panel-${tab.id}`}
-        aria-labelledby={`tab-${tab.id}`}
-        className="surface mt-8 grid items-center gap-8 p-6 sm:p-8 lg:grid-cols-[1fr_1.15fr]"
-      >
-        <div>
+      <div role="tabpanel" id={`panel-${tab.id}`} aria-labelledby={`tab-${tab.id}`} className="surface mt-8 p-4 sm:p-6">
+        <div className="mx-auto max-w-3xl px-2 pb-6 text-center">
           <h3 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-white">{tab.title}</h3>
-          <p className="mt-3 text-ink-600 dark:text-ink-300">{tab.body}</p>
+          <p className="mt-3 text-pretty text-ink-600 dark:text-ink-300">{tab.body}</p>
         </div>
-        <div key={tab.id} className="animate-fade-up">{tab.visual()}</div>
+
+        {/* Full width: these are 1600px-wide captures of a dense editor UI, so
+            anything narrower turns the sidebar and timeline into mush. */}
+        <button
+          type="button"
+          key={tab.id}
+          onClick={() => setExpanded(tab)}
+          className="group relative block w-full animate-fade-up overflow-hidden rounded-xl ring-1 ring-ink-200 transition hover:ring-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:ring-white/10"
+        >
+          <Image
+            src={tab.src}
+            alt={tab.alt}
+            width={1600}
+            height={842}
+            sizes="(max-width: 1152px) 100vw, 1088px"
+            priority={tab.id === TABS[0].id}
+            className="w-full"
+          />
+          <span className="pointer-events-none absolute bottom-3 right-3 rounded-md bg-black/60 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 backdrop-blur transition group-hover:opacity-100">
+            Click to expand
+          </span>
+        </button>
       </div>
+
+      {expanded ? <Lightbox tab={expanded} onClose={() => setExpanded(null)} /> : null}
     </section>
   );
 }

@@ -108,6 +108,44 @@ export function ExportIcon(props: IconProps) {
   );
 }
 
+export function AutoZoomIcon(props: IconProps) {
+  return (
+    <Stroke {...props}>
+      <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" />
+      <path d="m12 9 1 2 2 1-2 1-1 2-1-2-2-1 2-1Z" />
+    </Stroke>
+  );
+}
+
+export function SpeedIcon(props: IconProps) {
+  return (
+    <Stroke {...props}>
+      <path d="M4 18a8 8 0 1 1 16 0" />
+      <path d="m12 14 4-4" />
+      <circle cx="12" cy="15" r="1.2" fill="currentColor" stroke="none" />
+    </Stroke>
+  );
+}
+
+export function SpotlightIcon(props: IconProps) {
+  return (
+    <Stroke {...props}>
+      <path d="M9 3h6l4 8H5Z" />
+      <path d="M5 11h14v3a7 7 0 0 1-14 0Z" />
+    </Stroke>
+  );
+}
+
+export function BlurIcon(props: IconProps) {
+  return (
+    <Stroke {...props}>
+      <path d="M3 3l18 18" />
+      <path d="M10.6 5.3A9.7 9.7 0 0 1 12 5c5 0 9 4.5 9 7 0 .9-.5 2-1.4 3.1M6.4 7.3C4.4 8.8 3 10.8 3 12c0 2.5 4 7 9 7 1.6 0 3-.4 4.3-1.1" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </Stroke>
+  );
+}
+
 export function CursorIcon(props: IconProps) {
   return (
     <Stroke {...props}>

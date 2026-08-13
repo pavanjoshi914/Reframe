@@ -1,16 +1,46 @@
 import Link from 'next/link';
-import { AppMock } from './AppMock';
+import { DemoVideo } from './DemoVideo';
 import { DownloadButton } from './DownloadButton';
 import { GitHubIcon } from './Icons';
 import { getLatestRelease } from '@/lib/github';
 import { site } from '@/lib/site';
+
+/** Four corner brackets, drawn just outside the video frame. */
+function Brackets() {
+  const corner = 'absolute h-8 w-8 border-brand-500/60 dark:border-brand-400/55 sm:h-12 sm:w-12';
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute -inset-3 sm:-inset-5">
+      <span className={`${corner} left-0 top-0 rounded-tl-xl border-l-2 border-t-2`} />
+      <span className={`${corner} right-0 top-0 rounded-tr-xl border-r-2 border-t-2`} />
+      <span className={`${corner} bottom-0 left-0 rounded-bl-xl border-b-2 border-l-2`} />
+      <span className={`${corner} bottom-0 right-0 rounded-br-xl border-b-2 border-r-2`} />
+    </div>
+  );
+}
 
 export async function Hero() {
   const release = await getLatestRelease();
 
   return (
     <section className="relative overflow-hidden">
-      {/* Ambient brand glow */}
+      {/* Backdrop, three layers: a tinted base, a masked grid, and the brand
+          glow on top. The grid is drawn with two 1px gradients and faded out
+          radially so it never reaches — or fights with — the section edges. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 -top-16 h-[46rem] bg-[radial-gradient(60rem_32rem_at_50%_18%,rgba(139,70,249,0.07),transparent_72%)] dark:bg-[radial-gradient(60rem_32rem_at_50%_18%,rgba(76,29,149,0.45),transparent_72%)]"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 -top-16 h-[46rem] opacity-[0.12] dark:opacity-[0.18]"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, rgb(124,40,238) 1px, transparent 1px), linear-gradient(rgb(124,40,238) 1px, transparent 1px)',
+          backgroundSize: '80px 80px',
+          maskImage: 'radial-gradient(circle at 50% 30%, black 15%, transparent 70%)',
+          WebkitMaskImage: 'radial-gradient(circle at 50% 30%, black 15%, transparent 70%)'
+        }}
+      />
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 -top-40 h-[36rem] bg-[radial-gradient(45rem_24rem_at_50%_0%,rgba(139,70,249,0.18),transparent_70%)]"
@@ -66,14 +96,21 @@ export async function Hero() {
         </div>
 
         {/* Product preview */}
-        <div className="relative mx-auto mt-14 max-w-5xl animate-fade-up">
+        <div className="group/video relative mx-auto mt-14 max-w-5xl animate-fade-up">
           <div
             aria-hidden="true"
             className="absolute -inset-x-8 -bottom-8 -top-4 rounded-[2rem] bg-gradient-to-b from-brand-500/20 to-transparent blur-2xl"
           />
+          {/* Viewfinder brackets — a nod to what the app does, and they give the
+              clip a frame that reads at any width. Sized off the container so
+              they stay glued to the corners. */}
+          <Brackets />
           <div className="relative rounded-2xl border border-ink-200/80 bg-white p-2 shadow-2xl shadow-brand-950/10 dark:border-white/10 dark:bg-white/5 dark:shadow-black/40">
-            <AppMock />
+            <DemoVideo />
           </div>
+          <p className="mt-4 text-center text-sm text-ink-500 dark:text-ink-400">
+            Recorded and edited entirely in Reframe — no other tools.
+          </p>
         </div>
       </div>
     </section>
