@@ -208,6 +208,14 @@ export function ArrowRightIcon(props: IconProps) {
   );
 }
 
+export function HeartIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M12 21s-7.5-4.6-9.6-9.1C.7 8.3 2.6 4.5 6.2 4.5c2 0 3.3 1.1 4 2.1l1.8 2.3 1.8-2.3c.7-1 2-2.1 4-2.1 3.6 0 5.5 3.8 3.8 7.4C19.5 16.4 12 21 12 21Z" />
+    </svg>
+  );
+}
+
 export function StarIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>

@@ -3,6 +3,7 @@ import { Showcase } from '@/components/Showcase';
 import { Features } from '@/components/Features';
 import { HowItWorks } from '@/components/HowItWorks';
 import { FAQ, faqs } from '@/components/FAQ';
+import { SupportSection } from '@/components/SupportSection';
 import { CTA } from '@/components/CTA';
 import { site } from '@/lib/site';
 
@@ -46,6 +47,7 @@ export default function HomePage() {
       <Showcase />
       <Features />
       <HowItWorks />
+      <SupportSection />
       <FAQ />
       <CTA />
     </>
