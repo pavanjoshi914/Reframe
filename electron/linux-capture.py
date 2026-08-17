@@ -261,6 +261,29 @@ def write_token(tok):
         pass  # a lost token only costs one extra dialog
 
 
+# ── H.264 encoder selection ─────────────────────────────────────────────────
+# Which encoder exists depends on how Reframe was installed, so pick at runtime
+# rather than hardcoding one:
+#   x264enc      gst-plugins-ugly — what the .deb pulls in, and the best quality
+#   avenc_h264   gst-libav, needs the ffmpeg libs (Flatpak + ffmpeg-full)
+#   openh264enc  always present in the GNOME runtime; the safety net
+# Property names differ between them, hence a fragment per encoder rather than a
+# bare element name.
+H264_ENCODERS = (
+    ("x264enc", "x264enc speed-preset=ultrafast tune=zerolatency bitrate=12000 key-int-max=%(kf)d"),
+    ("avenc_h264", "avenc_h264 bitrate=12000000 gop-size=%(kf)d"),
+    ("openh264enc", "openh264enc bitrate=12000000 gop-size=%(kf)d complexity=low"),
+)
+
+
+def pick_h264_encoder(fps):
+    for name, fragment in H264_ENCODERS:
+        if Gst.ElementFactory.find(name) is not None:
+            say("ENCODER %s" % name)
+            return fragment % {"kf": fps}
+    fail("no-h264-encoder")
+
+
 # ── pipeline ────────────────────────────────────────────────────────────────
 def build_and_start(node, fd):
     global pipeline
@@ -278,9 +301,8 @@ def build_and_start(node, fd):
         "pipewiresrc name=vsrc path=%d %s do-timestamp=true ! "
         "videoconvert ! videorate ! video/x-raw,framerate=%d/1 ! "
         "%s ! "
-        "x264enc speed-preset=ultrafast tune=zerolatency bitrate=12000 "
-        "key-int-max=%d ! queue ! mux."
-        % (node, ("fd=%d" % fd) if fd is not None else "", FPS, vq, FPS)
+        "%s ! queue ! mux."
+        % (node, ("fd=%d" % fd) if fd is not None else "", FPS, vq, pick_h264_encoder(FPS))
     )
     audio = ""
     if AUDIO_DEV:
