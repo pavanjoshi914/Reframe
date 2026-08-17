@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight } from 'lucide-react';
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem, type CursorStyle } from './store';
 import { runExport, cancelExport } from './export';
+import { SupportDialog, shouldPromptAfterExport } from './SupportDialog';
 import { CropModal } from './CropModal';
 import { useT } from '../i18n';
 
@@ -900,6 +901,7 @@ function ExportSection() {
   const setQ = useEditor((s) => s.setExportQuality);
   const fileUrl = useEditor((s) => s.fileUrl);
   const [busy, setBusy] = useState<null | BusyState>(null);
+  const [askSupport, setAskSupport] = useState(false);
 
   async function handleExport() {
     if (!fileUrl) {
@@ -909,7 +911,7 @@ function ExportSection() {
     if (busy) return;
     try {
       setBusy({ phase: 'Preparing', pct: 0 });
-      await runExport({
+      const saved = await runExport({
         onProgress: (phase, pct, detail) =>
           setBusy((prev) => ({
             phase,
@@ -921,6 +923,9 @@ function ExportSection() {
             preview: detail?.preview ?? prev?.preview
           }))
       });
+      // Only after a file genuinely reached disk, and only once the user has a
+      // couple of exports behind them.
+      if (saved && shouldPromptAfterExport()) setAskSupport(true);
     } catch (err) {
       console.error('export failed', err);
       alert(t('editor.exportFailed', { msg: (err as Error).message }));
@@ -952,6 +957,7 @@ function ExportSection() {
         {busy ? `${Math.round(busy.pct)}%` : t('side.exportVideo')}
       </button>
       {busy && <ExportProgressModal busy={busy} onCancel={() => cancelExport()} />}
+      {askSupport && <SupportDialog onClose={() => setAskSupport(false)} />}
     </div>
   );
 }

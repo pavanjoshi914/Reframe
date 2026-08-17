@@ -231,5 +231,15 @@ export default {
   'crop.unlockAspect': 'Unlock aspect ratio',
   'crop.dragHint': 'Drag any edge to adjust the crop area',
   'picker.loading': 'Loading sources…',
-  'picker.noneAvailable': 'Nothing available here.'
+  'picker.noneAvailable': 'Nothing available here.',
+  'editor.sponsor': 'Sponsor',
+  'editor.sponsorTitle': 'Support Reframe’s development',
+  'support.title': 'Nice export. Enjoying Reframe?',
+  'support.body':
+    'Reframe is free and open source with no paid tier, built and maintained by one person. Sponsorship covers the running costs — starting with code signing, so macOS and Windows stop warning people on install.',
+  'support.sponsor': 'Sponsor on GitHub',
+  'support.otherWays': 'Other ways to help',
+  'support.dontShowAgain': 'Don’t show this again',
+  'support.later': 'Maybe later',
+  'support.close': 'Close'
 } as Record<string, string>;

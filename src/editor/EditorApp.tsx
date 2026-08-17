@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2 } from 'lucide-react';
+import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart } from 'lucide-react';
+import { SPONSOR_URL } from '@shared/sponsor';
 import { Preview } from './Preview';
 import { Sidebar } from './Sidebar';
 import { Timeline } from './Timeline';
@@ -325,6 +326,18 @@ export function EditorApp() {
           <Divider />
           <button onClick={handleLoadProject} className="rounded-md border border-white/10 px-3 py-1 text-xs hover:bg-white/5">{t('editor.loadProject')}</button>
           <button onClick={handleSaveProject} className="rounded-md border border-white/10 px-3 py-1 text-xs hover:bg-white/5">{t('editor.saveProjectBtn')}</button>
+          <Divider />
+          {/* Always-available way to support the project, so the post-export
+              prompt can stay rare and dismissible. */}
+          <button
+            onClick={() => void window.api.openExternal(SPONSOR_URL)}
+            title={t('editor.sponsorTitle')}
+            aria-label={t('editor.sponsorTitle')}
+            className="flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/70 transition hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300"
+          >
+            <Heart size={13} fill="currentColor" className="text-rose-400" />
+            {t('editor.sponsor')}
+          </button>
         </div>
       </div>
 

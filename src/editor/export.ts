@@ -214,7 +214,13 @@ function srcDims(s: CanvasImageSource): { w: number; h: number } {
   };
 }
 
-export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
+/**
+ * Runs the export and resolves to `true` only when a file actually landed on
+ * disk — false if the user cancelled mid-encode or backed out of the save
+ * dialog. The caller uses that to decide whether the moment is worth
+ * celebrating (and worth asking anything of the user).
+ */
+export async function runExport({ onProgress }: { onProgress: ProgressFn }): Promise<boolean> {
   cancelRequested = false;
   const state = useEditor.getState();
   if (!state.fileUrl) throw new Error('No recording loaded.');
@@ -370,7 +376,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
         }
       }
     }
-    if (cancelRequested) { onProgress('Cancelled', 100); return; }
+    if (cancelRequested) { onProgress('Cancelled', 100); return false; }
     onProgress('Saving', 99);
     enc.finish();
     const gifBytes = enc.bytes();
@@ -381,7 +387,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
       format: 'gif'
     });
     onProgress(gifRes.saved ? 'Done' : 'Cancelled', 100);
-    return;
+    return gifRes.saved;
   }
 
   // WebM was requested → VP9/VP8 only. Otherwise prefer H.264/MP4 and fall
@@ -553,7 +559,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
   if (cancelRequested) {
     try { await output.finalize(); } catch { /* nothing to keep */ }
     onProgress('Cancelled', 100);
-    return;
+    return false;
   }
 
   // Mux the rebuilt audio buffer (timestamps start at 0, aligning with frame 0).
@@ -575,9 +581,10 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }) {
   });
   if (!res.saved) {
     onProgress('Cancelled', 100);
-    return;
+    return false;
   }
   onProgress('Done', 100);
+  return true;
 }
 
 // ── Audio timeline rebuild ───────────────────────────────────────────────────
