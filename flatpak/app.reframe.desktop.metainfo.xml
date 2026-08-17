@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>app.reframe.desktop</id>
+
+  <name>Reframe</name>
+  <summary>Turn raw screen recordings into polished product demos</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <developer id="io.github.pavanjoshi914">
+    <name>Pavan Joshi</name>
+  </developer>
+
+  <description>
+    <p>
+      Reframe records your screen and then re-frames it: zooms that follow your
+      cursor, wallpapers and gradients behind the window, annotations timed to
+      the frame, and a webcam bubble. Export to MP4, GIF or WebM with no
+      watermark.
+    </p>
+    <p>Everything happens on your machine — no account, no upload, no telemetry.</p>
+    <p>Editing tools:</p>
+    <ul>
+      <li>Auto zoom — cursor movement and clicks are recorded, so zoom keyframes can be suggested at the moments that mattered</li>
+      <li>Trim, speed ramps and crop, all non-destructive</li>
+      <li>Annotations with your choice of font, size, colour and placement</li>
+      <li>Magnify and spotlight, either following the cursor or pinned</li>
+      <li>Blur or pixelate anything that should not ship</li>
+      <li>Backgrounds — wallpapers, gradients or solid colours, with padding, roundness and shadow</li>
+      <li>A smoothed cursor with click highlights, and cursor-hidden recording</li>
+      <li>Webcam as its own track, placed picture-in-picture, side by side or alone</li>
+      <li>Interface translated into 20 languages</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">app.reframe.desktop.desktop</launchable>
+
+  <url type="homepage">https://getreframe.vercel.app</url>
+  <url type="bugtracker">https://github.com/pavanjoshi914/Reframe/issues</url>
+  <url type="vcs-browser">https://github.com/pavanjoshi914/Reframe</url>
+  <url type="donation">https://getreframe.vercel.app/sponsor</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://getreframe.vercel.app/screenshots/backgrounds.webp</image>
+      <caption>A recording composited on a wallpaper, with the background picker open</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://getreframe.vercel.app/screenshots/zoom.webp</image>
+      <caption>Automatically suggested zoom keyframes filling the timeline</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://getreframe.vercel.app/screenshots/annotations.webp</image>
+      <caption>A text annotation placed on the video</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://getreframe.vercel.app/screenshots/export.webp</image>
+      <caption>Exporting to MP4, GIF or WebM</caption>
+    </screenshot>
+  </screenshots>
+
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+  </categories>
+
+  <keywords>
+    <keyword>screen recorder</keyword>
+    <keyword>screencast</keyword>
+    <keyword>capture</keyword>
+    <keyword>demo</keyword>
+  </keywords>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.1.0" date="2026-08-17">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+</component>

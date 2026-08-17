@@ -1,0 +1,82 @@
+# Flatpak manifest for Reframe.
+#
+# Why Flatpak exists alongside the .deb and the AppImage: cursor-hidden
+# recording needs a PipeWire/GStreamer stack plus PyGObject, which the .deb can
+# declare (Debian/Ubuntu only) and the AppImage cannot declare at all. The GNOME
+# runtime ships all of it, so the Flatpak is the one Linux package where every
+# feature works on every distro with nothing installed by hand.
+#
+# Build (the app must be packaged first — the manifest installs the output, it
+# does not compile from source, because Flatpak builds run without network):
+#
+#   npm run package:linux
+#   flatpak run org.flatpak.Builder --force-clean --user --install \
+#     build-dir flatpak/app.reframe.desktop.yml
+#
+# Run:  flatpak run app.reframe.desktop
+id: app.reframe.desktop
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+
+# Electron's own sandbox fights Flatpak's. zypak reconciles them; never try to
+# hand-roll this with --no-sandbox.
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+
+command: reframe
+separate-locales: false
+
+finish-args:
+  # Chromium needs its own IPC plus a display.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Update check against GitHub Releases.
+  - --share=network
+  # System audio and microphone.
+  - --socket=pulseaudio
+  # pipewiresrc talks to the host PipeWire daemon over its socket — this is the
+  # one thing no package format can bundle, Flatpak included.
+  - --filesystem=xdg-run/pipewire-0
+  # Webcam. Electron 33 predates full camera-portal support, so the device node
+  # is needed directly.
+  - --device=all
+  # Route 1 of the capture helper: Mutter's private ScreenCast API. Route 2 (the
+  # xdg ScreenCast portal) needs no permission — portals are always reachable.
+  - --talk-name=org.gnome.Mutter.ScreenCast
+  # Recordings and project files land in ~/Videos/Reframe.
+  - --filesystem=xdg-videos
+  # "Save as" can target anywhere the user picks.
+  - --filesystem=home
+
+# No codec extension needed: the GNOME 50 runtime ships x264enc, which is the
+# helper's first choice anyway. (GNOME 48 had only openh264enc, and is EOL.)
+
+modules:
+  - name: reframe
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/reframe
+      - cp -a linux-unpacked/. /app/reframe/
+      # chrome-sandbox is unusable (and unnecessary) under zypak.
+      - rm -f /app/reframe/chrome-sandbox
+      - install -Dm755 reframe.sh /app/bin/reframe
+      - install -Dm644 app.reframe.desktop.desktop /app/share/applications/app.reframe.desktop.desktop
+      - install -Dm644 app.reframe.desktop.metainfo.xml /app/share/metainfo/app.reframe.desktop.metainfo.xml
+      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/app.reframe.desktop.png
+    sources:
+      # Only the unpacked tree — pointing at release/ would drag the AppImage
+      # and the .deb through the build for nothing.
+      - type: dir
+        path: ../release/linux-unpacked
+        dest: linux-unpacked
+      - type: file
+        path: reframe.sh
+      - type: file
+        path: app.reframe.desktop.desktop
+      - type: file
+        path: app.reframe.desktop.metainfo.xml
+      - type: file
+        path: icon.png

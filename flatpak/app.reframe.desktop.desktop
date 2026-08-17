@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Reframe
+GenericName=Screen Recorder
+Comment=Record your screen, then re-frame it with zoom, backgrounds and annotations
+Exec=reframe %U
+Icon=app.reframe.desktop
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;Recorder;
+Keywords=screen;record;recorder;capture;screencast;demo;video;
+StartupWMClass=Reframe
