@@ -16,9 +16,12 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - run: npm ci
       - name: Package Linux app
-        run: npm run package:linux
+        run: npm run package:linux -- --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: linux-installers
@@ -36,9 +39,12 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - run: npm ci
       - name: Package Windows app
-        run: npm run package:win
+        run: npm run package:win -- --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
@@ -58,9 +64,12 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - run: npm ci
       - name: Package macOS app (${{ matrix.arch }})
-        run: npm run package:mac -- --${{ matrix.arch }}
+        run: npm run package:mac -- --${{ matrix.arch }} --publish never
         env:
           # No Apple Developer cert wired up — build unsigned. The .dmg works
           # but macOS Gatekeeper flags it as "unidentified developer"; users
