@@ -135,7 +135,7 @@ export function DownloadTabs({ targets }: Props) {
                 <CopyField label="Then install with" value={`flatpak install --user ${flatpakName}`} />
               </div>
               <Note>
-                Bundles GStreamer and ffmpeg, so every feature works out of the box with nothing else to install. Needs{' '}
+                Self-contained — every feature works out of the box, with nothing else to install. Needs{' '}
                 <a
                   href="https://flatpak.org/setup/"
                   target="_blank"
@@ -144,7 +144,7 @@ export function DownloadTabs({ targets }: Props) {
                 >
                   Flatpak
                 </a>{' '}
-                with the Flathub remote (for the shared runtime).
+                set up on your system.
               </Note>
             </Section>
 
