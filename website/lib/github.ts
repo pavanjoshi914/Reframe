@@ -56,7 +56,13 @@ async function gh<T>(path: string): Promise<T | null> {
   }
 }
 
-export type PlatformId = 'mac-arm' | 'mac-intel' | 'windows' | 'linux-appimage' | 'linux-deb';
+export type PlatformId =
+  | 'mac-arm'
+  | 'mac-intel'
+  | 'windows'
+  | 'linux-flatpak'
+  | 'linux-deb'
+  | 'linux-appimage';
 
 export type DownloadTarget = {
   id: PlatformId;
@@ -64,6 +70,8 @@ export type DownloadTarget = {
   url: string;
   /** True when `url` points at a real uploaded asset rather than the fallback page. */
   direct: boolean;
+  /** The asset's filename (e.g. `reframe_0.1.0_amd64.deb`), or null when unmatched. */
+  filename: string | null;
   sizeMb: number | null;
 };
 
@@ -94,14 +102,23 @@ function pickAsset(assets: ReleaseAsset[], id: PlatformId): ReleaseAsset | undef
       );
     case 'windows':
       return find((n) => n.endsWith('.exe'));
-    case 'linux-appimage':
-      return find((n) => n.endsWith('.appimage'));
+    case 'linux-flatpak':
+      return find((n) => n.endsWith('.flatpak'));
     case 'linux-deb':
       return find((n) => n.endsWith('.deb'));
+    case 'linux-appimage':
+      return find((n) => n.endsWith('.appimage'));
   }
 }
 
-const ALL_PLATFORMS: PlatformId[] = ['mac-arm', 'mac-intel', 'windows', 'linux-appimage', 'linux-deb'];
+const ALL_PLATFORMS: PlatformId[] = [
+  'mac-arm',
+  'mac-intel',
+  'windows',
+  'linux-flatpak',
+  'linux-deb',
+  'linux-appimage'
+];
 
 export async function getLatestRelease(): Promise<ReleaseInfo> {
   const release = await gh<ReleaseResponse>('/releases/latest');
@@ -115,9 +132,10 @@ export async function getLatestRelease(): Promise<ReleaseInfo> {
             id,
             url: asset.browser_download_url,
             direct: true,
+            filename: asset.name,
             sizeMb: Math.round((asset.size / 1024 / 1024) * 10) / 10
           }
-        : { id, url: release?.html_url ?? fallbackUrl, direct: false, sizeMb: null };
+        : { id, url: release?.html_url ?? fallbackUrl, direct: false, filename: null, sizeMb: null };
       return [id, target];
     })
   ) as Record<PlatformId, DownloadTarget>;

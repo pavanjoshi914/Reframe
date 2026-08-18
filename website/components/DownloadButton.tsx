@@ -13,8 +13,9 @@ const LABELS: Record<PlatformId, string> = {
   'mac-arm': 'Download for macOS',
   'mac-intel': 'Download for macOS',
   windows: 'Download for Windows',
-  'linux-appimage': 'Download for Linux',
-  'linux-deb': 'Download for Linux'
+  'linux-flatpak': 'Download for Linux',
+  'linux-deb': 'Download for Linux',
+  'linux-appimage': 'Download for Linux'
 };
 
 /**
@@ -53,13 +54,17 @@ export function DownloadButton({ targets, className = '' }: Props) {
 
   useEffect(() => setPlatform(detect()), []);
 
-  const target = platform ? targets[platform] : null;
+  const isLinux = !!platform?.startsWith('linux');
+  // Linux has several formats (.deb / Flatpak / script), so send Linux visitors
+  // to the tabs to choose rather than force one file. macOS/Windows download
+  // the single right asset directly.
+  const target = platform && !isLinux ? targets[platform] : null;
+  const href = isLinux ? '/download' : (target?.url ?? '/download');
   const label = platform ? LABELS[platform] : 'Download free';
-  const Icon =
-    platform === 'windows' ? WindowsIcon : platform?.startsWith('linux') ? LinuxIcon : platform ? AppleIcon : null;
+  const Icon = platform === 'windows' ? WindowsIcon : isLinux ? LinuxIcon : platform ? AppleIcon : null;
 
   return (
-    <a href={target?.url ?? '/download'} className={`btn-primary ${className}`}>
+    <a href={href} className={`btn-primary ${className}`}>
       {Icon ? <Icon className="h-4 w-4" /> : null}
       {label}
       {target?.sizeMb ? <span className="font-normal text-white/70">· {target.sizeMb} MB</span> : null}
