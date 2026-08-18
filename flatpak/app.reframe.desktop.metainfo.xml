@@ -77,7 +77,16 @@
   <releases>
     <release version="0.1.0" date="2026-08-17">
       <description>
-        <p>First release.</p>
+        <p>First public release.</p>
+        <ul>
+          <li>Record any screen or window, with system audio, a microphone and a webcam bubble.</li>
+          <li>Cursor-hidden recording on Linux via a PipeWire screen cast, so the editor's smooth synthetic cursor can stand in — captured from composited frames, so it stays sharp even during fast window switching.</li>
+          <li>Auto-suggested zooms that follow where your cursor moved and clicked.</li>
+          <li>Backgrounds, annotations, magnify and spotlight, blur and pixelate, trim and speed ramps — all non-destructive.</li>
+          <li>Export to MP4, GIF or WebM with no watermark; hardware-accelerated H.264 on macOS and Windows.</li>
+          <li>Built-in update check, so you're told when a new version is out.</li>
+          <li>Everything runs on your machine — no account, no upload, no telemetry.</li>
+        </ul>
       </description>
     </release>
   </releases>
