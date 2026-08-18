@@ -7,6 +7,7 @@ import { formatStars, getStarCount } from '@/lib/github';
 import { site } from '@/lib/site';
 
 const links: NavLink[] = [
+  { href: '/#showcase', label: 'Showcase' },
   { href: '/#features', label: 'Features' },
   { href: '/#how-it-works', label: 'How it works' },
   { href: '/download', label: 'Download' },
