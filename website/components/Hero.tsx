@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { DemoVideo } from './DemoVideo';
-import { DownloadButton } from './DownloadButton';
-import { GitHubIcon } from './Icons';
+import { DownloadIcon, GitHubIcon } from './Icons';
 import { getLatestRelease } from '@/lib/github';
 import { site } from '@/lib/site';
 
@@ -75,7 +74,17 @@ export async function Hero() {
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <DownloadButton targets={release.targets} className="w-full sm:w-auto" />
+            {/* One honest CTA for every OS: Linux has several formats and macOS
+                two architectures, so a single file can't be "the" download —
+                this opens the download page, where the visitor's platform tab is
+                pre-selected. */}
+            <Link
+              href="/download"
+              className="btn-primary w-full px-8 py-4 text-base sm:w-auto"
+            >
+              <DownloadIcon className="h-5 w-5" />
+              Download for free
+            </Link>
             <a href={site.repoUrl} target="_blank" rel="noreferrer" className="btn-secondary w-full sm:w-auto">
               <GitHubIcon className="h-4 w-4" />
               View source

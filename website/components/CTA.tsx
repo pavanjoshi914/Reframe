@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { GitHubIcon } from './Icons';
+import { DownloadIcon, GitHubIcon } from './Icons';
 import { site } from '@/lib/site';
 
 export function CTA() {
@@ -22,6 +22,7 @@ export function CTA() {
               href="/download"
               className="btn w-full bg-white text-brand-800 shadow-lg hover:bg-brand-50 sm:w-auto"
             >
+              <DownloadIcon className="h-4 w-4" />
               Download Reframe
             </Link>
             <a
