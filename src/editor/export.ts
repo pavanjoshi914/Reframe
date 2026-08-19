@@ -254,6 +254,48 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     }
   }
 
+  // Sequential webcam follower — ONE decoder for the whole export.
+  //
+  // The obvious call, webcamSink.getCanvas(timestamp) once per composited
+  // frame, creates and destroys a fresh VideoDecoder on EVERY call (mediabunny
+  // treats each one-shot getCanvas as its own decode session). A 30s webcam
+  // export is ~900 hardware-decoder create/destroy cycles; Windows' D3D11
+  // decoder pool degrades under that churn and eventually a create fails
+  // mid-export, which surfaced as "Export failed: Decoding error." on Windows
+  // (and could hang the tail of the export). The export loop only ever moves
+  // FORWARD through source time — trims and speed regions skip frames but
+  // never rewind — so a single sequential canvases() iteration can follow it:
+  // hold the current webcam frame until the screen timeline passes the next
+  // one's timestamp. CanvasSink's default poolSize of 0 allocates a fresh
+  // canvas per frame, so holding `current` while reading ahead is safe.
+  function makeWebcamFollower(sink: CanvasSink) {
+    type Wrapped = { canvas: FrameSource; timestamp: number };
+    const iter = sink.canvases()[Symbol.asyncIterator]();
+    let current: Wrapped | null = null;
+    let next: Wrapped | null = null;
+    let done = false;
+    return async (timestampSec: number): Promise<FrameSource | null> => {
+      try {
+        while (!done) {
+          if (!next) {
+            const r = await iter.next();
+            if (r.done || !r.value) { done = true; break; }
+            next = r.value as unknown as Wrapped;
+          }
+          if (next.timestamp <= timestampSec) { current = next; next = null; }
+          else break;
+        }
+      } catch (err) {
+        // A webcam decode failure must never kill the export — match the old
+        // getCanvas().catch(() => null) behaviour and just stop following.
+        console.warn('[export] webcam follower stopped', err);
+        done = true;
+      }
+      return current?.canvas ?? null;
+    };
+  }
+  const webcamFrameAt = webcamSink ? makeWebcamFollower(webcamSink) : null;
+
   const sourceDurationSec = await screenTrack.computeDuration();
   // The real number of source frames (= encoded packets). MediaRecorder WebMs
   // often carry an unreliable duration, so driving progress off timestamps can
@@ -343,11 +385,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
       const speedFactor = speed?.speed ?? 1;
       const endOut = outMs + (frameDuration / speedFactor) * 1000;
       if (endOut >= nextEmitMs) {
-        let webcamCanvas: FrameSource | null = null;
-        if (webcamSink) {
-          const wc = await webcamSink.getCanvas(timestamp).catch(() => null);
-          webcamCanvas = wc?.canvas ?? null;
-        }
+        const webcamCanvas: FrameSource | null = webcamFrameAt ? await webcamFrameAt(timestamp) : null;
         composite(srcCanvas, webcamCanvas, ms);
         let pixels: Uint8ClampedArray;
         try {
@@ -518,12 +556,8 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     }
     if (emitCount === 0) continue;
 
-    // Webcam frame for this timestamp (random-access; mediabunny caches).
-    let webcamCanvas: FrameSource | null = null;
-    if (webcamSink) {
-      const wc = await webcamSink.getCanvas(timestamp).catch(() => null);
-      webcamCanvas = wc?.canvas ?? null;
-    }
+    // Webcam frame for this timestamp (sequential follower — see above).
+    const webcamCanvas: FrameSource | null = webcamFrameAt ? await webcamFrameAt(timestamp) : null;
 
     composite(srcCanvas, webcamCanvas, ms);
 
