@@ -66,7 +66,9 @@ jobs:
           npx electron-builder --linux dir
       - name: Build the Flatpak bundle
         run: |
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
+          # elfutils provides eu-strip, which flatpak-builder uses to strip
+          # debug symbols; without it the build fails at the strip step.
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder elfutils
           flatpak remote-add --if-not-exists --user flathub \
             https://flathub.org/repo/flathub.flatpakrepo
           # --install-deps-from pulls the runtime/SDK/Electron base named in the
