@@ -37,6 +37,54 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # The Flatpak is the one Linux package where every feature works on every
+  # distro with nothing installed by hand (the GNOME runtime carries GStreamer +
+  # PyGObject). electron-builder can't produce it, so build it from the same
+  # manifest with flatpak-builder. Kept as its own job so a Flatpak failure never
+  # blocks the .deb / AppImage.
+  build-flatpak:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install X11 headers for libuiohook
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxtst-dev libxt-dev libxinerama-dev \
+            libxkbcommon-dev libxkbfile-dev libxrandr-dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci
+      - name: Build the unpacked Linux app (the Flatpak's input)
+        run: |
+          npm run build
+          npx electron-builder --linux dir
+      - name: Build the Flatpak bundle
+        run: |
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
+          flatpak remote-add --if-not-exists --user flathub \
+            https://flathub.org/repo/flathub.flatpakrepo
+          # --install-deps-from pulls the runtime/SDK/Electron base named in the
+          # manifest (org.gnome.Platform//50, org.gnome.Sdk//50, the Electron
+          # BaseApp) from Flathub; --user avoids needing root/polkit.
+          flatpak-builder --user --force-clean --install-deps-from=flathub \
+            --repo=fp-repo fp-build flatpak/app.reframe.desktop.yml
+          VERSION=$(node -p "require('./package.json').version")
+          flatpak build-bundle fp-repo "release/Reframe-${VERSION}-x86_64.flatpak" \
+            app.reframe.desktop \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-flatpak
+          path: release/*.flatpak
+          if-no-files-found: error
+          retention-days: 30
+
   build-windows:
     runs-on: windows-2022
     steps:
