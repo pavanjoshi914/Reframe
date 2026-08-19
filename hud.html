@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="./assets/logo-transparent.png" />
     <title>Reframe</title>
+    <!-- The pill is measured and the window resized to fit it, but during the
+         round-trip (and if a measurement is ever off) the HUD must clip rather
+         than sprout scrollbars across the pill. -->
+    <style>
+      html, body { overflow: hidden; }
+    </style>
   </head>
   <body class="bg-transparent">
     <div id="root"></div>

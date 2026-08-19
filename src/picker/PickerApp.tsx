@@ -53,9 +53,11 @@ export function PickerApp() {
   return (
     <div className="flex h-screen w-screen items-center justify-center p-4">
       <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#15171c]/95 shadow-2xl backdrop-blur-md">
-        {/* Pill tabs */}
-        <div className="flex items-center justify-center px-4 pt-4">
-          <div className="inline-flex items-center rounded-full bg-black/40 p-1 ring-1 ring-white/10">
+        {/* Pill tabs. The row doubles as the window's drag handle — the picker
+            is frameless, so without one there is no way to move it at all. The
+            tab group itself opts back out so the tabs stay clickable. */}
+        <div className="draggable flex items-center justify-center px-4 pb-1 pt-4" title={t('hud.dragMove')}>
+          <div className="no-drag inline-flex items-center rounded-full bg-black/40 p-1 ring-1 ring-white/10">
             <PillTab active={tab === 'screen'} onClick={() => setTab('screen')}>
               {t('picker.screens')} <span className="text-white/40">({screens.length})</span>
             </PillTab>

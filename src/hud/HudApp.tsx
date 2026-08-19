@@ -68,6 +68,51 @@ export function HudApp() {
   // source when they hit record. Lives in a ref because it's an imperative
   // resource we own across renders, not part of React's reactive tree.
   const camStreamRef = useRef<MediaStream | null>(null);
+  const pillRef = useRef<HTMLDivElement | null>(null);
+
+  // Windows reports its display "scale" setting (125%, 150%, …) as a DIP scale
+  // factor, so a pill laid out in CSS pixels comes out that much physically
+  // bigger there than on Linux/X11, where the factor is 1 — which is why the
+  // HUD reads as oversized on Windows. Scale it back, but only part of the way
+  // (floor 0.8) so someone running 200% for accessibility still gets a larger
+  // pill than someone at 100%. Left alone on macOS: there the scale factor is
+  // pixel density (Retina = 2), not a UI-size preference, so CSS pixels are
+  // already the right unit and shrinking would halve the pill.
+  //
+  // `zoom` rather than `transform: scale()` on purpose — zoom is a layout
+  // property in Chromium, so the measurement below and the -webkit-app-region
+  // drag area both follow it. A transform would leave both behind.
+  const [pillZoom] = useState(() => {
+    if (window.api.platform !== 'win32') return 1;
+    const dpr = window.devicePixelRatio || 1;
+    return dpr > 1 ? Math.max(0.8, 1 / dpr) : 1;
+  });
+
+  // Keep the HUD window exactly as big as the pill. Its width isn't fixed — it
+  // tracks the source label, and it grows when recording starts because the
+  // stop + restart buttons and the timer replace the lone record button. The
+  // window was a hard 620x56, so the recording layout overflowed and Chromium
+  // drew scrollbars across the HUD; sizing to the measurement also stops the
+  // (invisible, but click-blocking) window covering more desktop than it needs.
+  useEffect(() => {
+    const el = pillRef.current;
+    if (!el) return;
+    let last = { width: 0, height: 0 };
+    const report = () => {
+      const rect = el.getBoundingClientRect();
+      // + the wrapper's px-1 / pb-0.5 padding around the pill, and a pixel of
+      // slack so a sub-pixel layout width can't round down into a clip.
+      const width = Math.ceil(rect.width) + 9;
+      const height = Math.ceil(rect.height) + 9;
+      if (Math.abs(width - last.width) < 2 && Math.abs(height - last.height) < 2) return;
+      last = { width, height };
+      window.api.setHudContentSize(width, height);
+    };
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    report();
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const offSource = window.api.onSourceSelected((s) => {
@@ -304,11 +349,13 @@ export function HudApp() {
     // The HUD window grows upward on demand (when a device menu opens) so the
     // popover has room without the window having to permanently block desktop
     // clicks behind it — see `window.api.setHudExpanded`.
-    <div className="flex h-screen w-screen items-end justify-center px-1 pb-0.5">
+    <div className="flex h-screen w-screen items-end justify-center overflow-hidden px-1 pb-0.5">
       <div
-        className="draggable relative flex h-12 items-center gap-0.5 rounded-full px-2"
+        ref={pillRef}
+        className="draggable relative flex h-12 w-max shrink-0 items-center gap-0.5 rounded-full px-2"
         title={t('hud.dragMove')}
         style={{
+          zoom: pillZoom,
           background:
             'linear-gradient(180deg, rgba(32,34,40,0.94) 0%, rgba(20,22,26,0.94) 60%, rgba(14,15,18,0.94) 100%)',
           boxShadow:

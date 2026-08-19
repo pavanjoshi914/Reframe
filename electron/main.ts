@@ -78,6 +78,18 @@ let recordingsTempDir = '';
 let projectsDir = '';
 let exportsDir = '';
 
+// Is `target` inside `dir`? Used to fence the media:// handler and the cursor
+// sidecar loader to the recordings dir. Windows compares paths
+// case-insensitively, so fold case there — otherwise a drive letter or user
+// folder that differs only in case reads as an escape attempt.
+function isInsideDir(dir: string, target: string): boolean {
+  if (!dir) return false;
+  const prefix = path.resolve(dir) + path.sep;
+  return process.platform === 'win32'
+    ? target.toLowerCase().startsWith(prefix.toLowerCase())
+    : target.startsWith(prefix);
+}
+
 function loadHtml(win: BrowserWindow, htmlName: string) {
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(`${VITE_DEV_SERVER_URL}${htmlName}`);
@@ -86,14 +98,54 @@ function loadHtml(win: BrowserWindow, htmlName: string) {
   }
 }
 
+// HUD geometry. The window is only ever as big as the pill inside it — the
+// renderer measures the pill and reports it via `hud:setContentSize` (see
+// HudApp), because the pill's width is not fixed: it changes with the source
+// label and grows when recording starts, where the stop + restart buttons and
+// the timer replace the single record button. The window used to be a hard
+// 620×56, so the recording layout overflowed it and Chromium drew scrollbars
+// across the HUD. These are just the pre-measurement defaults.
+const HUD_DEFAULT_WIDTH = 620;
+const HUD_DEFAULT_HEIGHT = 56;
+const HUD_MIN_WIDTH = 240;
+// Extra height reserved above the pill while a device popover is open (its
+// max-h-64 list plus header/padding).
+const HUD_MENU_HEIGHT = 288;
+let hudContentWidth = HUD_DEFAULT_WIDTH;
+let hudContentHeight = HUD_DEFAULT_HEIGHT;
+let hudExpanded = false;
+
+// Resize the HUD to the measured pill (plus popover room when a device menu is
+// open). The pill is rendered at the bottom-centre of its window, so we pin the
+// window's BOTTOM edge and grow symmetrically around its centre — that way the
+// pill never slides out from under the pointer when the layout changes.
+function applyHudBounds() {
+  if (!hudWindow || hudWindow.isDestroyed()) return;
+  const b = hudWindow.getBounds();
+  const { workArea } = screen.getDisplayMatching(b);
+  const width = Math.min(Math.max(hudContentWidth, HUD_MIN_WIDTH), workArea.width);
+  const height = Math.min(hudContentHeight + (hudExpanded ? HUD_MENU_HEIGHT : 0), workArea.height);
+  if (b.width === width && b.height === height) return;
+
+  const centerX = b.x + b.width / 2;
+  const bottom = b.y + b.height;
+  const x = Math.round(
+    Math.min(Math.max(centerX - width / 2, workArea.x), workArea.x + workArea.width - width)
+  );
+  const y = Math.round(
+    Math.min(Math.max(bottom - height, workArea.y), workArea.y + workArea.height - height)
+  );
+  hudWindow.setBounds({ x, y, width, height });
+}
+
 function createHud() {
   // Park the pill at the bottom-center of the primary display's work area
   // (so it sits just above the taskbar/dock, not on top of it). Same approach
   // openscreen uses — much more discoverable than the default OS-centered
   // placement where the HUD lands in the middle of the screen.
   const { workArea } = screen.getPrimaryDisplay();
-  const windowWidth = 620;
-  const windowHeight = 56;
+  const windowWidth = HUD_DEFAULT_WIDTH;
+  const windowHeight = HUD_DEFAULT_HEIGHT;
   const x = Math.floor(workArea.x + (workArea.width - windowWidth) / 2);
   const y = Math.floor(workArea.y + workArea.height - windowHeight - 28);
 
@@ -128,6 +180,9 @@ function createHud() {
   if (isDev) hudWindow.webContents.openDevTools({ mode: 'detach' });
   hudWindow.on('closed', () => {
     hudWindow = null;
+    hudContentWidth = HUD_DEFAULT_WIDTH;
+    hudContentHeight = HUD_DEFAULT_HEIGHT;
+    hudExpanded = false;
     if (!editorWindow) app.quit();
   });
 }
@@ -137,9 +192,25 @@ function createPicker() {
     pickerWindow.focus();
     return;
   }
+  // Centre the picker on the work area of whichever display the HUD is on.
+  // Without explicit coordinates Electron places the child relative to its
+  // parent, and on Windows that puts the picker's top-left AT the HUD's
+  // top-left — the HUD lives at the bottom of the screen, so most of the
+  // picker hung off the bottom edge, and being frameless it had no title bar
+  // to drag it back with. (The picker's header is a drag region now too.)
+  const { workArea } = hudWindow && !hudWindow.isDestroyed()
+    ? screen.getDisplayMatching(hudWindow.getBounds())
+    : screen.getPrimaryDisplay();
+  const width = Math.min(760, Math.max(320, workArea.width - 40));
+  const height = Math.min(540, Math.max(320, workArea.height - 40));
+  const x = Math.round(workArea.x + Math.max(0, (workArea.width - width) / 2));
+  const y = Math.round(workArea.y + Math.max(0, (workArea.height - height) / 2));
+
   pickerWindow = new BrowserWindow({
-    width: 760,
-    height: 540,
+    width,
+    height,
+    x,
+    y,
     parent: hudWindow ?? undefined,
     modal: false,
     frame: false,
@@ -492,20 +563,22 @@ ipcMain.handle('recording:fileUrl', (_evt, filePath: string) => {
 ipcMain.handle('hud:minimize', () => hudWindow?.minimize());
 ipcMain.handle('hud:close', () => hudWindow?.close());
 
-// Resize the HUD window taller (or back to its compact size) so popover
-// device menus opening above the pill have room without the window having to
-// permanently sit there blocking desktop clicks. The pill is rendered at the
-// bottom of its window via CSS, so we grow upward by shifting the window's Y
-// up by the height delta — that way the pill's screen position never moves.
-const HUD_COMPACT_HEIGHT = 56;
-const HUD_EXPANDED_HEIGHT = 340;
+// The renderer's ResizeObserver reports the pill's measured size (already in
+// DIPs — the HUD page runs at zoom 1, so a CSS pixel is a DIP). Everything
+// about how that becomes window bounds lives in applyHudBounds.
+ipcMain.handle('hud:setContentSize', (_evt, width: number, height: number) => {
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+  hudContentWidth = Math.ceil(width);
+  hudContentHeight = Math.ceil(height);
+  applyHudBounds();
+});
+
+// Grow the HUD window taller (or back to its compact size) so popover device
+// menus opening above the pill have room, without the window having to
+// permanently sit there blocking desktop clicks.
 ipcMain.handle('hud:setExpanded', (_evt, expanded: boolean) => {
-  if (!hudWindow || hudWindow.isDestroyed()) return;
-  const target = expanded ? HUD_EXPANDED_HEIGHT : HUD_COMPACT_HEIGHT;
-  const b = hudWindow.getBounds();
-  if (b.height === target) return;
-  const delta = target - b.height;
-  hudWindow.setBounds({ x: b.x, y: b.y - delta, width: b.width, height: target });
+  hudExpanded = !!expanded;
+  applyHudBounds();
 });
 
 let isRecording = false;
@@ -1015,7 +1088,7 @@ ipcMain.handle('hud:setRecording', (_evt, recording: boolean) => {
 ipcMain.handle('cursor:load', async (_evt, filePath: string) => {
   try {
     const resolved = path.resolve(filePath);
-    if (!recordingsTempDir || !resolved.startsWith(recordingsTempDir + path.sep)) return null;
+    if (!isInsideDir(recordingsTempDir, resolved)) return null;
     const raw = await fs.promises.readFile(resolved, 'utf-8');
     const data = JSON.parse(raw);
     // Legacy sidecars are a bare CursorSample[]; current ones are
@@ -1235,10 +1308,21 @@ app.whenReady().then(async () => {
   };
   protocol.handle('media', async (req) => {
     const url = new URL(req.url);
-    const filePath = decodeURIComponent(url.pathname);
+    // `url.pathname` is a FILE-URL path, not an OS path. On Windows it reads
+    // "/C:/Users/…", and path.resolve() turns that into "C:\C:\Users\…" — it
+    // takes the leading slash as "root of the current drive". The containment
+    // check below then 403'd every recording, which is why the editor came up
+    // blank for the screen AND the webcam. Parse it with fileURLToPath instead:
+    // the exact inverse of the pathToFileURL() in `recording:fileUrl`, and it
+    // undoes the percent-escapes on the way.
+    let resolved: string;
+    try {
+      resolved = path.resolve(fileURLToPath(`file://${url.pathname}`));
+    } catch {
+      return new Response('bad request', { status: 400 });
+    }
     // Only allow paths under the temp recordings dir.
-    const resolved = path.resolve(filePath);
-    if (!resolved.startsWith(recordingsTempDir + path.sep)) {
+    if (!isInsideDir(recordingsTempDir, resolved)) {
       return new Response('forbidden', { status: 403 });
     }
     try {

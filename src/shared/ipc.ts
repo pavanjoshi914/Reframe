@@ -111,6 +111,11 @@ export type Api = {
   minimizeHud: () => Promise<void>;
   closeHud: () => Promise<void>;
   setHudExpanded: (expanded: boolean) => Promise<void>;
+  // Report the pill's measured size so main can keep the HUD window exactly as
+  // big as its contents — the pill's width changes with the source label and
+  // with the recording controls, and a fixed-size window made the recording
+  // layout overflow into scrollbars.
+  setHudContentSize: (width: number, height: number) => Promise<void>;
   // "Save As" dialog — used for an explicit copy. Auto-save is the normal flow.
   saveProject: (project: ProjectFile) => Promise<{ saved: boolean; path?: string }>;
   // Returns the loaded project plus the on-disk path so the editor knows where

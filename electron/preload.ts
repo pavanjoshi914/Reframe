@@ -28,6 +28,7 @@ const api: Api = {
   minimizeHud: () => ipcRenderer.invoke('hud:minimize'),
   closeHud: () => ipcRenderer.invoke('hud:close'),
   setHudExpanded: (expanded) => ipcRenderer.invoke('hud:setExpanded', expanded),
+  setHudContentSize: (width, height) => ipcRenderer.invoke('hud:setContentSize', width, height),
   saveProject: (project) => ipcRenderer.invoke('project:save', project),
   loadProject: () => ipcRenderer.invoke('project:load'),
   initialProjectPath: (startedAt) => ipcRenderer.invoke('project:initialPath', startedAt),
