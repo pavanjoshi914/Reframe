@@ -77,7 +77,7 @@
   <releases>
     <release version="0.1.1" date="2026-08-19">
       <description>
-        <p>Hide the OS cursor when recording on Windows, so the editor's smooth synthetic cursor can stand in without a doubled cursor.</p>
+        <p>Maintenance release.</p>
       </description>
     </release>
     <release version="0.1.0" date="2026-08-17">

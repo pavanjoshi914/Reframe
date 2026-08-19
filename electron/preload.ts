@@ -44,7 +44,7 @@ const api: Api = {
   setPendingCaptureSource: (sourceId) => ipcRenderer.invoke('capture:setPendingSource', sourceId),
   platform: process.platform,
   ffcapStart: (opts) => ipcRenderer.invoke('ffcap:start', opts),
-  ffcapStop: () => ipcRenderer.invoke('ffcap:stop'),
+  ffcapStop: (audio) => ipcRenderer.invoke('ffcap:stop', audio),
   getCursorData: (filePath) => ipcRenderer.invoke('cursor:load', filePath),
   onStopShortcut: (cb) => {
     const handler = () => cb();

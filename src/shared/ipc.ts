@@ -149,8 +149,15 @@ export type Api = {
   // Start/stop the PipeWire ScreenCast cursor-hidden screen capture (Linux only).
   // start returns { ok:false } when unavailable so the caller can fall back to
   // the normal Chromium capture; stop returns the finalized screen mp4 path.
-  ffcapStart: (opts: { withSystemAudio: boolean; withMic: boolean }) => Promise<{ ok: boolean; width: number; height: number }>;
-  ffcapStop: () => Promise<{ filePath: string; width: number; height: number; durationMs: number } | null>;
+  ffcapStart: (opts: { withSystemAudio: boolean; withMic: boolean }) => Promise<{
+    ok: boolean;
+    width: number;
+    height: number;
+    // Set by the Windows/macOS native capture path: ffmpeg cannot reach system
+    // audio there, so the renderer records it and passes it to ffcapStop.
+    audioFromRenderer?: boolean;
+  }>;
+  ffcapStop: (audio?: { data: ArrayBuffer; startedAt: number }) => Promise<{ filePath: string; width: number; height: number; durationMs: number } | null>;
   onStopShortcut: (cb: () => void) => () => void;
   // Load the sidecar cursor data (samples + clicks) for a recording. Returns
   // null if there's no sidecar. Normalizes the legacy bare-array format.

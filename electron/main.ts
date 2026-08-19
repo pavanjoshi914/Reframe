@@ -16,20 +16,6 @@ protocol.registerSchemesAsPrivileged([
   }
 ]);
 
-// Windows-only: force Chromium to capture the screen through Windows.Graphics
-// .Capture (WGC). WGC is the one Windows backend that honors getDisplayMedia's
-// `cursor: 'never'`; the default GDI/DXGI capturer bakes the OS cursor into the
-// frames, which is why "Hide cursor" recordings still showed it on Windows.
-// These are Windows-only Chromium features, so this is a no-op on macOS and
-// Linux — their capture paths (getDisplayMedia / the PipeWire helper) are
-// untouched. Must be set before app `ready`.
-if (process.platform === 'win32') {
-  app.commandLine.appendSwitch(
-    'enable-features',
-    'AllowWgcScreenCapturer,AllowWgcWindowCapturer,AllowWgcDesktopCapturer'
-  );
-}
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Force a single canonical name so `app.getPath('userData')` resolves to the
@@ -819,7 +805,10 @@ function ffmpegBin(): string {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const p = require('ffmpeg-static');
-    if (p && typeof p === 'string') return p;
+    // Inside a packaged app the module resolves to a path within app.asar,
+    // which the OS cannot exec. electron-builder unpacks the binary alongside
+    // it (see build.asarUnpack), so point at the unpacked copy.
+    if (p && typeof p === 'string') return p.replace('app.asar', 'app.asar.unpacked');
   } catch {
     /* not installed — use system ffmpeg */
   }
@@ -1011,8 +1000,227 @@ function finalizePipewire(videoMkv: string, micFile: string | null): string {
   }
 }
 
+// ── Cursor-free capture on Windows / macOS ──────────────────────────────────
+//
+// Chromium bakes the OS pointer into every desktop-capture frame and gives us
+// no way out. The `cursor` constraint was removed from the platform —
+// getSupportedConstraints().cursor is false — so getDisplayMedia ACCEPTS
+// { cursor: 'never' }, resolves, and then ignores it, reporting cursor:"always"
+// in the track settings. The capture backend is irrelevant here: forcing the
+// Windows.Graphics.Capture capturer changes nothing, because the constraint
+// never reaches a capturer at all.
+//
+// So we do what Linux already does and capture outside Chromium. Windows uses
+// ffmpeg's ddagrab (Desktop Duplication, GPU-side) with gdigrab as a fallback;
+// macOS uses avfoundation, whose -capture_cursor defaults to off. Both Windows
+// backends were measured dropping the pointer while holding 30fps at 1080p.
+//
+// Audio does NOT come through here. Windows exposes no loopback device to
+// ffmpeg (a stock machine has no "Stereo Mix"), so system audio stays in
+// Chromium and the renderer records it — see startHelperRecording. If capture
+// can't start we return ok:false and the renderer falls back to its normal
+// cursor-included path, exactly as it does when PipeWire is missing on Linux.
+let nativeProc: ChildProcess | null = null;
+let nativeVideoPath: string | null = null;
+
+type NativeBackend = 'ddagrab' | 'gdigrab' | 'avfoundation';
+type CaptureBox = { w: number; h: number; x: number; y: number };
+
+function nativeCaptureArgs(
+  backend: NativeBackend,
+  box: CaptureBox,
+  displayIndex: number,
+  out: string
+): string[] {
+  // yuv420p needs even dimensions and a display can report odd ones.
+  const even = 'scale=trunc(iw/2)*2:trunc(ih/2)*2';
+  const encode = [
+    // zerolatency is load-bearing for sync, not a performance tweak: it drops
+    // x264's rc-lookahead (~30 frames = a full second at 30fps) and B-frames,
+    // so a frame leaves the encoder within a frame-time of being captured.
+    // The progress report's out_time is ENCODER OUTPUT — with lookahead on,
+    // "epoch = now - out_time" lands ~1.3s late, and the cursor/click clock
+    // hangs off that epoch (measured: a right-click's context menu appeared
+    // 1339ms after the sidecar said the click happened). No B-frames also
+    // means every frame is scrub-friendly.
+    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-crf', '20',
+    // A keyframe every second keeps editor scrubbing instant (the same reason
+    // the PipeWire path uses dense keyframes) without bloating the file.
+    '-g', '30', '-keyint_min', '30',
+    '-pix_fmt', 'yuv420p', '-movflags', '+faststart', out
+  ];
+  if (backend === 'ddagrab') {
+    return [
+      '-f', 'lavfi',
+      '-i', 'ddagrab=output_idx=' + displayIndex + ':draw_mouse=0:framerate=30',
+      '-vf', 'hwdownload,format=bgra,' + even,
+      ...encode
+    ];
+  }
+  if (backend === 'gdigrab') {
+    return [
+      '-f', 'gdigrab', '-draw_mouse', '0', '-framerate', '30',
+      '-offset_x', String(box.x), '-offset_y', String(box.y),
+      '-video_size', box.w + 'x' + box.h, '-i', 'desktop',
+      '-vf', even, ...encode
+    ];
+  }
+  // Screens must be addressed BY NAME. avfoundation numbers cameras first, so
+  // on any Mac with a built-in camera video device 0 is the FaceTime camera —
+  // a bare index would record the webcam instead of the display. Screen
+  // devices are always named "Capture screen N" (not localized), N in display
+  // order, which matches Electron's screen.getAllDisplays() ordering.
+  return [
+    '-f', 'avfoundation', '-capture_cursor', '0', '-framerate', '30',
+    '-i', 'Capture screen ' + displayIndex + ':none', '-vf', even, ...encode
+  ];
+}
+
+// Spawn one backend and resolve only once ffmpeg reports a frame actually
+// landed. That instant — not spawn time — is the video's t=0, which is what
+// the cursor clock and the audio delay get measured against.
+function spawnNativeCapture(
+  backend: NativeBackend,
+  box: CaptureBox,
+  displayIndex: number,
+  out: string
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let proc: ChildProcess;
+    const args = ['-hide_banner', '-loglevel', 'error', '-nostats', '-progress', 'pipe:1',
+      ...nativeCaptureArgs(backend, box, displayIndex, out)];
+    try {
+      proc = spawn(ffmpegBin(), args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch (err) {
+      console.warn('[main] ' + backend + ' spawn threw', err);
+      return resolve(false);
+    }
+    let settled = false;
+    let errText = '';
+    const done = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (!ok) {
+        try { proc.kill('SIGKILL'); } catch { /* ignore */ }
+        try { fs.rmSync(out, { force: true }); } catch { /* ignore */ }
+      }
+      resolve(ok);
+    };
+    proc.stderr?.on('data', (d) => { errText += String(d); });
+    proc.stdout?.on('data', (d) => {
+      // -progress keeps emitting for the whole recording; only the FIRST
+      // report is the video's t=0. Without this guard the epoch kept being
+      // pushed forward and the audio skew came out as minus the recording
+      // length, shifting the muxed audio wildly out of sync.
+      if (settled) return;
+      // -progress emits key=value lines; a non-zero frame= means we're rolling.
+      const report = String(d);
+      if (/^frame=\s*[1-9]/m.test(report)) {
+        nativeProc = proc;
+        nativeVideoPath = out;
+        // The report arrives well after the frame it describes: ffmpeg only
+        // emits progress periodically and the backend needs ~1.3s to warm up.
+        // out_time_us says how much video already exists, so subtracting it
+        // gives the wall time of the FIRST frame -- the video's real t=0.
+        // The plain Date.now() this replaces measured 433ms late, and the
+        // cursor clock hangs off this epoch, so every click ripple was drawn
+        // 433ms before the video showed the click land. The offset is a
+        // constant, not drift: sampled across a 20s capture the wall-to-video
+        // lead stays flat at ~1255ms and the rate at 1.000, so the origin is
+        // the only thing that needs correcting.
+        const us = Number((/out_time_us=([0-9]+)/.exec(report) || [])[1] || 0);
+        captureVideoEpoch = Date.now() - Math.round(us / 1000);
+        done(true);
+      }
+    });
+    proc.once('error', () => done(false));
+    proc.once('exit', (code) => {
+      if (!settled) console.warn('[main] ' + backend + ' exited before first frame (' + code + ') ' + errText.trim());
+      done(false);
+    });
+    setTimeout(() => {
+      if (!settled) console.warn('[main] ' + backend + ' produced no frame in 8s ' + errText.trim());
+      done(false);
+    }, 8000);
+  });
+}
+
+async function tryStartNativeCapture(box: CaptureBox, displayIndex: number, ts: string): Promise<boolean> {
+  const out = path.join(recordingsTempDir, ts + '-screen.mp4');
+  // ddagrab is GPU-side and cheap; gdigrab is the universal fallback and takes
+  // explicit offsets, so it also copes with awkward multi-monitor layouts.
+  const backends: NativeBackend[] =
+    process.platform === 'win32' ? ['ddagrab', 'gdigrab'] : ['avfoundation'];
+  for (const backend of backends) {
+    if (await spawnNativeCapture(backend, box, displayIndex, out)) {
+      console.log('[main] capture: ' + backend + ' (cursor omitted) @ ' + box.w + 'x' + box.h);
+      return true;
+    }
+  }
+  return false;
+}
+
+// Mux the renderer's audio onto the cursor-free video. The two recorders start
+// a beat apart, so shift the audio by the measured gap rather than assuming
+// they're aligned: positive means audio began after the first video frame and
+// has to be delayed, negative means it began first and gets trimmed.
+function muxNativeAudio(
+  videoPath: string,
+  audio: { data: ArrayBuffer; startedAt: number } | undefined,
+  videoEpoch: number | null
+): string {
+  if (!audio || !audio.data || audio.data.byteLength === 0) return videoPath;
+  const audioPath = videoPath.replace(/-screen\.mp4$/, '-audio.webm');
+  const outPath = videoPath.replace(/-screen\.mp4$/, '.mp4');
+  try {
+    fs.writeFileSync(audioPath, Buffer.from(audio.data));
+    const skewMs = videoEpoch ? audio.startedAt - videoEpoch : 0;
+    const args = ['-y', '-hide_banner', '-loglevel', 'error'];
+    if (skewMs < -20) args.push('-ss', (Math.abs(skewMs) / 1000).toFixed(3));
+    args.push('-i', audioPath, '-i', videoPath);
+    if (skewMs > 20) args.push('-af', 'adelay=' + Math.round(skewMs) + ':all=1');
+    args.push('-map', '1:v:0', '-map', '0:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k',
+      '-movflags', '+faststart', outPath);
+    execFileSync(ffmpegBin(), args, { stdio: 'ignore' });
+    console.log('[main] finalize(native): muxed renderer audio, skew ' + Math.round(skewMs) + 'ms');
+    fs.rmSync(videoPath, { force: true });
+    fs.rmSync(audioPath, { force: true });
+    return outPath;
+  } catch (err) {
+    console.warn('[main] finalize(native) mux failed; keeping silent video', err);
+    try { fs.rmSync(audioPath, { force: true }); } catch { /* ignore */ }
+    return videoPath;
+  }
+}
+
 ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; withMic: boolean }) => {
-  if (process.platform !== 'linux') return { ok: false, width: 0, height: 0 };
+  if (process.platform !== 'linux') {
+    try { nativeProc?.kill('SIGKILL'); } catch { /* ignore */ }
+    nativeProc = null;
+    nativeVideoPath = null;
+    captureVideoEpoch = null;
+
+    const disp = recordedDisplay ?? screen.getPrimaryDisplay();
+    const scale = disp.scaleFactor || 1;
+    const box = {
+      w: Math.round(disp.bounds.width * scale),
+      h: Math.round(disp.bounds.height * scale),
+      x: Math.round(disp.bounds.x * scale),
+      y: Math.round(disp.bounds.y * scale)
+    };
+    ffDims = { width: box.w, height: box.h };
+    const index = Math.max(0, screen.getAllDisplays().findIndex((d) => d.id === disp.id));
+
+    ffStartedAt = Date.now();
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    if (await tryStartNativeCapture(box, index, ts)) {
+      // ffmpeg has no route to system audio on these platforms, so the renderer
+      // records it and hands it to ffcap:stop for muxing.
+      return { ok: true, width: ffDims.width, height: ffDims.height, audioFromRenderer: true };
+    }
+    captureVideoEpoch = null;
+    return { ok: false, width: 0, height: 0 };
+  }
   try { pwProc?.kill('SIGKILL'); } catch { /* ignore */ }
   try { pwAudioProc?.kill('SIGKILL'); } catch { /* ignore */ }
   pwProc = null;
@@ -1045,7 +1253,32 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
   return { ok: false, width: 0, height: 0 };
 });
 
-ipcMain.handle('ffcap:stop', async () => {
+ipcMain.handle('ffcap:stop', async (_evt, audio?: { data: ArrayBuffer; startedAt: number }) => {
+  if (nativeProc && nativeVideoPath) {
+    const durationMs = Date.now() - ffStartedAt;
+    const proc = nativeProc;
+    const videoPath = nativeVideoPath;
+    const videoEpoch = captureVideoEpoch;
+    nativeProc = null;
+    nativeVideoPath = null;
+    captureVideoEpoch = null;
+
+    // 'q' on stdin makes ffmpeg finalize the container. A killed ffmpeg leaves
+    // an mp4 with no moov atom — an unplayable file — so ask nicely first and
+    // escalate on a timer, bounded so a wedged encoder can't hang the HUD.
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      proc.once('exit', finish);
+      try { proc.stdin?.write('q'); } catch { /* ignore */ }
+      setTimeout(() => { try { proc.kill('SIGINT'); } catch { /* ignore */ } }, 2000);
+      setTimeout(() => { try { proc.kill('SIGKILL'); } catch { /* ignore */ } }, 6000);
+      setTimeout(finish, 7000);
+    });
+
+    const out = muxNativeAudio(videoPath, audio, videoEpoch);
+    return { filePath: out, width: ffDims.width, height: ffDims.height, durationMs };
+  }
   if (!pwProc || !pwVideoPath) return null;
   const durationMs = Date.now() - ffStartedAt;
   const vproc = pwProc;

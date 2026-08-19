@@ -114,29 +114,121 @@ async function openWebcam(
   }
 }
 
+// Audio for the native cursor-free capture paths (Windows/macOS). ffmpeg has
+// no route to system audio there — Windows exposes no loopback device — so
+// Chromium sources it and we mux it onto the video at stop.
+//
+// The catch: a desktop AUDIO track only exists as part of a desktop capture
+// SESSION, and stopping the session's video track ends the audio track with it
+// (measured: readyState flips to "ended"). Asking for audio with `video: false`
+// is worse — Chromium kills the renderer for a bad IPC message. So we keep a
+// deliberately microscopic 2x2@1fps video track alive purely to hold the
+// session open, and never encode it.
+async function openHelperAudio(
+  opts: RecordingOptions
+): Promise<{ recorder: MediaRecorder; chunks: BlobPart[]; stop: () => void; startedAt: number } | null> {
+  const owned: MediaStream[] = [];
+  try {
+    const tracks: MediaStreamTrack[] = [];
+    if (opts.withSystemAudio) {
+      const keepAlive = await navigator.mediaDevices.getUserMedia({
+        audio: { mandatory: { chromeMediaSource: 'desktop' } },
+        video: {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: opts.sourceId,
+            maxWidth: 2,
+            maxHeight: 2,
+            maxFrameRate: 1
+          }
+        }
+      } as unknown as MediaStreamConstraints);
+      owned.push(keepAlive);
+      tracks.push(...keepAlive.getAudioTracks());
+    }
+    if (opts.withMic) {
+      const mic = await navigator.mediaDevices.getUserMedia({
+        audio: opts.micDeviceId ? { deviceId: { exact: opts.micDeviceId } } : true,
+        video: false
+      });
+      owned.push(mic);
+      tracks.push(...mic.getAudioTracks());
+    }
+    if (tracks.length === 0) {
+      owned.forEach((s) => s.getTracks().forEach((t) => t.stop()));
+      return null;
+    }
+
+    const ctx = new AudioContext();
+    const dest = ctx.createMediaStreamDestination();
+    tracks.forEach((t) => ctx.createMediaStreamSource(new MediaStream([t])).connect(dest));
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : 'audio/webm';
+    const recorder = new MediaRecorder(dest.stream, { mimeType });
+    const chunks: BlobPart[] = [];
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+    return {
+      recorder,
+      chunks,
+      startedAt: 0,
+      stop: () => {
+        owned.forEach((s) => s.getTracks().forEach((t) => t.stop()));
+        ctx.close().catch(() => { /* ignore */ });
+      }
+    };
+  } catch (err) {
+    console.warn('[recording] helper audio unavailable; recording will be silent', err);
+    owned.forEach((s) => s.getTracks().forEach((t) => t.stop()));
+    return null;
+  }
+}
+
 // Cursor-hidden capture path (Linux): the screen (+ system/mic audio) is
 // captured by the PipeWire ScreenCast helper in the main process with the OS
 // cursor omitted; only the webcam is recorded here in the renderer. See
 // electron/main.ts ffcap:start.
 async function startHelperRecording(
   opts: RecordingOptions,
-  started: { width: number; height: number }
+  started: { width: number; height: number; audioFromRenderer?: boolean }
 ): Promise<RecordingHandle> {
   const mimeType = pickMime();
   const cam = opts.withCam ? await openWebcam(opts, mimeType) : null;
+  // On Linux the helper captures audio itself; on Windows/macOS it can't, so we
+  // do it here (see openHelperAudio) and hand the result to ffcapStop.
+  const audio =
+    started.audioFromRenderer && (opts.withSystemAudio || opts.withMic)
+      ? await openHelperAudio(opts)
+      : null;
   const startedAt = Date.now();
   cam?.recorder.start(1000);
+  if (audio) {
+    audio.recorder.start(1000);
+    audio.startedAt = Date.now();
+  }
 
   return {
     async stop() {
       const stoppedCam = cam
         ? new Promise<void>((resolve) => { cam.recorder.onstop = () => resolve(); })
         : Promise.resolve();
+      const stoppedAudio = audio
+        ? new Promise<void>((resolve) => { audio.recorder.onstop = () => resolve(); })
+        : Promise.resolve();
       cam?.recorder.stop();
-      await stoppedCam;
+      audio?.recorder.stop();
+      await Promise.all([stoppedCam, stoppedAudio]);
       if (cam?.owns) cam.stream.getTracks().forEach((t) => t.stop());
+      audio?.stop();
 
-      const ff = await window.api.ffcapStop();
+      const audioPayload =
+        audio && audio.chunks.length > 0
+          ? {
+              data: await new Blob(audio.chunks, { type: 'audio/webm' }).arrayBuffer(),
+              startedAt: audio.startedAt
+            }
+          : undefined;
+      const ff = await window.api.ffcapStop(audioPayload);
       const durationMs = ff?.durationMs ?? Date.now() - startedAt;
       const rawWebcamBlob = cam && cam.chunks.length > 0 ? new Blob(cam.chunks, { type: mimeType }) : undefined;
       const webcamBlob = rawWebcamBlob ? await repairWebmDuration(rawWebcamBlob, durationMs) : undefined;
@@ -154,11 +246,14 @@ async function startHelperRecording(
 }
 
 export async function startRecording(opts: RecordingOptions): Promise<RecordingHandle> {
-  // Linux + "Hide cursor": capture the screen via a PipeWire ScreenCast in the
-  // main process — the only reliable way to omit the OS cursor on X11
-  // (Chromium's getDisplayMedia cursor:'never' is silently ignored there). If
-  // no ScreenCast is available, fall through to the normal path.
-  if (opts.hideCursor && window.api.platform === 'linux') {
+  // "Hide cursor": capture the screen OUTSIDE Chromium, in the main process.
+  // That is the only way to omit the OS pointer on any platform — Chromium
+  // removed the getDisplayMedia `cursor` constraint, so it accepts
+  // cursor:'never', ignores it, and bakes the pointer into every frame. Linux
+  // uses a PipeWire ScreenCast, Windows ffmpeg's ddagrab/gdigrab, macOS
+  // avfoundation. If none is available we fall through to the normal path and
+  // the recording simply keeps its cursor.
+  if (opts.hideCursor) {
     try {
       await window.api.setPendingCaptureSource(opts.sourceId);
       const started = await window.api.ffcapStart({

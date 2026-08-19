@@ -305,12 +305,12 @@ export function HudApp() {
     window.api.setRecordingState(false);
 
     const webcamBuf = result.webcamBlob ? await result.webcamBlob.arrayBuffer() : undefined;
-    // Was the OS cursor actually omitted from the video? On Linux that's true
-    // only when the PipeWire path ran (screenFilePath set) — a fallback to the
-    // Chromium path leaves the cursor baked in. Elsewhere getDisplayMedia
-    // cursor:'never' works, so the toggle reflects reality. Drives the editor's
-    // auto-enable of the synthetic Smooth cursor.
-    const cursorHidden = !!result.screenFilePath || (hideCursor && window.api.platform !== 'linux');
+    // Was the OS cursor actually omitted? Only ever true when the main-process
+    // capture helper ran, on any platform — a fallback to Chromium's capture
+    // always leaves the pointer baked in, because getDisplayMedia has no way to
+    // drop it. Claiming otherwise makes the editor auto-enable the synthetic
+    // Smooth cursor ON TOP of a real one, so the export gets two cursors.
+    const cursorHidden = !!result.screenFilePath;
     const saveMeta = {
       durationMs: result.durationMs,
       width: result.width,
