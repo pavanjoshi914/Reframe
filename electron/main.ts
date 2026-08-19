@@ -16,6 +16,20 @@ protocol.registerSchemesAsPrivileged([
   }
 ]);
 
+// Windows-only: force Chromium to capture the screen through Windows.Graphics
+// .Capture (WGC). WGC is the one Windows backend that honors getDisplayMedia's
+// `cursor: 'never'`; the default GDI/DXGI capturer bakes the OS cursor into the
+// frames, which is why "Hide cursor" recordings still showed it on Windows.
+// These are Windows-only Chromium features, so this is a no-op on macOS and
+// Linux — their capture paths (getDisplayMedia / the PipeWire helper) are
+// untouched. Must be set before app `ready`.
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch(
+    'enable-features',
+    'AllowWgcScreenCapturer,AllowWgcWindowCapturer,AllowWgcDesktopCapturer'
+  );
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Force a single canonical name so `app.getPath('userData')` resolves to the
