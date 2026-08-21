@@ -37,11 +37,22 @@ function DownloadCard({
   subtitle: string;
 }) {
   const meta = [target.filename, target.sizeMb ? `${target.sizeMb} MB` : null].filter(Boolean).join(' · ');
+  // The asset lives on github.com (cross-origin), so the `download` attribute is
+  // ignored and the click navigates away — which aborts the analytics beacon
+  // before it sends. Fire the event, then start the download a beat later so it
+  // flushes first. 200ms is imperceptible and reliable.
+  const onDownload = (e: React.MouseEvent) => {
+    if (!target.direct) return; // fallback link (releases page) — let it navigate
+    e.preventDefault();
+    track('download', { platform: target.id, file: target.filename ?? target.id });
+    setTimeout(() => {
+      window.location.href = target.url;
+    }, 200);
+  };
   return (
     <a
       href={target.url}
-      download
-      onClick={() => track('download', { platform: target.id, file: target.filename ?? target.id })}
+      onClick={onDownload}
       className="group flex items-center justify-between gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3.5 transition hover:border-brand-400 hover:bg-brand-50/50 dark:border-white/10 dark:bg-white/[0.02] dark:hover:border-brand-500/50 dark:hover:bg-white/5"
     >
       <span className="min-w-0">

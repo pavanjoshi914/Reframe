@@ -66,15 +66,25 @@ export function DownloadButton({ targets, className = '' }: Props) {
   const href = direct?.url ?? '/download';
   const Icon = choice.mac ? AppleIcon : choice.kind === 'direct' ? WindowsIcon : DownloadIcon;
 
-  const onClick = () =>
-    direct
-      ? track('download', { platform: direct.id, file: direct.filename ?? direct.id, source: 'hero' })
-      : track('download_page', { source: 'hero' });
+  // For a direct (cross-origin) download, fire the event then defer the
+  // navigation so the analytics beacon isn't aborted by the page leaving. For
+  // the /download redirect, a normal client nav keeps the page alive long
+  // enough, so just track and let it proceed.
+  const onClick = (e: React.MouseEvent) => {
+    if (direct) {
+      e.preventDefault();
+      track('download', { platform: direct.id, file: direct.filename ?? direct.id, source: 'hero' });
+      setTimeout(() => {
+        window.location.href = direct.url;
+      }, 200);
+    } else {
+      track('download_page', { source: 'hero' });
+    }
+  };
 
   return (
     <a
       href={href}
-      {...(direct ? { download: '' } : {})}
       onClick={onClick}
       className={`btn-primary ${className}`}
     >
