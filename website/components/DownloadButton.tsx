@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { track } from '@vercel/analytics';
 import type { DownloadTarget, PlatformId } from '@/lib/github';
 import { AppleIcon, DownloadIcon, WindowsIcon } from './Icons';
 
@@ -65,10 +66,16 @@ export function DownloadButton({ targets, className = '' }: Props) {
   const href = direct?.url ?? '/download';
   const Icon = choice.mac ? AppleIcon : choice.kind === 'direct' ? WindowsIcon : DownloadIcon;
 
+  const onClick = () =>
+    direct
+      ? track('download', { platform: direct.id, file: direct.filename ?? direct.id, source: 'hero' })
+      : track('download_page', { source: 'hero' });
+
   return (
     <a
       href={href}
       {...(direct ? { download: '' } : {})}
+      onClick={onClick}
       className={`btn-primary ${className}`}
     >
       <Icon className="h-5 w-5" />

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { track } from '@vercel/analytics';
 import type { DownloadTarget, PlatformId } from '@/lib/github';
 import { AppleIcon, ArrowRightIcon, LinuxIcon, WindowsIcon } from './Icons';
 import { CopyField } from './CopyField';
@@ -40,6 +41,7 @@ function DownloadCard({
     <a
       href={target.url}
       download
+      onClick={() => track('download', { platform: target.id, file: target.filename ?? target.id })}
       className="group flex items-center justify-between gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3.5 transition hover:border-brand-400 hover:bg-brand-50/50 dark:border-white/10 dark:bg-white/[0.02] dark:hover:border-brand-500/50 dark:hover:bg-white/5"
     >
       <span className="min-w-0">
