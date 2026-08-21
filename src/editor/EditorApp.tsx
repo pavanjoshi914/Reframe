@@ -467,7 +467,9 @@ function MenuItem({
   items: { label: string; onClick: () => void; shortcut?: string }[];
 }) {
   return (
-    <details className="relative">
+    // Shared `name` makes these an exclusive accordion: opening one menu closes
+    // the others, so the File/Edit/View dropdowns can't stack and overlap.
+    <details name="editor-menu" className="relative">
       <summary className="cursor-pointer list-none select-none text-white/60 hover:text-white">{label}</summary>
       <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-md border border-white/10 bg-[#16181d] p-1 shadow-2xl">
         {items.map((it) => (
