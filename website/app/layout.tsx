@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Analytics } from '@vercel/analytics/next';
+import Script from 'next/script';
 import './globals.css';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -79,9 +79,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Header />
         <main id="main">{children}</main>
         <Footer />
-        {/* Cookieless page-view / visit tracking + auto country/device/OS/referrer.
-            Custom download events are fired from the download buttons. */}
-        <Analytics />
+        {/* Umami — cookieless, GDPR-friendly analytics (no consent banner needed).
+            Page views + country/device/OS are automatic; download-button clicks
+            are sent as custom events via window.umami.track() (a free feature,
+            unlike Vercel where it's paywalled). */}
+        <Script
+          src="https://cloud.umami.is/script.js"
+          data-website-id="8d22c643-005e-44a7-b079-c34406cbe3e6"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );

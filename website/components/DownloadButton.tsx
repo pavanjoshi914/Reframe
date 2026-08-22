@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { track } from '@vercel/analytics';
+import { trackEvent } from '@/lib/analytics';
 import type { DownloadTarget, PlatformId } from '@/lib/github';
 import { AppleIcon, DownloadIcon, WindowsIcon } from './Icons';
 
@@ -73,12 +73,12 @@ export function DownloadButton({ targets, className = '' }: Props) {
   const onClick = (e: React.MouseEvent) => {
     if (direct) {
       e.preventDefault();
-      track('download', { platform: direct.id, file: direct.filename ?? direct.id, source: 'hero' });
+      trackEvent('download', { platform: direct.id, file: direct.filename ?? direct.id, source: 'hero' });
       setTimeout(() => {
         window.location.href = direct.url;
       }, 200);
     } else {
-      track('download_page', { source: 'hero' });
+      trackEvent('download_page', { source: 'hero' });
     }
   };
 
