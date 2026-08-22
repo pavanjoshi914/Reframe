@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { trackEvent } from '@/lib/analytics';
+import { trackDownload } from '@/lib/analytics';
 import type { DownloadTarget, PlatformId } from '@/lib/github';
 import { AppleIcon, ArrowRightIcon, LinuxIcon, WindowsIcon } from './Icons';
 import { CopyField } from './CopyField';
@@ -44,7 +44,7 @@ function DownloadCard({
   const onDownload = (e: React.MouseEvent) => {
     if (!target.direct) return; // fallback link (releases page) — let it navigate
     e.preventDefault();
-    trackEvent('download', { platform: target.id, file: target.filename ?? target.id });
+    trackDownload(target.id, { file: target.filename ?? target.id, source: 'download-page' });
     setTimeout(() => {
       window.location.href = target.url;
     }, 200);
