@@ -1490,17 +1490,67 @@ function drawCoverWithCrop(
   ctx.drawImage(src, sx, sy, sWidth, sHeight, dx, dy, dw, dh);
 }
 
+// CSS "to <side>" direction keywords → the angle CSS defines for them.
+const GRADIENT_DIRECTIONS: Record<string, number> = {
+  'to top': 0, 'to right': 90, 'to bottom': 180, 'to left': 270,
+  'to top right': 45, 'to right top': 45, 'to bottom right': 135, 'to right bottom': 135,
+  'to bottom left': 225, 'to left bottom': 225, 'to top left': 315, 'to left top': 315
+};
+
+// Turn a CSS linear-gradient() string into a CanvasGradient. Handles what CSS
+// actually produces — an angle in deg, a "to <side>" keyword, or no direction
+// (= 180deg) — and color stops with or without a "<pct>%" position. Stops
+// without a position are spread evenly between their positioned neighbours
+// (the CSS rule), so `#a,#b 21%,#c` and plain `#a,#b,#c` both render right.
+// Canvas' addColorStop() rejects anything but a bare color, so the position
+// must be split off before it gets there — feeding it "#ff8c7f 21%" throws
+// and took the whole export down.
 function parseLinearGradient(
   ctx: CanvasRenderingContext2D,
   css: string,
   w: number,
   h: number
 ): CanvasGradient | null {
-  const m = css.match(/^linear-gradient\(\s*(?:(\-?\d+(?:\.\d+)?)deg\s*,)?\s*(.+)\)$/i);
+  const m = css.match(/^linear-gradient\(\s*(.+)\)$/i);
   if (!m) return null;
-  const deg = m[1] != null ? Number(m[1]) : 180;
-  const stopsRaw = m[2].split(/,(?![^()]*\))/).map((s) => s.trim()).filter(Boolean);
-  if (stopsRaw.length < 2) return null;
+  const parts = m[1].split(/,(?![^()]*\))/).map((s) => s.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+
+  // Optional leading direction: "NNdeg" or "to <side>".
+  let deg = 180;
+  const first = parts[0].toLowerCase();
+  const degMatch = first.match(/^(-?\d+(?:\.\d+)?)deg$/);
+  if (degMatch) {
+    deg = Number(degMatch[1]);
+    parts.shift();
+  } else if (first in GRADIENT_DIRECTIONS) {
+    deg = GRADIENT_DIRECTIONS[first];
+    parts.shift();
+  }
+  if (parts.length < 2) return null;
+
+  // Split "<color> [<pct>%]" into color + optional 0..1 offset.
+  const stops = parts.map((p) => {
+    const sm = p.match(/^(.*?)\s+(-?\d+(?:\.\d+)?)%$/);
+    return sm
+      ? { color: sm[1].trim(), pos: Math.max(0, Math.min(1, Number(sm[2]) / 100)) as number | null }
+      : { color: p, pos: null as number | null };
+  });
+  // CSS: first/last default to 0/1; unpositioned runs interpolate between the
+  // nearest positioned neighbours; positions never decrease.
+  if (stops[0].pos == null) stops[0].pos = 0;
+  if (stops[stops.length - 1].pos == null) stops[stops.length - 1].pos = 1;
+  for (let i = 1; i < stops.length; i++) {
+    if (stops[i].pos == null) {
+      let j = i + 1;
+      while (stops[j].pos == null) j++;
+      const a = stops[i - 1].pos as number, b = stops[j].pos as number, n = j - i + 1;
+      for (let k = i; k < j; k++) stops[k].pos = a + ((b - a) * (k - i + 1)) / n;
+      i = j;
+    }
+    if ((stops[i].pos as number) < (stops[i - 1].pos as number)) stops[i].pos = stops[i - 1].pos;
+  }
+
   const rad = ((deg - 90) * Math.PI) / 180;
   const cx = w / 2;
   const cy = h / 2;
@@ -1510,6 +1560,8 @@ function parseLinearGradient(
   const x2 = cx + Math.cos(rad) * len;
   const y2 = cy + Math.sin(rad) * len;
   const grad = ctx.createLinearGradient(x1, y1, x2, y2);
-  stopsRaw.forEach((c, i) => grad.addColorStop(i / (stopsRaw.length - 1), c));
+  for (const s of stops) {
+    try { grad.addColorStop(s.pos as number, s.color); } catch { /* skip an unparsable color, never crash */ }
+  }
   return grad;
 }
