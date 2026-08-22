@@ -1499,6 +1499,15 @@ ipcMain.handle('export:save', async (evt, req: { defaultName: string; data: Arra
   const win = BrowserWindow.fromWebContents(evt.sender) ?? editorWindow ?? undefined;
   const ext = req.format;
   const safeName = req.defaultName.replace(/[^a-z0-9._-]+/gi, '-') + '.' + ext;
+  // Dev/automation escape hatch: write straight to a given path instead of
+  // opening the native Save dialog (which can't be driven headlessly). Only
+  // active when the env var is set, so real users always get the dialog.
+  const forcedPath = process.env.REFRAME_EXPORT_PATH;
+  if (forcedPath) {
+    fs.mkdirSync(path.dirname(forcedPath), { recursive: true });
+    fs.writeFileSync(forcedPath, Buffer.from(req.data));
+    return { saved: true, path: forcedPath };
+  }
   const res = await dialog.showSaveDialog(win!, {
     title: 'Export Video',
     defaultPath: path.join(exportsDir, safeName),
@@ -1644,6 +1653,25 @@ app.whenReady().then(async () => {
   // background check stays silent unless there's a new version; the tray's
   // "Check for Updates…" runs the same thing but always reports back.
   setTimeout(() => checkForUpdates(currentWindow, false), 5000);
+
+  // Dev/automation escape hatch: open a given .reframe.json straight into the
+  // editor on launch, bypassing the "Open Project" file picker (which can't be
+  // driven headlessly). Reuses the exact same park-then-hydrate path the picker
+  // uses, so the editor restores state, video, webcam and cursor sidecar
+  // identically. Only active when the env var is set.
+  const openProject = process.env.REFRAME_OPEN_PROJECT;
+  if (openProject) {
+    try {
+      const project = JSON.parse(fs.readFileSync(openProject, 'utf-8'));
+      if (project?.recording) {
+        lastRecording = project.recording;
+        lastLoadedProject = { state: project.state, path: openProject, recording: project.recording };
+        createEditor(project.recording);
+      }
+    } catch (err) {
+      console.warn('[main] REFRAME_OPEN_PROJECT failed', err);
+    }
+  }
 });
 
 async function sweepOrphanRecordings() {
