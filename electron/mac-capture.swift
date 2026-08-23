@@ -87,7 +87,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
         cfg.minimumFrameInterval = CMTime(value: 1, timescale: fps)
         cfg.queueDepth = 5
         cfg.pixelFormat = kCVPixelFormatType_32BGRA
-        cfg.capturesAudio = false // system audio is recorded by the renderer, like Windows
+        // (No capturesAudio here: it's macOS 13+ and defaults to false anyway;
+        //  system audio is recorded by the renderer, like Windows.)
 
         // Writer: H.264 MP4, keyframe every second (instant editor scrubbing,
         // same reasoning as the Linux/Windows paths), no B-frames-induced lag.
