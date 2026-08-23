@@ -121,10 +121,17 @@ export type Api = {
   // Returns the loaded project plus the on-disk path so the editor knows where
   // to continue auto-saving to. `_path` is added by main, not stored in the file.
   loadProject: () => Promise<(ProjectFile & { _path: string }) | null>;
-  // Auto-save helpers — initialPath generates the unique "Untitled-<ts>.reframe.json"
-  // path the moment a recording loads; autoSaveProject writes to that path
-  // silently (no dialog) on every state change.
-  initialProjectPath: (startedAt: number) => Promise<string>;
+  // Auto-save helpers. autoSaveProject writes to the known path silently (no
+  // dialog) on every state change.
+  // One project file per recording, forever. findProjectForRecording returns
+  // the existing project for a recording (or null); initialProjectPath is the
+  // deterministic path to create one at — derived from the recording's own
+  // filename, so reopening the same recording never forks a new project.
+  findProjectForRecording: (recordingPath: string) => Promise<string | null>;
+  // Silently read a project by path (no dialog) — how the editor reopens the
+  // existing project for a recording.
+  loadProjectAt: (filePath: string) => Promise<(ProjectFile & { _path: string }) | null>;
+  initialProjectPath: (recordingPath: string) => Promise<string>;
   autoSaveProject: (filePath: string, project: ProjectFile) => Promise<{ saved: boolean; path?: string }>;
   // Open the .reframe.json picker dialog (defaults to Projects folder) and,
   // on selection, route the project into the editor (creating one if needed).

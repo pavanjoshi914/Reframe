@@ -65,17 +65,29 @@ export function EditorApp() {
       if (rec.hideCursor) useEditor.getState().setCursorFx({ enabled: true });
       void loadCursor(rec);
 
-      // Initial project file for a freshly-captured recording.
-      const projectPath = await window.api.initialProjectPath(rec.startedAt);
+      // ONE project file per recording, forever. If this recording already has
+      // a project, reopen THAT one — with all its saved edits — instead of
+      // spawning a fresh blank "Untitled-…" (which is what used to happen on
+      // every open, forking 18 files for one recording and hiding the user's
+      // earlier work behind an empty project).
+      const existing = await window.api.findProjectForRecording(rec.filePath);
+      if (cancelled) return;
+      if (existing) {
+        const loaded = await window.api.loadProjectAt(existing);
+        if (cancelled) return;
+        if (loaded) {
+          useEditor.getState().hydrate(loaded.state as SerializedProject);
+          useEditor.getState().setCurrentProjectPath(existing);
+          return; // auto-save keeps writing to this same file
+        }
+      }
+      // No project yet: point auto-save at the deterministic path for this
+      // recording but DON'T write anything now. The file is created lazily by
+      // the first real edit (see the auto-save subscription), so merely opening
+      // a recording doesn't leave an empty project behind.
+      const projectPath = await window.api.initialProjectPath(rec.filePath);
       if (cancelled) return;
       useEditor.getState().setCurrentProjectPath(projectPath);
-      const initialProject: ProjectFile = {
-        version: 1,
-        recording: rec,
-        state: useEditor.getState().serialize()
-      };
-      const res = await window.api.autoSaveProject(projectPath, initialProject);
-      if (res.saved) useEditor.getState().setLastSavedAt(Date.now());
     }
 
     async function hydrateForProject(p: { state: unknown; path: string; recording: import('@shared/ipc').RecordingMeta }) {
@@ -120,10 +132,20 @@ export function EditorApp() {
   useEffect(() => {
     let timer: number | null = null;
     let lastJson = '';
+    let lastPath: string | null = null;
     const unsubscribe = useEditor.subscribe((s) => {
       const projectPath = s.currentProjectPath;
       const recording = s.recording;
       if (!projectPath || !recording) return;
+      // A (re)pointed project path means "this is the baseline" — seed lastJson
+      // with the state as loaded/initialised so NO write happens until the user
+      // actually changes something. This is what makes project creation lazy:
+      // opening a recording and closing it leaves no file behind.
+      if (projectPath !== lastPath) {
+        lastPath = projectPath;
+        lastJson = JSON.stringify({ version: 1, recording, state: useEditor.getState().serialize() });
+        return;
+      }
       if (timer) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         const project: ProjectFile = {

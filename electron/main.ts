@@ -1379,10 +1379,47 @@ ipcMain.handle('cursor:load', async (_evt, filePath: string) => {
 // by the editor the moment a recording loads, so a project file exists from
 // the very first state change. The name is based on the recording's
 // startedAt timestamp so it's stable across the session.
-ipcMain.handle('project:initialPath', (_evt, startedAt: number) => {
-  const ts = new Date(startedAt).toISOString().replace(/[:.]/g, '-');
-  return path.join(projectsDir, `Untitled-${ts}.reframe.json`);
+// The project file for a recording. ONE file per recording, forever: the
+// name is derived from the recording's own filename (not from a timestamp of
+// when it was opened), so reopening the same recording always resolves to the
+// same project. A fresh capture like "2026-08-22T14-39-38-907Z-screen.mp4"
+// becomes "2026-08-22T14-39-38-907Z-screen.reframe.json".
+function projectPathForRecording(recordingPath: string): string {
+  const base = path.basename(recordingPath).replace(/\.[^.]+$/, '');
+  return path.join(projectsDir, `${base}.reframe.json`);
+}
+
+// Find an EXISTING project that references this recording. Checks the
+// deterministic name first, then scans every project (older files were named
+// "Untitled-<ts>" and there may be several for one recording — we pick the
+// most recently modified, i.e. the one with the latest edits). Returns the
+// path, or null if no project has ever been saved for this recording.
+ipcMain.handle('project:findForRecording', async (_evt, recordingPath: string) => {
+  const want = path.resolve(recordingPath);
+  const direct = projectPathForRecording(recordingPath);
+  if (fs.existsSync(direct)) return direct;
+  let best: { p: string; mtime: number } | null = null;
+  try {
+    for (const f of await fs.promises.readdir(projectsDir)) {
+      if (!f.endsWith('.reframe.json')) continue;
+      const full = path.join(projectsDir, f);
+      try {
+        const parsed = JSON.parse(await fs.promises.readFile(full, 'utf-8'));
+        const rp = parsed?.recording?.filePath;
+        if (rp && path.resolve(rp) === want) {
+          const mtime = (await fs.promises.stat(full)).mtimeMs;
+          if (!best || mtime > best.mtime) best = { p: full, mtime };
+        }
+      } catch { /* malformed — skip */ }
+    }
+  } catch { /* no projects dir yet */ }
+  return best?.p ?? null;
 });
+
+// The path a NEW project for this recording should be created at (used only
+// when findForRecording found nothing). Kept as an IPC so the renderer never
+// constructs filesystem paths itself.
+ipcMain.handle('project:initialPath', (_evt, recordingPath: string) => projectPathForRecording(recordingPath));
 
 // Silent auto-save (no dialog) to a previously-known path. The editor calls
 // this on every state change, debounced.
@@ -1411,6 +1448,20 @@ ipcMain.handle('project:save', async (evt, project) => {
   if (res.canceled || !res.filePath) return { saved: false };
   fs.writeFileSync(res.filePath, JSON.stringify(project, null, 2));
   return { saved: true, path: res.filePath };
+});
+
+// Read a project file by path, silently (no dialog). Used by the editor to
+// reopen the existing project for a recording. Fenced to the projects dir.
+ipcMain.handle('project:loadAt', async (_evt, filePath: string) => {
+  try {
+    const resolved = path.resolve(filePath);
+    if (!projectsDir || !resolved.startsWith(projectsDir + path.sep)) return null;
+    const project = JSON.parse(await fs.promises.readFile(resolved, 'utf-8'));
+    if (!project?.recording) return null;
+    return { ...project, _path: resolved };
+  } catch {
+    return null;
+  }
 });
 
 ipcMain.handle('project:load', async (evt) => {
@@ -1661,6 +1712,7 @@ app.whenReady().then(async () => {
   // (a) crash during a recording session (project file never got auto-saved),
   // (b) user manually deleted a project from their file manager.
   await sweepOrphanRecordings();
+  await sweepOrphanProjects();
 
   // Convenience global stop shortcut — works from any focused window.
   globalShortcut.register('CommandOrControl+Shift+0', () => {
@@ -1700,6 +1752,34 @@ app.whenReady().then(async () => {
     }
   }
 });
+
+// The mirror of sweepOrphanRecordings: a project whose recording no longer
+// exists can never be opened (the editor needs the video), so it's dead weight
+// in the Projects folder. Remove those. Never touches a project whose
+// recording is present — that's user data.
+async function sweepOrphanProjects() {
+  try {
+    let deleted = 0;
+    for (const f of await fs.promises.readdir(projectsDir)) {
+      if (!f.endsWith('.reframe.json')) continue;
+      const full = path.join(projectsDir, f);
+      try {
+        const parsed = JSON.parse(await fs.promises.readFile(full, 'utf-8'));
+        const rp = parsed?.recording?.filePath;
+        // Only act on a well-formed project that names a recording which is gone.
+        if (typeof rp === 'string' && rp && !fs.existsSync(rp)) {
+          await fs.promises.rm(full, { force: true });
+          deleted++;
+        }
+      } catch {
+        // Malformed — leave it; not ours to judge on a parse error.
+      }
+    }
+    if (deleted) console.log(`[main] sweep: removed ${deleted} project(s) whose recording is gone`);
+  } catch {
+    // Best-effort.
+  }
+}
 
 async function sweepOrphanRecordings() {
   try {
