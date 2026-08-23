@@ -73,3 +73,20 @@ contextBridge.exposeInMainWorld('apiEvents', {
     return () => ipcRenderer.off('project:opened', handler);
   }
 });
+
+// The update window (update.html): main pushes `update:info` with the current
+// state (available / downloading / ready / error) and the renderer sends back
+// the user's choice. Kept separate from `api` so the HUD/editor don't carry it.
+contextBridge.exposeInMainWorld('updateApi', {
+  ready: () => ipcRenderer.send('update:ready'),
+  onInfo: (cb: (info: unknown) => void) => {
+    const handler = (_e: unknown, info: unknown) => cb(info);
+    ipcRenderer.on('update:info', handler);
+    return () => ipcRenderer.off('update:info', handler);
+  },
+  download: () => ipcRenderer.send('update:download'),
+  install: () => ipcRenderer.send('update:install'),
+  openDownloadPage: () => ipcRenderer.send('update:openDownloadPage'),
+  openExternal: (url: string) => ipcRenderer.send('update:openExternal', url),
+  later: () => ipcRenderer.send('update:later')
+});

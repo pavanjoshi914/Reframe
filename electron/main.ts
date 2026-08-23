@@ -1674,10 +1674,12 @@ app.whenReady().then(async () => {
     if (BrowserWindow.getAllWindows().length === 0) createHud();
   });
 
-  // Check for updates a few seconds after launch, out of the startup path. The
-  // background check stays silent unless there's a new version; the tray's
-  // "Check for Updates…" runs the same thing but always reports back.
-  setTimeout(() => checkForUpdates(currentWindow, false), 5000);
+  // Check for updates right away so the "update available" window appears as
+  // the app opens, not several seconds in. It's a network call off the startup
+  // path, so it doesn't delay the HUD. The background check stays silent
+  // unless there's a new version; the tray's "Check for Updates…" runs the same
+  // thing but always reports back.
+  checkForUpdates(currentWindow, false);
 
   // Dev/automation escape hatch: open a given .reframe.json straight into the
   // editor on launch, bypassing the "Open Project" file picker (which can't be

@@ -51,7 +51,8 @@ export default defineConfig({
         hud: path.resolve(__dirname, 'hud.html'),
         picker: path.resolve(__dirname, 'picker.html'),
         editor: path.resolve(__dirname, 'editor.html'),
-        region: path.resolve(__dirname, 'region.html')
+        region: path.resolve(__dirname, 'region.html'),
+        update: path.resolve(__dirname, 'update.html')
       }
     }
   },
