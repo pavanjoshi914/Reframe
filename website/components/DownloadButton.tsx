@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { trackDownload, trackEvent } from '@/lib/analytics';
+import { trackEvent } from '@/lib/analytics';
 import type { DownloadTarget, PlatformId } from '@/lib/github';
 import { AppleIcon, DownloadIcon, WindowsIcon } from './Icons';
+import { InstallModal } from './InstallModal';
 
 type Props = {
   targets: Record<PlatformId, DownloadTarget>;
@@ -61,36 +62,38 @@ export function DownloadButton({ targets, className = '' }: Props) {
   // flickers a wrong-platform label mid-hydration.
   const [choice, setChoice] = useState<Choice>(NEUTRAL);
   useEffect(() => setChoice(detect()), []);
+  // Install instructions modal for a direct download (the modal fires the
+  // actual download + analytics, so the steps can't be skipped past).
+  const [open, setOpen] = useState(false);
 
   const direct = choice.kind === 'direct' ? targets[choice.id] : null;
   const href = direct?.url ?? '/download';
   const Icon = choice.mac ? AppleIcon : choice.kind === 'direct' ? WindowsIcon : DownloadIcon;
 
-  // For a direct (cross-origin) download, fire the event then defer the
-  // navigation so the analytics beacon isn't aborted by the page leaving. For
-  // the /download redirect, a normal client nav keeps the page alive long
-  // enough, so just track and let it proceed.
+  // A direct (Windows/macOS) download opens the install-instructions modal
+  // first; the modal's primary button starts the download. The /download
+  // redirect is a normal client nav, so just track it and let it proceed.
   const onClick = (e: React.MouseEvent) => {
     if (direct) {
       e.preventDefault();
-      trackDownload(direct.id, { file: direct.filename ?? direct.id, source: 'hero' });
-      setTimeout(() => {
-        window.location.href = direct.url;
-      }, 200);
+      setOpen(true);
     } else {
       trackEvent('download_page', { source: 'hero' });
     }
   };
 
   return (
-    <a
-      href={href}
-      onClick={onClick}
-      className={`btn-primary ${className}`}
-    >
-      <Icon className="h-5 w-5" />
-      {choice.label}
-      {direct?.sizeMb ? <span className="font-normal text-white/70">· {direct.sizeMb} MB</span> : null}
-    </a>
+    <>
+      <a
+        href={href}
+        onClick={onClick}
+        className={`btn-primary ${className}`}
+      >
+        <Icon className="h-5 w-5" />
+        {choice.label}
+        {direct?.sizeMb ? <span className="font-normal text-white/70">· {direct.sizeMb} MB</span> : null}
+      </a>
+      {open && direct ? <InstallModal target={direct} source="hero" onClose={() => setOpen(false)} /> : null}
+    </>
   );
 }

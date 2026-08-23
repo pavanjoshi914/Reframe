@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { trackDownload } from '@/lib/analytics';
 import type { DownloadTarget, PlatformId } from '@/lib/github';
 import { AppleIcon, ArrowRightIcon, LinuxIcon, WindowsIcon } from './Icons';
 import { CopyField } from './CopyField';
+import { InstallModal } from './InstallModal';
 
 type Tab = 'linux' | 'windows' | 'macos';
 type Props = { targets: Record<PlatformId, DownloadTarget> };
@@ -26,28 +26,27 @@ function detectTab(): Tab {
   return 'linux';
 }
 
-/** A prominent, direct download button for one asset. */
+/**
+ * A prominent download button for one asset. Clicking opens the install
+ * instructions modal; the actual download (and its analytics event) fires from
+ * the modal's primary button, so the instructions can't be skipped past.
+ */
 function DownloadCard({
   target,
   title,
-  subtitle
+  subtitle,
+  onPick
 }: {
   target: DownloadTarget;
   title: string;
   subtitle: string;
+  onPick: (t: DownloadTarget) => void;
 }) {
   const meta = [target.filename, target.sizeMb ? `${target.sizeMb} MB` : null].filter(Boolean).join(' · ');
-  // The asset lives on github.com (cross-origin), so the `download` attribute is
-  // ignored and the click navigates away — which aborts the analytics beacon
-  // before it sends. Fire the event, then start the download a beat later so it
-  // flushes first. 200ms is imperceptible and reliable.
   const onDownload = (e: React.MouseEvent) => {
     if (!target.direct) return; // fallback link (releases page) — let it navigate
     e.preventDefault();
-    trackDownload(target.id, { file: target.filename ?? target.id, source: 'download-page' });
-    setTimeout(() => {
-      window.location.href = target.url;
-    }, 200);
+    onPick(target);
   };
   return (
     <a
@@ -91,6 +90,8 @@ function Section({ step, title, children }: { step: string; title: string; child
 export function DownloadTabs({ targets }: Props) {
   const [tab, setTab] = useState<Tab>('linux');
   useEffect(() => setTab(detectTab()), []);
+  // Which asset's install instructions are open (null = modal closed).
+  const [picked, setPicked] = useState<DownloadTarget | null>(null);
 
   const flatpakName = targets['linux-flatpak'].filename ?? 'Reframe-x86_64.flatpak';
   const debName = targets['linux-deb'].filename ?? 'reframe_amd64.deb';
@@ -122,7 +123,7 @@ export function DownloadTabs({ targets }: Props) {
         {tab === 'linux' && (
           <>
             <Section step="1" title="Ubuntu / Debian — .deb">
-              <DownloadCard
+              <DownloadCard onPick={setPicked}
                 target={targets['linux-deb']}
                 title="Debian package"
                 subtitle="Ubuntu, Debian and derivatives"
@@ -130,16 +131,10 @@ export function DownloadTabs({ targets }: Props) {
               <div className="mt-4">
                 <CopyField label="Then install with" value={`sudo apt install ./${debName}`} />
               </div>
-              <Note>
-                Use <strong>apt</strong>, not <code className="text-brand-600 dark:text-brand-300">sudo dpkg -i</code> —
-                dpkg alone won&rsquo;t install the recording dependencies (it stops with an error until you run{' '}
-                <code className="text-brand-600 dark:text-brand-300">sudo apt-get install -f</code>). Needs an internet
-                connection.
-              </Note>
             </Section>
 
             <Section step="2" title="Fedora, Arch, openSUSE — Flatpak">
-              <DownloadCard
+              <DownloadCard onPick={setPicked}
                 target={targets['linux-flatpak']}
                 title="Flatpak bundle"
                 subtitle="Any distro with Flatpak — fully self-contained"
@@ -147,18 +142,6 @@ export function DownloadTabs({ targets }: Props) {
               <div className="mt-4">
                 <CopyField label="Then install with" value={`flatpak install --user ${flatpakName}`} />
               </div>
-              <Note>
-                Self-contained — every feature works out of the box, with nothing else to install. Needs{' '}
-                <a
-                  href="https://flatpak.org/setup/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium text-brand-600 underline decoration-dotted underline-offset-4 dark:text-brand-300"
-                >
-                  Flatpak
-                </a>{' '}
-                set up on your system.
-              </Note>
             </Section>
 
             <Section step="3" title="Any distro — install script (last resort)">
@@ -181,11 +164,7 @@ export function DownloadTabs({ targets }: Props) {
         {/* ── WINDOWS ───────────────────────────────────────────────────── */}
         {tab === 'windows' && (
           <Section step="1" title="Windows 10 or later (64-bit)">
-            <DownloadCard target={targets['windows']} title="Windows installer" subtitle="One-click .exe setup" />
-            <Note>
-              Run the installer and follow the prompts. It isn&rsquo;t code-signed yet, so Windows SmartScreen may warn
-              you — click <strong>More info → Run anyway</strong>.
-            </Note>
+            <DownloadCard onPick={setPicked} target={targets['windows']} title="Windows installer" subtitle="One-click .exe setup" />
           </Section>
         )}
 
@@ -193,21 +172,17 @@ export function DownloadTabs({ targets }: Props) {
         {tab === 'macos' && (
           <Section step="1" title="macOS 12 Monterey or later">
             <div className="space-y-3">
-              <DownloadCard
+              <DownloadCard onPick={setPicked}
                 target={targets['mac-arm']}
                 title="Apple Silicon"
                 subtitle="M1 · M2 · M3 · M4"
               />
-              <DownloadCard target={targets['mac-intel']} title="Intel" subtitle="x86-64 Macs" />
+              <DownloadCard onPick={setPicked} target={targets['mac-intel']} title="Intel" subtitle="x86-64 Macs" />
             </div>
-            <Note>
-              Open the .dmg and drag Reframe to Applications. It isn&rsquo;t notarized yet, so on first launch{' '}
-              <strong>right-click the app → Open</strong>. If macOS says it&rsquo;s &ldquo;damaged&rdquo;, clear the
-              quarantine flag: <code className="text-brand-600 dark:text-brand-300">xattr -cr /Applications/Reframe.app</code>.
-            </Note>
           </Section>
         )}
       </div>
+      {picked ? <InstallModal target={picked} source="download-page" onClose={() => setPicked(null)} /> : null}
     </div>
   );
 }
