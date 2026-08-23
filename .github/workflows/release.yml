@@ -138,6 +138,16 @@ jobs:
           file electron/mac-capture
       - name: Package macOS app (${{ matrix.arch }})
         run: npm run package:mac -- --${{ matrix.arch }} --publish never
+      # Prove the SCK helper actually shipped inside the .app (not just compiled).
+      # A missing binary would silently fall back to the avfoundation path and
+      # the cursor bug would look unfixed. Fail the job loudly instead.
+      - name: Verify the capture helper is bundled in the .app
+        run: |
+          APP=$(find release/mac* -maxdepth 1 -name "*.app" | head -1)
+          echo "app bundle: $APP"
+          ls -la "$APP/Contents/Resources/" | head -20
+          test -x "$APP/Contents/Resources/mac-capture" || { echo "::error::mac-capture missing from Contents/Resources"; exit 1; }
+          file "$APP/Contents/Resources/mac-capture"
         env:
           # No Apple Developer cert wired up — build unsigned. The .dmg works
           # but macOS Gatekeeper flags it as "unidentified developer"; users
