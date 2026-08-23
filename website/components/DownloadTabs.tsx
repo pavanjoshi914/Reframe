@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import type { DownloadTarget, PlatformId } from '@/lib/github';
 import { AppleIcon, ArrowRightIcon, LinuxIcon, WindowsIcon } from './Icons';
 import { CopyField } from './CopyField';
-import { InstallModal } from './InstallModal';
+import { InstallModal, startDownload } from './InstallModal';
 
 type Tab = 'linux' | 'windows' | 'macos';
 type Props = { targets: Record<PlatformId, DownloadTarget> };
@@ -27,9 +27,9 @@ function detectTab(): Tab {
 }
 
 /**
- * A prominent download button for one asset. Clicking opens the install
- * instructions modal; the actual download (and its analytics event) fires from
- * the modal's primary button, so the instructions can't be skipped past.
+ * A prominent download button for one asset. Clicking starts the download
+ * immediately AND opens the install-instructions modal, so the user sees the
+ * steps without having to click twice.
  */
 function DownloadCard({
   target,
@@ -46,6 +46,7 @@ function DownloadCard({
   const onDownload = (e: React.MouseEvent) => {
     if (!target.direct) return; // fallback link (releases page) — let it navigate
     e.preventDefault();
+    startDownload(target, 'download-page');
     onPick(target);
   };
   return (
@@ -182,7 +183,7 @@ export function DownloadTabs({ targets }: Props) {
           </Section>
         )}
       </div>
-      {picked ? <InstallModal target={picked} source="download-page" onClose={() => setPicked(null)} /> : null}
+      {picked ? <InstallModal target={picked} onClose={() => setPicked(null)} /> : null}
     </div>
   );
 }

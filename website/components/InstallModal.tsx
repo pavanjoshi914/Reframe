@@ -3,16 +3,27 @@
 import { useEffect, useState } from 'react';
 import type { DownloadTarget, PlatformId } from '@/lib/github';
 import { trackDownload } from '@/lib/analytics';
-import { AppleIcon, CloseIcon, DownloadIcon, LinuxIcon, WindowsIcon } from './Icons';
+import { AppleIcon, CloseIcon, LinuxIcon, WindowsIcon } from './Icons';
 
 /**
- * Install instructions shown ON the download click, before the file starts.
- * Inline notes next to a button get skimmed past; the macOS "damaged" warning
- * in particular loses people who didn't read that they need to clear the
- * quarantine flag. Making the instructions a step the user clicks through
- * means they are seen, and the download is the modal's primary action so it
- * costs exactly one extra click.
+ * Install instructions shown the moment a download starts. Inline notes next
+ * to a button get skimmed past; the macOS "damaged" warning in particular
+ * loses people who didn't read that they need to clear the quarantine flag.
+ * The download itself kicks off on the button click (see startDownload) — the
+ * modal is purely the instructions for what to do once the file lands, so it
+ * costs the user no extra click.
  */
+
+/**
+ * Start the download for an asset and record it. Called by the download
+ * buttons themselves (not by the modal) so the file starts immediately. The
+ * navigation is deferred a beat so the analytics beacon isn't aborted by the
+ * cross-origin jump to GitHub.
+ */
+export function startDownload(target: DownloadTarget, source: 'hero' | 'download-page'): void {
+  trackDownload(target.id, { file: target.filename ?? target.id, source });
+  setTimeout(() => { window.location.href = target.url; }, 200);
+}
 
 type Step = { text: React.ReactNode; cmd?: string; cmdLabel?: string };
 
@@ -149,11 +160,9 @@ function stepsFor(id: PlatformId, filename: string): { title: string; intro?: Re
 
 export function InstallModal({
   target,
-  source,
   onClose
 }: {
   target: DownloadTarget;
-  source: 'hero' | 'download-page';
   onClose: () => void;
 }) {
   const filename = target.filename ?? target.id;
@@ -168,14 +177,6 @@ export function InstallModal({
     document.body.style.overflow = 'hidden';
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
   }, [onClose]);
-
-  const download = () => {
-    trackDownload(target.id, { file: filename, source });
-    // Start the download a beat later so the analytics beacon flushes before
-    // the cross-origin navigation to GitHub aborts it.
-    setTimeout(() => { window.location.href = target.url; }, 200);
-    onClose();
-  };
 
   return (
     <div
@@ -196,7 +197,9 @@ export function InstallModal({
             </span>
             <div>
               <h2 id="install-modal-title" className="text-lg font-bold text-ink-900 dark:text-white">{title}</h2>
-              <p className="truncate text-xs text-ink-500 dark:text-ink-400">{filename}{target.sizeMb ? ` · ${target.sizeMb} MB` : ''}</p>
+              <p className="truncate text-xs text-ink-500 dark:text-ink-400">
+                <span className="font-medium text-emerald-600 dark:text-emerald-400">Downloading</span> {filename}{target.sizeMb ? ` · ${target.sizeMb} MB` : ''}
+              </p>
             </div>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-ink-400 transition hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-white/10 dark:hover:text-white">
@@ -226,12 +229,14 @@ export function InstallModal({
           ) : null}
         </div>
 
-        <div className="flex flex-col-reverse gap-2 border-t border-ink-200 px-6 py-4 dark:border-white/10 sm:flex-row sm:justify-end">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="button" onClick={download} className="btn-primary">
-            <DownloadIcon className="h-4 w-4" />
-            Download {filename}
-          </button>
+        <div className="flex items-center justify-between gap-3 border-t border-ink-200 px-6 py-4 dark:border-white/10">
+          <p className="text-xs text-ink-500 dark:text-ink-400">
+            Didn&rsquo;t start?{' '}
+            <a href={target.url} className="font-medium text-brand-600 underline decoration-dotted underline-offset-2 dark:text-brand-300">
+              Download again
+            </a>
+          </p>
+          <button type="button" onClick={onClose} className="btn-primary">Got it</button>
         </div>
       </div>
     </div>
