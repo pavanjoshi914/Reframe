@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+// Imported (not a string path) so Vite bundles + hashes it; a raw './assets/…'
+// URL resolves in dev but doesn't exist inside the packaged asar (broken image).
+import logoUrl from '../../assets/logo-transparent.png';
 
 /**
  * In-app "update available" window. Replaces the native dialog.* message boxes:
@@ -54,7 +57,7 @@ export function UpdateApp() {
     <div className="flex h-screen w-screen flex-col bg-[#0e0f12] text-white" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
       {/* Header */}
       <div className="flex items-start gap-4 px-7 pb-4 pt-7">
-        <img src="./assets/logo-transparent.png" alt="" className="h-12 w-12 shrink-0" />
+        <img src={logoUrl} alt="" className="h-12 w-12 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-widest text-violet-300/80">Update available</p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">Reframe {info.latest}</h1>
