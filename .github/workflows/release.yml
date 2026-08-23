@@ -124,6 +124,18 @@ jobs:
         with:
           python-version: '3.11'
       - run: npm ci
+      # The cursor-hidden recorder on macOS is a small ScreenCaptureKit helper
+      # (electron/mac-capture.swift). Compile it here, on a real Mac, for the
+      # arch this job packages, so each DMG carries a native binary.
+      # ffmpeg's avfoundation can't hide the cursor on modern macOS; SCK can.
+      - name: Build the ScreenCaptureKit capture helper (${{ matrix.arch }})
+        run: |
+          ARCH=$([ "${{ matrix.arch }}" = "arm64" ] && echo arm64 || echo x86_64)
+          swiftc -O -target ${ARCH}-apple-macos12.3 \
+            -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework AppKit \
+            -o electron/mac-capture electron/mac-capture.swift
+          chmod +x electron/mac-capture
+          file electron/mac-capture
       - name: Package macOS app (${{ matrix.arch }})
         run: npm run package:mac -- --${{ matrix.arch }} --publish never
         env:

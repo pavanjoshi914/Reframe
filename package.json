@@ -137,7 +137,13 @@
     "mac": {
       "target": "dmg",
       "category": "public.app-category.video",
-      "icon": "assets/logo-transparent.png"
+      "icon": "assets/logo-transparent.png",
+      "extraResources": [
+        {
+          "from": "electron/mac-capture",
+          "to": "mac-capture"
+        }
+      ]
     }
   }
 }

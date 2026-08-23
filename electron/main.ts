@@ -1023,7 +1023,26 @@ function finalizePipewire(videoMkv: string, micFile: string | null): string {
 let nativeProc: ChildProcess | null = null;
 let nativeVideoPath: string | null = null;
 
-type NativeBackend = 'ddagrab' | 'gdigrab' | 'avfoundation';
+type NativeBackend = 'sckit' | 'ddagrab' | 'gdigrab' | 'avfoundation';
+
+// The ScreenCaptureKit helper (electron/mac-capture.swift), compiled in CI on a
+// real Mac and shipped as a loose resource. ffmpeg's avfoundation sits on the
+// old AVCaptureScreenInput API whose capturesCursor=false is ignored on modern
+// macOS, so the pointer was baked into "hide cursor" recordings and the editor
+// drew its synthetic cursor on top of a real one — two cursors, read as lag.
+// SCK's showsCursor=false genuinely excludes it. Returns null when the binary
+// isn't present (dev on Linux, or an unbuilt tree) so we fall through.
+function macCaptureBin(): string | null {
+  if (process.platform !== 'darwin') return null;
+  const candidates = [
+    path.join(process.resourcesPath || '', 'mac-capture'),
+    path.join(__dirname, '..', 'electron', 'mac-capture'),
+  ];
+  for (const c of candidates) {
+    try { if (c && fs.existsSync(c)) return c; } catch { /* ignore */ }
+  }
+  return null;
+}
 type CaptureBox = { w: number; h: number; x: number; y: number };
 
 function nativeCaptureArgs(
@@ -1087,10 +1106,16 @@ function spawnNativeCapture(
 ): Promise<boolean> {
   return new Promise((resolve) => {
     let proc: ChildProcess;
-    const args = ['-hide_banner', '-loglevel', 'error', '-nostats', '-progress', 'pipe:1',
-      ...nativeCaptureArgs(backend, box, displayIndex, out)];
+    // The SCK helper speaks the same stdout "frame=/out_time_us=" progress and
+    // stdin "q" protocol as ffmpeg, so everything below it is shared.
+    const bin = backend === 'sckit' ? macCaptureBin() : ffmpegBin();
+    if (!bin) return resolve(false);
+    const args = backend === 'sckit'
+      ? [String(displayIndex), '30', out]
+      : ['-hide_banner', '-loglevel', 'error', '-nostats', '-progress', 'pipe:1',
+        ...nativeCaptureArgs(backend, box, displayIndex, out)];
     try {
-      proc = spawn(ffmpegBin(), args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      proc = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
     } catch (err) {
       console.warn('[main] ' + backend + ' spawn threw', err);
       return resolve(false);
@@ -1150,7 +1175,7 @@ async function tryStartNativeCapture(box: CaptureBox, displayIndex: number, ts: 
   // ddagrab is GPU-side and cheap; gdigrab is the universal fallback and takes
   // explicit offsets, so it also copes with awkward multi-monitor layouts.
   const backends: NativeBackend[] =
-    process.platform === 'win32' ? ['ddagrab', 'gdigrab'] : ['avfoundation'];
+    process.platform === 'win32' ? ['ddagrab', 'gdigrab'] : ['sckit', 'avfoundation'];
   for (const backend of backends) {
     if (await spawnNativeCapture(backend, box, displayIndex, out)) {
       console.log('[main] capture: ' + backend + ' (cursor omitted) @ ' + box.w + 'x' + box.h);
