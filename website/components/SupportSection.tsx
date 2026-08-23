@@ -11,7 +11,8 @@ import { site } from '@/lib/site';
  * would compete with the download.
  */
 export function SupportSection() {
-  const { goal } = funding;
+  // The certificates are the first two milestones — the hard, recurring costs.
+  const certs = funding.milestones.filter((m) => m.kind === 'certificate');
 
   return (
     <section id="support" className="mx-auto max-w-content px-4 pb-4 sm:px-6 lg:px-8">
@@ -34,7 +35,7 @@ export function SupportSection() {
 
             <p className="mt-3 text-pretty leading-relaxed text-ink-600 dark:text-ink-300">
               No paid tier, no trial, no watermark — built and maintained by one person. Sponsorship covers the running
-              costs, starting with {goal.inline} so you stop seeing security warnings on install.
+              costs, starting with code signing for macOS and Windows so you stop seeing security warnings on install.
             </p>
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -53,11 +54,11 @@ export function SupportSection() {
             <p className="text-xs font-semibold uppercase tracking-widest text-ink-400 dark:text-ink-500">
               First funding goal
             </p>
-            <p className="mt-2 font-semibold text-ink-900 dark:text-white">{goal.label}</p>
+            <p className="mt-2 font-semibold text-ink-900 dark:text-white">Code signing for macOS and Windows</p>
             <ul className="mt-4 space-y-2">
-              {goal.items.map((item) => (
-                <li key={item.name} className="flex items-baseline justify-between gap-3 text-sm">
-                  <span className="text-ink-600 dark:text-ink-300">{item.name}</span>
+              {certs.map((item) => (
+                <li key={item.title} className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="text-ink-600 dark:text-ink-300">{item.title}</span>
                   <span className="shrink-0 font-mono text-xs text-ink-500 dark:text-ink-400">{item.cost}</span>
                 </li>
               ))}

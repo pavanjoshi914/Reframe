@@ -40,25 +40,55 @@ export const funding = {
   },
 
   /**
-   * The concrete thing donations buy first. Both numbers are annual and public
-   * so the ask is verifiable rather than vague.
-   *   Apple Developer Program  $99/yr
-   *   Windows code-signing cert ~$200/yr (OV)
+   * What sponsorship pays for, in priority order. The first two are hard,
+   * recurring costs with public prices, so the ask is verifiable. The rest are
+   * features that need sustained development time (and, for AI editing, an
+   * ongoing API bill) — so their "cost" is honest about that rather than a
+   * made-up dollar figure.
+   *
+   * `status` drives the badge: 'funded' once paid for / shipped, 'next' for the
+   * one currently being worked toward, 'planned' for the rest.
    */
-  goal: {
-    label: 'Code signing for macOS and Windows',
-    /** Same thing, phrased to sit mid-sentence — never lowercase `label`, it
-     *  contains proper nouns. */
-    inline: 'code signing for macOS and Windows',
-    blurb:
-      'Reframe is not code-signed yet, so macOS quarantines it on download and Windows shows a SmartScreen warning. Certificates are a recurring cost, not a one-off — this is the first thing sponsorship pays for.',
-    targetUsd: 300,
-    raisedUsd: 0,
-    items: [
-      { name: 'Apple Developer Program', cost: '$99 / year' },
-      { name: 'Windows OV code-signing certificate', cost: '~$200 / year' }
-    ]
-  },
+  milestones: [
+    {
+      title: 'Apple Developer Program',
+      what: 'Code-sign and notarize the macOS build, so it opens without the "unidentified developer" warning.',
+      cost: '$99 / year',
+      kind: 'certificate',
+      status: 'next'
+    },
+    {
+      title: 'Windows code-signing certificate',
+      what: 'Sign the Windows installer (OV cert), so SmartScreen stops flagging it.',
+      cost: '~$200 / year',
+      kind: 'certificate',
+      status: 'next'
+    },
+    {
+      title: 'Edit by prompt — Claude does the edit',
+      what: 'Describe the video you want ("zoom on every click, blur the email, 30-second cut") and Claude authors the whole edit — zooms, annotations, spotlight, blur, speed ramps — from one prompt.',
+      cost: 'Dev time + ongoing API usage',
+      kind: 'feature',
+      status: 'planned'
+    },
+    {
+      title: 'More animations & transitions',
+      what: 'Eased zoom curves, scene transitions, animated annotations and cursor effects.',
+      cost: 'Dev time',
+      kind: 'feature',
+      status: 'planned'
+    },
+    {
+      title: 'Text-to-speech narration',
+      what: 'Type a script and get a voiced narration track laid onto the timeline — no mic needed.',
+      cost: 'Dev time + TTS API usage',
+      kind: 'feature',
+      status: 'planned'
+    }
+  ],
+
+  /** Raised so far toward the two certificates (the first two milestones). */
+  certs: { targetUsd: 300, raisedUsd: 0 },
 
   tiers: [
     {

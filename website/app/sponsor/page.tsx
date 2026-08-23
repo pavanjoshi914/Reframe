@@ -10,44 +10,97 @@ export const metadata: Metadata = {
   description: `Support continued development of ${site.name} — the free, open-source screen recorder and demo editor.`
 };
 
-function Goal() {
-  const { goal } = funding;
-  const pct = Math.min(100, Math.round((goal.raisedUsd / goal.targetUsd) * 100));
+const STATUS: Record<string, { label: string; cls: string }> = {
+  funded: { label: 'Funded', cls: 'bg-emerald-600/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
+  next: { label: 'Up next', cls: 'bg-brand-600/10 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' },
+  planned: { label: 'Planned', cls: 'bg-ink-100 text-ink-600 dark:bg-white/10 dark:text-ink-300' }
+};
+
+const KIND: Record<string, { label: string; cls: string }> = {
+  certificate: { label: 'Certificate', cls: 'text-amber-700 dark:text-amber-300' },
+  feature: { label: 'Feature', cls: 'text-sky-700 dark:text-sky-300' }
+};
+
+function Milestones() {
+  const { milestones, certs } = funding;
+  const pct = Math.min(100, Math.round((certs.raisedUsd / certs.targetUsd) * 100));
 
   return (
-    <div className="surface p-6 sm:p-8">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-xl font-bold text-ink-900 dark:text-white">{goal.label}</h2>
-        <p className="text-sm text-ink-500 dark:text-ink-400">
-          <span className="font-bold text-brand-600 dark:text-brand-300">${goal.raisedUsd}</span> of ${goal.targetUsd} a
-          year
+    <div className="surface overflow-hidden">
+      {/* Header + cert progress (the first two rows are the hard, recurring costs) */}
+      <div className="border-b border-ink-200 p-6 dark:border-white/10 sm:p-8">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-xl font-bold text-ink-900 dark:text-white">What sponsorship pays for</h2>
+          <p className="text-sm text-ink-500 dark:text-ink-400">
+            Certificates:{' '}
+            <span className="font-bold text-brand-600 dark:text-brand-300">${certs.raisedUsd}</span> of ${certs.targetUsd}{' '}
+            a year
+          </p>
+        </div>
+        <div
+          className="mt-4 h-2 overflow-hidden rounded-full bg-ink-100 dark:bg-white/10"
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Code-signing certificates: ${pct}% funded`}
+        >
+          <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-700" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="mt-4 text-pretty text-sm leading-relaxed text-ink-600 dark:text-ink-300">
+          In priority order. The two certificates come first — they are recurring costs with public prices, and until
+          they are paid macOS quarantines the app and Windows shows a SmartScreen warning. Everything after is a
+          feature that sustained sponsorship lets me build.
         </p>
       </div>
 
-      <div
-        className="mt-4 h-2 overflow-hidden rounded-full bg-ink-100 dark:bg-white/10"
-        role="progressbar"
-        aria-valuenow={pct}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={`${goal.label}: ${pct}% funded`}
-      >
-        <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-700" style={{ width: `${pct}%` }} />
+      {/* The table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-ink-200 text-xs font-semibold uppercase tracking-widest text-ink-400 dark:border-white/10 dark:text-ink-500">
+              <th scope="col" className="px-4 py-3 sm:px-6">#</th>
+              <th scope="col" className="px-4 py-3 sm:px-6">Milestone</th>
+              <th scope="col" className="hidden px-4 py-3 md:table-cell sm:px-6">What it unlocks</th>
+              <th scope="col" className="px-4 py-3 sm:px-6">Cost</th>
+              <th scope="col" className="px-4 py-3 text-right sm:px-6">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {milestones.map((m, i) => {
+              const st = STATUS[m.status];
+              const kd = KIND[m.kind];
+              return (
+                <tr
+                  key={m.title}
+                  className="border-b border-ink-100 align-top transition hover:bg-brand-50/40 last:border-0 dark:border-white/5 dark:hover:bg-white/[0.03]"
+                >
+                  <td className="px-4 py-4 font-mono text-xs text-ink-400 dark:text-ink-500 sm:px-6">
+                    {String(i + 1).padStart(2, '0')}
+                  </td>
+                  <td className="px-4 py-4 sm:px-6">
+                    <div className="font-semibold text-ink-900 dark:text-white">{m.title}</div>
+                    <div className={`mt-0.5 text-xs font-medium ${kd.cls}`}>{kd.label}</div>
+                    {/* On small screens, fold the description under the title */}
+                    <p className="mt-2 text-xs leading-relaxed text-ink-500 dark:text-ink-400 md:hidden">{m.what}</p>
+                  </td>
+                  <td className="hidden max-w-md px-4 py-4 leading-relaxed text-ink-600 dark:text-ink-300 md:table-cell sm:px-6">
+                    {m.what}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4 font-mono text-xs text-ink-700 dark:text-ink-200 sm:px-6">
+                    {m.cost}
+                  </td>
+                  <td className="px-4 py-4 text-right sm:px-6">
+                    <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${st.cls}`}>
+                      {st.label}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-
-      <p className="mt-4 text-pretty leading-relaxed text-ink-600 dark:text-ink-300">{goal.blurb}</p>
-
-      <ul className="mt-5 space-y-2">
-        {goal.items.map((item) => (
-          <li
-            key={item.name}
-            className="flex items-center justify-between gap-4 rounded-lg bg-ink-50 px-4 py-2.5 text-sm dark:bg-white/[0.04]"
-          >
-            <span className="text-ink-700 dark:text-ink-200">{item.name}</span>
-            <span className="shrink-0 font-mono text-xs text-ink-500 dark:text-ink-400">{item.cost}</span>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
@@ -68,7 +121,7 @@ export default function SponsorPage() {
       </div>
 
       <div className="mt-12">
-        <Goal />
+        <Milestones />
       </div>
 
       {/* ── Recurring ──────────────────────────────────────────────────────── */}
