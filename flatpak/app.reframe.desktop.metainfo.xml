@@ -75,6 +75,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.2.0" date="2026-09-21">
+      <description>
+        <p>3D motion: tilt and spin the recording over any stretch, or render it as many cards — orbits, rings, streams and grids — with forty scene presets. Eleven cursor styles including a pointing hand and a text beam, plus an option to fade the pointer out while it sits still.</p>
+      </description>
+    </release>
     <release version="0.1.4" date="2026-08-23">
       <description>
         <p>Cursor-hidden recording now works on macOS, an in-app update window that shows what's new, and one-click updates on Windows and the Linux AppImage.</p>
