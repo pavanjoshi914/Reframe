@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { useEditor, ANNOTATION_DEFAULTS, type LaneItem } from './store';
+import { useEditor, ANNOTATION_DEFAULTS, type LaneItem, WEBCAM_EDGE_MARGIN } from './store';
 import { primeVideo } from './videoPrime';
 import { drawFrame } from './export';
 import { useT } from '../i18n';
@@ -355,9 +355,12 @@ export function Preview() {
   // bottom-right to rectangle would leave the wider box overflowing the stage.
   useEffect(() => {
     if (!webcam.enabled) return;
+    // Leave the same edge gap the corner-snap uses. Clamping to exactly
+    // 1 - width parks the box flush against the wall, which is what made the
+    // default rectangle PiP look glued to the right edge.
     const widthFrac = (webcam.size * webcamAspect) / ratio;
-    const maxX = Math.max(0, 1 - widthFrac);
-    const maxY = Math.max(0, 1 - webcam.size);
+    const maxX = Math.max(0, 1 - widthFrac - WEBCAM_EDGE_MARGIN);
+    const maxY = Math.max(0, 1 - webcam.size - WEBCAM_EDGE_MARGIN);
     if (webcam.x > maxX || webcam.y > maxY) {
       setWebcam({ x: Math.min(webcam.x, maxX), y: Math.min(webcam.y, maxY) });
     }

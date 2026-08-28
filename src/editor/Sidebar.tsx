@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight } from 'lucide-react';
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem, type CursorStyle } from './store';
 import { runExport, cancelExport } from './export';
+import { SCENE_GROUPS, DEFAULT_SCENE_SETTINGS, sceneInstances } from './scenes';
+import { CURSOR_GLYPHS, CURSOR_STYLE_IDS } from './cursorGlyphs';
+import type { SceneInstance } from './card3d';
 import { SupportDialog, shouldPromptAfterExport } from './SupportDialog';
 import { CropModal } from './CropModal';
 import { useT } from '../i18n';
@@ -18,7 +21,9 @@ export function Sidebar() {
     selectedItem.kind === 'annotation' ||
     selectedItem.kind === 'magnify' ||
     selectedItem.kind === 'spotlight' ||
-    selectedItem.kind === 'blur'
+    selectedItem.kind === 'blur' ||
+    selectedItem.kind === 'rotation' ||
+    selectedItem.kind === 'scene'
   );
 
   return (
@@ -103,6 +108,24 @@ function SelectionSection() {
         </div>
         <p className="text-[11px] text-white/40">{t('side.focusTip')}</p>
         <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label={t('side.deleteZoom')} />
+      </div>
+    );
+  }
+
+  if (item.kind === 'scene') {
+    return (
+      <div className="space-y-3">
+        <SceneSection item={item} />
+        <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label={t('side.deleteScene')} />
+      </div>
+    );
+  }
+
+  if (item.kind === 'rotation') {
+    return (
+      <div className="space-y-3">
+        <Rotation3DPanel item={item} />
+        <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label={t('side.deleteRotation')} />
       </div>
     );
   }
@@ -781,12 +804,72 @@ function VideoEffectsSection() {
 
 // Synthetic-cursor styling: a smoothed, scalable pointer + click ripples — the
 // signature "smooth cursor" look of polished demo videos.
-const CURSOR_STYLES: { id: CursorStyle; key: string }[] = [
-  { id: 'system', key: 'side.cursorStyleSystem' },
-  { id: 'arrow', key: 'side.cursorStyleArrow' },
-  { id: 'ring', key: 'side.cursorStyleRing' },
-  { id: 'dot', key: 'side.cursorStyleDot' }
-];
+const CURSOR_STYLE_LABEL: Record<CursorStyle, string> = {
+  system: 'side.cursorStyleSystem',
+  arrow: 'side.cursorStyleArrow',
+  modern: 'side.cursorStyleModern',
+  sleek: 'side.cursorStyleSleek',
+  retro: 'side.cursorStyleRetro',
+  hand: 'side.cursorStyleHand',
+  beam: 'side.cursorStyleBeam',
+  ring: 'side.cursorStyleRing',
+  dot: 'side.cursorStyleDot',
+  paw: 'side.cursorStylePaw',
+  emoji: 'side.cursorStyleEmoji'
+};
+
+// One pointer tile. The preview is drawn from the SAME path data the
+// compositor renders, in the currently chosen colour, so the tile is a true
+// preview rather than a stand-in icon.
+function CursorStyleTile({
+  id, label, color, active, onClick
+}: { id: CursorStyle; label: string; color: string; active: boolean; onClick: () => void }) {
+  const g = CURSOR_GLYPHS[id];
+  const outline = 'rgba(0,0,0,0.7)';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-pressed={active}
+      className={
+        'flex flex-col items-center gap-1 rounded-md border p-1.5 transition ' +
+        (active
+          ? 'border-emerald-400 bg-emerald-500/15'
+          : 'border-white/10 hover:border-emerald-400/40 hover:bg-emerald-500/10')
+      }
+    >
+      <span className="flex h-7 w-full items-center justify-center">
+        {id === 'ring' || id === 'dot' ? (
+          <svg viewBox="-10 -10 20 20" className="h-6 w-6" aria-hidden="true">
+            <circle
+              cx="0" cy="0" r={id === 'dot' ? 6.5 : 7}
+              fill={id === 'dot' ? color : 'none'}
+              stroke={id === 'dot' ? outline : color}
+              strokeWidth={id === 'dot' ? 1.2 : 2.6}
+            />
+          </svg>
+        ) : g?.char ? (
+          <span className="text-[19px] leading-none">{g.char}</span>
+        ) : (
+          <svg viewBox={g.view} className="h-6 w-6" aria-hidden="true">
+            <path
+              d={g.d}
+              fill={color}
+              stroke={outline}
+              strokeWidth="1.7"
+              strokeLinejoin="round"
+              paintOrder="stroke"
+            />
+          </svg>
+        )}
+      </span>
+      <span className={'w-full truncate text-center text-[10px] leading-tight ' + (active ? 'font-semibold text-emerald-300' : 'text-white/55')}>
+        {label}
+      </span>
+    </button>
+  );
+}
 const CURSOR_COLORS = ['#ffffff', '#111111', '#34d399', '#f59e0b', '#ef4444', '#3b82f6'];
 
 function CursorSection() {
@@ -810,11 +893,26 @@ function CursorSection() {
       )}
       {on && (
         <>
+          <div data-cursorctl="idle">
+            <ToggleRow
+              label={t('side.hideWhenIdle')}
+              checked={!!cursorFx.hideWhenIdle}
+              onChange={(v) => setCursorFx({ hideWhenIdle: v })}
+            />
+            <p className="mt-1 text-[11px] text-white/40">{t('side.hideWhenIdleTip')}</p>
+          </div>
           <div data-cursorctl="style">
             <Label>{t('side.style')}</Label>
             <div className="grid grid-cols-4 gap-1.5">
-              {CURSOR_STYLES.map((s) => (
-                <CursorStyleBtn key={s.id} active={style === s.id} onClick={() => setCursorFx({ style: s.id })} label={t(s.key)} />
+              {CURSOR_STYLE_IDS.map((id) => (
+                <CursorStyleTile
+                  key={id}
+                  id={id}
+                  label={t(CURSOR_STYLE_LABEL[id])}
+                  color={color}
+                  active={style === id}
+                  onClick={() => setCursorFx({ style: id })}
+                />
               ))}
             </div>
           </div>
@@ -1046,6 +1144,335 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
         <span className={'block h-4 w-4 rounded-full bg-white transition ' + (checked ? 'translate-x-4' : 'translate-x-0.5')} />
       </button>
     </label>
+  );
+}
+
+// 3D rotation controls for a zoom: Tilt X / Tilt Y / Spin Z, each with a Start
+// and an End keyframe. The sliders edit whichever keyframe is selected; the
+// card's rotation interpolates Start→End across the zoom (and rides the zoom's
+// ease in/out). "End" values are stored only once the user touches them — an
+// untouched End means "same as Start" (holds), which is the common case.
+// Ready-made looks, modelled on the camera moves the 3D demo tools trade in
+// (Screen Studio's 3D Motion, TiltIt's camera presets): orbits, swings,
+// reveals and drifts first, held poses second. `s` is the Start keyframe
+// [tiltX, tiltY, spinZ]; presets with an `e` animate Start→End across the
+// region, the rest hold one pose (End overrides cleared).
+type RotPreset = { key: string; s: [number, number, number]; e?: [number, number, number] };
+const ROT_MOTIONS: RotPreset[] = [
+  // Entrances — land flat, so they read as the card arriving.
+  { key: 'swingInL', s: [0, -45, 0], e: [0, 0, 0] },
+  { key: 'swingInR', s: [0, 45, 0], e: [0, 0, 0] },
+  { key: 'riseUp', s: [40, 0, 0], e: [0, 0, 0] },
+  { key: 'cornerPeel', s: [18, -38, 6], e: [0, 0, 0] },
+  { key: 'straighten', s: [10, 24, -8], e: [0, 0, 0] },
+  // Sweeps — continuous motion across the whole region.
+  { key: 'orbitLR', s: [12, -32, 0], e: [12, 32, 0] },
+  { key: 'orbitRL', s: [12, 32, 0], e: [12, -32, 0] },
+  { key: 'turntable', s: [24, -45, 0], e: [24, 45, 0] },
+  { key: 'pendulum', s: [8, 24, 6], e: [8, -24, -6] },
+  { key: 'dutchRoll', s: [4, -10, -14], e: [4, 10, 14] },
+  // Exits — start flat and lean away, for outros.
+  { key: 'fallBack', s: [0, 0, 0], e: [35, 0, 0] },
+  { key: 'heroDrift', s: [0, 0, 0], e: [14, 30, -6] }
+];
+const ROT_POSES: RotPreset[] = [
+  { key: 'showcaseL', s: [0, -28, 0] },
+  { key: 'showcaseR', s: [0, 28, 0] },
+  { key: 'isoL', s: [28, 38, -10] },
+  { key: 'isoR', s: [28, -38, 10] },
+  { key: 'laidBack', s: [32, 0, 0] },
+  { key: 'dutch', s: [6, 14, -10] }
+];
+
+// CSS mirror of card3d's X→Y→Z rotation order, for the palette thumbnails —
+// a real 3D preview of each preset, no image assets. Signs verified against
+// the WebGL render so the thumbnail leans the same way as the card will.
+const thumbTransform = (v: [number, number, number]) =>
+  `perspective(140px) rotateX(${-v[0]}deg) rotateY(${v[1]}deg) rotateZ(${-v[2]}deg)`;
+
+function PresetThumb({ p, onApply, label }: { p: RotPreset; onApply: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onApply}
+      title={label}
+      className="group flex flex-col items-center gap-1 rounded-md border border-white/10 p-1.5 hover:border-emerald-400/40 hover:bg-emerald-500/10"
+    >
+      <span className="relative flex h-12 w-full items-center justify-center overflow-hidden rounded bg-black/40">
+        {/* End pose as a ghost so a motion's tile shows where it's going. */}
+        {p.e ? (
+          <span
+            aria-hidden="true"
+            className="absolute h-7 w-11 rounded-[3px] border border-white/25"
+            style={{ transform: thumbTransform(p.e) }}
+          />
+        ) : null}
+        <span
+          aria-hidden="true"
+          className="absolute h-7 w-11 rounded-[3px] bg-gradient-to-br from-emerald-300/90 to-emerald-600/70 shadow"
+          style={{ transform: thumbTransform(p.s) }}
+        >
+          <span className="mx-1 mt-1 block h-0.5 w-5 rounded bg-black/30" />
+          <span className="mx-1 mt-0.5 block h-0.5 w-7 rounded bg-black/20" />
+        </span>
+        {p.e ? (
+          <span className="absolute bottom-0.5 right-1 font-mono text-[9px] text-emerald-300/80">⇢</span>
+        ) : null}
+      </span>
+      <span className="w-full truncate text-center text-[10px] leading-tight text-white/60 group-hover:text-white/90">
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function Rotation3DPanel({ item }: { item: LaneItem }) {
+  const t = useT();
+  const updateItem = useEditor((s) => s.updateItem);
+  const setCurrent = useEditor((s) => s.setCurrent);
+  const setPlaying = useEditor((s) => s.setPlaying);
+  const [kf, setKf] = useState<'start' | 'end'>('start');
+  // Where on the timeline each keyframe's pose is actually visible: the region
+  // eases in over ROT_TRANSITION_MS, so Start's pose holds from start+500ms
+  // (same convention as previewPointFor); End's pose is exact at endMs.
+  const seekKf = (which: 'start' | 'end') => {
+    setKf(which);
+    setPlaying(false);
+    setCurrent(which === 'start' ? Math.min(item.endMs, item.startMs + 500) : item.endMs);
+  };
+  const get = (axis: 'tiltX' | 'tiltY' | 'spinZ') =>
+    kf === 'start' ? (item[axis] ?? 0) : (item[`${axis}End` as const] ?? item[axis] ?? 0);
+  const set = (axis: 'tiltX' | 'tiltY' | 'spinZ', v: number) =>
+    updateItem(item.id, kf === 'start' ? { [axis]: v } : { [`${axis}End`]: v });
+  const applyPreset = (p: RotPreset) => {
+    updateItem(item.id, {
+      tiltX: p.s[0], tiltY: p.s[1], spinZ: p.s[2],
+      tiltXEnd: p.e?.[0], tiltYEnd: p.e?.[1], spinZEnd: p.e?.[2]
+    });
+    if (p.e) {
+      // A motion is only legible in motion: play it through from the region
+      // start so the preset previews itself the moment it's clicked.
+      setKf('start');
+      setCurrent(item.startMs);
+      setPlaying(true);
+    } else {
+      seekKf('start');
+    }
+  };
+  const any = [item.tiltX, item.tiltY, item.spinZ, item.tiltXEnd, item.tiltYEnd, item.spinZEnd].some((n) => n && Math.abs(n) > 1e-6);
+  const fmt = (v: number) => `${v >= 0 ? '+' : ''}${Math.round(v)}°`;
+  return (
+    <div className="space-y-2 rounded-lg border border-white/10 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-white/80">{t('side.rotation3d')}</span>
+        {any ? (
+          <button
+            type="button"
+            onClick={() => updateItem(item.id, { tiltX: 0, tiltY: 0, spinZ: 0, tiltXEnd: undefined, tiltYEnd: undefined, spinZEnd: undefined })}
+            className="text-[11px] text-white/50 hover:text-white"
+          >
+            {t('side.rotationReset')}
+          </button>
+        ) : null}
+      </div>
+      <div>
+        <Label>{t('side.rotationKeyframe')}</Label>
+        <div className="grid grid-cols-2 gap-1.5">
+          <ChipBtn active={kf === 'start'} onClick={() => seekKf('start')}>{t('side.rotationStart')}</ChipBtn>
+          <ChipBtn active={kf === 'end'} onClick={() => seekKf('end')}>{t('side.rotationEnd')}</ChipBtn>
+        </div>
+      </div>
+      <div>
+        <Label>{t('side.rotPresetMotions')}</Label>
+        <div className="grid grid-cols-3 gap-1.5">
+          {ROT_MOTIONS.map((p) => (
+            <PresetThumb key={p.key} p={p} label={t(`side.rotPreset.${p.key}`)} onApply={() => applyPreset(p)} />
+          ))}
+        </div>
+      </div>
+      <div>
+        <Label>{t('side.rotPresetPoses')}</Label>
+        <div className="grid grid-cols-3 gap-1.5">
+          {ROT_POSES.map((p) => (
+            <PresetThumb key={p.key} p={p} label={t(`side.rotPreset.${p.key}`)} onApply={() => applyPreset(p)} />
+          ))}
+        </div>
+      </div>
+      <RangeRow label={t('side.tiltX')} value={get('tiltX')} min={-60} max={60} step={1} fmt={fmt} onChange={(v) => set('tiltX', v)} />
+      <RangeRow label={t('side.tiltY')} value={get('tiltY')} min={-60} max={60} step={1} fmt={fmt} onChange={(v) => set('tiltY', v)} />
+      <RangeRow label={t('side.spinZ')} value={get('spinZ')} min={-180} max={180} step={1} fmt={fmt} onChange={(v) => set('spinZ', v)} />
+      <p className="text-[11px] text-white/40">{t('side.rotationTip')}</p>
+    </div>
+  );
+}
+
+// Multi-card 3D scenes (rings / streams / grids) — the selection panel for a
+// 'scene' lane item: a visual palette (each tile is the real arrangement,
+// rendered with CSS 3D from the same generator the compositor uses) plus the
+// per-scene motion settings. Picking a preset re-plays the region.
+function SceneSection({ item }: { item: LaneItem }) {
+  const t = useT();
+  const updateItem = useEditor((s) => s.updateItem);
+  const setCurrent = useEditor((s) => s.setCurrent);
+  const setPlaying = useEditor((s) => s.setPlaying);
+  const paletteRef = useRef<HTMLDivElement>(null);
+  // Bring the PALETTE into view once, when a scene item is first selected —
+  // the sidebar may be scrolled anywhere when the chip is clicked.
+  //
+  // Browsing presets afterwards must not move the sidebar. Scrolling to the
+  // settings on every pick (the old behaviour) made comparing effects
+  // impossible: each click threw you down to Motion and you had to scroll back
+  // up for the next one. The settings sit directly under the palette, so
+  // they're one deliberate scroll away when you actually want them.
+  useEffect(() => {
+    paletteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [item.id]);
+
+  const pick = (id: string) => {
+    updateItem(item.id, { scene: id });
+    // A scene is only legible in motion — play it through from the start.
+    setCurrent(item.startMs);
+    setPlaying(true);
+  };
+  const d = DEFAULT_SCENE_SETTINGS;
+  const shape = item.sceneShape ?? d.shape;
+  const num = (v: number) => (Math.round(v * 100) / 100).toString();
+  const anyMotion = [item.sceneSpeed, item.sceneZoom, item.sceneTiltX, item.sceneTiltY, item.sceneDepth, item.sceneSpacing, item.sceneRadius, item.sceneShape, item.scenePosX, item.scenePosY].some((v) => v !== undefined);
+  return (
+    <div className="space-y-3">
+      <div ref={paletteRef}>
+        <span className="text-xs font-semibold text-white/80">{t('side.scenes')}</span>
+        <p className="mt-1 text-[11px] text-white/40">{t('side.scenesTip')}</p>
+      </div>
+      {SCENE_GROUPS.map((g) => (
+        <div key={g.key}>
+          <Label>{t(`side.sceneGroup.${g.key}`)}</Label>
+          <div className="grid grid-cols-3 gap-1.5">
+            {g.ids.map((id) => (
+              <SceneThumb key={id} id={id} label={t(`side.scene.${id}`)} active={item.scene === id} onPick={() => pick(id)} />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div className="space-y-1 rounded-lg border border-white/10 p-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-white/80">{t('side.sceneMotion')}</span>
+          {anyMotion ? (
+            <button
+              type="button"
+              onClick={() => updateItem(item.id, { sceneSpeed: undefined, sceneZoom: undefined, sceneTiltX: undefined, sceneTiltY: undefined, sceneDepth: undefined, sceneSpacing: undefined, sceneRadius: undefined, sceneShape: undefined, scenePosX: undefined, scenePosY: undefined })}
+              className="text-[11px] text-white/50 hover:text-white"
+            >
+              {t('side.sceneResetMotion')}
+            </button>
+          ) : null}
+        </div>
+        <Label>{t('side.sceneShape')}</Label>
+        <div className="grid grid-cols-5 gap-1">
+          {(['1:1', '4:3', '3:2', '16:9', '9:16'] as const).map((sh) => (
+            <ChipBtn key={sh} active={shape === sh} onClick={() => updateItem(item.id, { sceneShape: sh })}>{sh}</ChipBtn>
+          ))}
+        </div>
+        <RangeRow label={t('side.sceneSpeed')} value={item.sceneSpeed ?? d.speed} min={0.25} max={3} step={0.25} fmt={(v) => `${num(v)}×`} onChange={(v) => updateItem(item.id, { sceneSpeed: v })} />
+        <RangeRow label={t('side.sceneZoom')} value={item.sceneZoom ?? d.zoom} min={0.5} max={2} step={0.05} fmt={(v) => `${Math.round(v * 100)}%`} onChange={(v) => updateItem(item.id, { sceneZoom: v })} />
+        <RangeRow label={t('side.tiltX')} value={item.sceneTiltX ?? d.tiltX} min={-45} max={45} step={1} fmt={(v) => `${v >= 0 ? '+' : ''}${Math.round(v)}°`} onChange={(v) => updateItem(item.id, { sceneTiltX: v })} />
+        <RangeRow label={t('side.tiltY')} value={item.sceneTiltY ?? d.tiltY} min={-45} max={45} step={1} fmt={(v) => `${v >= 0 ? '+' : ''}${Math.round(v)}°`} onChange={(v) => updateItem(item.id, { sceneTiltY: v })} />
+        <RangeRow label={t('side.sceneDepth')} value={item.sceneDepth ?? d.depth} min={0.25} max={2} step={0.05} fmt={(v) => `${num(v)}×`} onChange={(v) => updateItem(item.id, { sceneDepth: v })} />
+        <RangeRow label={t('side.sceneSpacing')} value={item.sceneSpacing ?? d.spacing} min={0.5} max={2} step={0.05} fmt={(v) => `${Math.round(v * 100)}%`} onChange={(v) => updateItem(item.id, { sceneSpacing: v })} />
+        <RangeRow label={t('side.sceneRadius')} value={item.sceneRadius ?? d.radius} min={0.5} max={2} step={0.05} fmt={(v) => `${num(v)}×`} onChange={(v) => updateItem(item.id, { sceneRadius: v })} />
+        <Label>{t('side.scenePosition')}</Label>
+        <ScenePositionPad
+          x={item.scenePosX ?? d.posX}
+          y={item.scenePosY ?? d.posY}
+          onChange={(x, y) => updateItem(item.id, { scenePosX: x, scenePosY: y })}
+        />
+        <p className="text-[11px] text-white/40">{t('side.scenePositionTip')}</p>
+      </div>
+    </div>
+  );
+}
+
+// Position pad: a miniature of the output frame; drag the marker to put the
+// arrangement's centre anywhere. Pointer capture keeps the drag alive when the
+// cursor leaves the pad.
+function ScenePositionPad({ x, y, onChange }: { x: number; y: number; onChange: (x: number, y: number) => void }) {
+  const padRef = useRef<HTMLDivElement>(null);
+  const place = (e: React.PointerEvent) => {
+    const r = padRef.current!.getBoundingClientRect();
+    onChange(
+      Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
+      Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))
+    );
+  };
+  return (
+    <div
+      ref={padRef}
+      onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); place(e); }}
+      onPointerMove={(e) => { if (e.buttons & 1) place(e); }}
+      className="relative aspect-video w-full cursor-crosshair select-none overflow-hidden rounded-md border border-white/10 bg-black/40"
+    >
+      <span aria-hidden="true" className="absolute inset-x-0 top-1/2 h-px bg-white/10" />
+      <span aria-hidden="true" className="absolute inset-y-0 left-1/2 w-px bg-white/10" />
+      <span
+        className="absolute h-8 w-12 -translate-x-1/2 -translate-y-1/2 rounded-sm border-2 border-emerald-400 bg-emerald-400/20"
+        style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
+      />
+    </div>
+  );
+}
+
+// One palette tile: the scene's cards at a fixed mid-motion instant, laid out
+// with CSS 3D. Unit card = 30px wide; GL's +y-up flips to CSS y-down, and the
+// rotation signs mirror card3d's conventions (same mapping as the rotation
+// preset thumbnails).
+const THUMB_UNIT = 30;
+const thumbCache = new Map<string, SceneInstance[]>();
+function thumbInstances(id: string): SceneInstance[] {
+  let v = thumbCache.get(id);
+  if (!v) {
+    v = (sceneInstances(id, 0.3) ?? []).slice().sort((a, b) => a.oz - b.oz);
+    thumbCache.set(id, v);
+  }
+  return v;
+}
+function SceneThumb({ id, label, active, onPick }: { id: string; label: string; active: boolean; onPick: () => void }) {
+  const cards = thumbInstances(id);
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      title={label}
+      className={
+        'group flex flex-col items-center gap-1 rounded-md border p-1 transition ' +
+        (active ? 'border-emerald-400 bg-emerald-500/15' : 'border-white/10 hover:border-emerald-400/40 hover:bg-emerald-500/10')
+      }
+    >
+      <span
+        className="relative block h-14 w-full overflow-hidden rounded bg-black/40"
+        style={{ perspective: '160px', perspectiveOrigin: '50% 50%' }}
+      >
+        <span className="absolute left-1/2 top-1/2 block" style={{ transformStyle: 'preserve-3d' }}>
+          {cards.map((c, i) => (
+            <span
+              key={i}
+              aria-hidden="true"
+              className="absolute block rounded-[2px] bg-gradient-to-br from-emerald-300/90 to-emerald-600/70"
+              style={{
+                width: THUMB_UNIT,
+                height: THUMB_UNIT * 9 / 16,
+                left: -THUMB_UNIT / 2,
+                top: -(THUMB_UNIT * 9 / 16) / 2,
+                transform: `translate3d(${c.ox * THUMB_UNIT}px, ${-c.oy * THUMB_UNIT * 9 / 16}px, ${c.oz * THUMB_UNIT}px) rotateX(${-c.rx}deg) rotateY(${c.ry}deg) rotateZ(${-c.rz}deg) scale(${c.s})`
+              }}
+            />
+          ))}
+        </span>
+      </span>
+      <span className={'w-full truncate text-center text-[10px] leading-tight ' + (active ? 'font-semibold text-emerald-300' : 'text-white/60 group-hover:text-white/90')}>
+        {label}
+      </span>
+    </button>
   );
 }
 

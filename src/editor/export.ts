@@ -1,7 +1,7 @@
 import {
   Input,
   Output,
-  BlobSource,
+  BufferSource,
   BufferTarget,
   Mp4OutputFormat,
   WebMOutputFormat,
@@ -16,6 +16,9 @@ import {
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
 import { useEditor, type CropRegion, ANNOTATION_DEFAULTS } from './store';
 import type { CursorSample, ClickSample } from '@shared/ipc';
+import { renderCard3D, renderScene3D, projectCardPoint, type CardXform } from './card3d';
+import { sceneInstances, heroIndex, DEFAULT_SCENE_SETTINGS, SCENE_SHAPE_RATIO, type SceneSettings } from './scenes';
+import { CURSOR_GLYPHS, CURSOR_IDLE_MS, CURSOR_IDLE_FADE_MS, CURSOR_MOVE_EPS_SQ } from './cursorGlyphs';
 
 // Export pipeline — frame-accurate, NOT real-time.
 //
@@ -104,7 +107,21 @@ function easeInOutCubic(t: number): number {
   return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 }
 
-type ZoomItem = { startMs: number; endMs: number; zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number };
+// 3D rotation of the video card (degrees). All-zero = flat = the legacy 2D path.
+export type Rotation = { tiltX: number; tiltY: number; spinZ: number };
+export const NO_ROTATION: Rotation = { tiltX: 0, tiltY: 0, spinZ: 0 };
+export const hasRotation = (r?: Rotation | null): r is Rotation =>
+  !!r && (Math.abs(r.tiltX) > 1e-6 || Math.abs(r.tiltY) > 1e-6 || Math.abs(r.spinZ) > 1e-6);
+
+type ZoomItem = {
+  startMs: number; endMs: number; zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number;
+  // Per-frame rotation from the rotation LANE, attached here so drawVideoBox /
+  // cursorToOutput receive zoom + rotation together (they compose in one matrix).
+  rotation?: Rotation;
+  // Multi-card scene from the rotation lane (preset id + linear progress).
+  // When set it replaces the single-card rotation render entirely.
+  scene?: { id: string; p: number; tSec: number; settings: SceneSettings };
+};
 
 // Consecutive zoom regions this close (ms) are treated as ONE continuous zoom:
 // the camera stays zoomed in and PANS from one focus to the next instead of
@@ -120,6 +137,69 @@ const focusOf = (it: ZoomItem): FocusLevel => ({
 });
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
 const clamp01n = (n: number) => Math.max(0, Math.min(1, n));
+
+// ── Rotation lane ──────────────────────────────────────────────────────────
+// Rotation is its OWN lane, independent of zoom: a region tilts/spins the card
+// over its time range, easing in over ROT_TRANSITION_MS at its start and out
+// after its end (so it never snaps), and interpolating Start→End keyframes
+// across the region. It composes with whatever zoom is active at that moment.
+const ROT_TRANSITION_MS = 500;
+type RotItem = { startMs: number; endMs: number; scene?: string; scenePosX?: number; scenePosY?: number; sceneSpeed?: number; sceneZoom?: number; sceneTiltX?: number; sceneTiltY?: number; sceneDepth?: number; sceneSpacing?: number; sceneRadius?: number; sceneShape?: SceneSettings['shape']; tiltX?: number; tiltY?: number; spinZ?: number; tiltXEnd?: number; tiltYEnd?: number; spinZEnd?: number };
+const rotOf = (it: RotItem, p: number): Rotation => {
+  const sx = it.tiltX ?? 0, sy = it.tiltY ?? 0, sz = it.spinZ ?? 0;
+  return { tiltX: lerp(sx, it.tiltXEnd ?? sx, p), tiltY: lerp(sy, it.tiltYEnd ?? sy, p), spinZ: lerp(sz, it.spinZEnd ?? sz, p) };
+};
+// Effective rotation at `ms`, or null when no rotation region is active. If
+// regions overlap, the later-starting one wins (it's the user's most recent
+// intent at that instant).
+// The active rotation-lane region at `ms` (rotation OR scene). Later-starting
+// region wins; on a start-time tie the most recently ADDED one wins (higher
+// index) — without the index tie-break, a stale region stacked on the same
+// span silently shadows every newer one and edits appear to do nothing.
+function activeRotItem(items: ReturnType<typeof useEditor.getState>['items'], ms: number, tailMs: number): RotItem | null {
+  const regs = items
+    .map((raw, i) => ({ it: raw as unknown as RotItem & { kind: string }, i }))
+    .filter(({ it }) => it.kind === 'rotation' && ms >= it.startMs && ms <= it.endMs + tailMs)
+    .sort((a, b) => (b.it.startMs - a.it.startMs) || (b.i - a.i));
+  return regs[0]?.it ?? null;
+}
+
+// Multi-card scene active at `ms` — linear progress, no edge easing (a scene
+// exists only inside its region; the arrangement itself carries the motion).
+function computeScene(items: ReturnType<typeof useEditor.getState>['items'], ms: number): { id: string; p: number; tSec: number; settings: SceneSettings } | null {
+  const regs = items
+    .map((raw, i) => ({ it: raw as unknown as RotItem & { kind: string }, i }))
+    .filter(({ it }) => (it.kind === 'scene' || (it.kind === 'rotation' && it.scene)) && ms >= it.startMs && ms <= it.endMs)
+    .sort((a, b) => (b.it.startMs - a.it.startMs) || (b.i - a.i));
+  const it = regs[0]?.it;
+  if (!it) return null;
+  const d = DEFAULT_SCENE_SETTINGS;
+  const settings: SceneSettings = {
+    speed: it.sceneSpeed ?? d.speed, zoom: it.sceneZoom ?? d.zoom,
+    tiltX: it.sceneTiltX ?? d.tiltX, tiltY: it.sceneTiltY ?? d.tiltY,
+    depth: it.sceneDepth ?? d.depth, spacing: it.sceneSpacing ?? d.spacing,
+    radius: it.sceneRadius ?? d.radius, shape: it.sceneShape ?? d.shape,
+    posX: it.scenePosX ?? d.posX, posY: it.scenePosY ?? d.posY
+  };
+  return { id: it.scene ?? 'orbit', p: clamp01n((ms - it.startMs) / Math.max(1, it.endMs - it.startMs)), tSec: Math.max(0, ms - it.startMs) / 1000, settings };
+}
+
+function computeRotation(items: ReturnType<typeof useEditor.getState>['items'], ms: number): Rotation | null {
+  const T = ROT_TRANSITION_MS;
+  const it = activeRotItem(items, ms, T);
+  if (!it || it.scene) return null;
+  // ease envelope at the region edges
+  let env: number;
+  if (ms < it.startMs + T) env = easeInOutCubic((ms - it.startMs) / T);
+  else if (ms > it.endMs) env = 1 - easeInOutCubic((ms - it.endMs) / T);
+  else env = 1;
+  env = clamp01n(env);
+  // keyframe progress across the region (clamped once we're in the ease-out tail)
+  const p = easeInOutCubic(clamp01n((ms - it.startMs) / Math.max(1, it.endMs - it.startMs)));
+  const r = rotOf(it, p);
+  const out = { tiltX: r.tiltX * env, tiltY: r.tiltY * env, spinZ: r.spinZ * env };
+  return hasRotation(out) ? out : null;
+}
 
 // Focus + target level within a chain at `ms`: held on each region's focus,
 // and eased from one region's focus/level to the next across a window centred
@@ -236,8 +316,12 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   // fetch() works on the media:// scheme (registered with supportFetchAPI).
   // mediabunny reads the resulting Blob entirely in-memory, so there's no
   // dependence on HTTP range support or <video> playback quirks.
-  const screenBlob = await (await fetch(fileUrl)).blob();
-  const screenInput = new Input({ source: new BlobSource(screenBlob), formats: ALL_FORMATS });
+  // Read the recording into an ArrayBuffer rather than a Blob: `.blob()` parks
+  // the body in Chromium's blob store, whose quota shrinks with free memory and
+  // disk — on a stressed machine a ~40 MB recording fails with a bare
+  // "Failed to fetch". An ArrayBuffer lives in this renderer and has no quota.
+  const screenBuf = await (await fetch(fileUrl)).arrayBuffer();
+  const screenInput = new Input({ source: new BufferSource(screenBuf), formats: ALL_FORMATS });
   const screenTrack = await screenInput.getPrimaryVideoTrack();
   if (!screenTrack) throw new Error('Recording has no video track.');
   const screenSink = new CanvasSink(screenTrack);
@@ -245,8 +329,8 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   let webcamSink: CanvasSink | null = null;
   if (webcamFileUrl && webcam.enabled) {
     try {
-      const webcamBlob = await (await fetch(webcamFileUrl)).blob();
-      const webcamInput = new Input({ source: new BlobSource(webcamBlob), formats: ALL_FORMATS });
+      const webcamBuf = await (await fetch(webcamFileUrl)).arrayBuffer();
+      const webcamInput = new Input({ source: new BufferSource(webcamBuf), formats: ALL_FORMATS });
       const webcamTrack = await webcamInput.getPrimaryVideoTrack();
       if (webcamTrack) webcamSink = new CanvasSink(webcamTrack);
     } catch (err) {
@@ -469,7 +553,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     try {
       const audioTrack = await screenInput.getPrimaryAudioTrack();
       if (audioTrack) {
-        outAudioBuffer = await buildTimelineAudio(screenBlob, items, videoVolume);
+        outAudioBuffer = await buildTimelineAudio(screenBuf, items, videoVolume);
         if (outAudioBuffer && outAudioBuffer.length > 0) {
           const audioCodec = await getFirstEncodableAudioCodec(
             isMp4 ? ['aac', 'opus'] : ['opus', 'vorbis'],
@@ -629,7 +713,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
 // down) using the same accumulator cadence as the video. `volume` scales the
 // samples. Returns null when the source has no decodable audio.
 async function buildTimelineAudio(
-  screenBlob: Blob,
+  screenBuf: ArrayBuffer,
   items: ReturnType<typeof useEditor.getState>['items'],
   volume: number
 ): Promise<AudioBuffer | null> {
@@ -640,7 +724,7 @@ async function buildTimelineAudio(
   const ac = new AC();
   let decoded: AudioBuffer;
   try {
-    decoded = await ac.decodeAudioData(await screenBlob.arrayBuffer());
+    decoded = await ac.decodeAudioData(screenBuf.slice(0));
   } catch {
     await ac.close().catch(() => {});
     return null; // no audio track, or codec the decoder can't handle
@@ -717,7 +801,7 @@ export type DrawCtx = {
   cursorSamples?: CursorSample[];
   cursorSamplesSmooth?: CursorSample[];
   cursorClicks?: ClickSample[];
-  cursorFx?: { enabled: boolean; size: number; clicks: boolean; smoothing?: number; style?: string; color?: string };
+  cursorFx?: { enabled: boolean; size: number; clicks: boolean; smoothing?: number; style?: string; color?: string; hideWhenIdle?: boolean };
 };
 
 // Interpolated cursor position (normalized 0..1 of the source frame) at `ms`,
@@ -792,7 +876,8 @@ function cursorToOutput(
   srcW: number, srcH: number,
   crop: CropRegion,
   bx: number, by: number, bw: number, bh: number,
-  zoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number }
+  zoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number; rotation?: Rotation; scene?: { id: string; p: number; tSec: number; settings: SceneSettings } },
+  outWForCursor = 0, outHForCursor = 0
 ): { x: number; y: number } | null {
   if (!srcW || !srcH) return null;
   const sxp = cur.x * srcW, syp = cur.y * srcH;
@@ -805,13 +890,36 @@ function cursorToOutput(
   const syStart = crop.y * srcH + overflowSrcH / 2;
   const sW = cropPxW - overflowSrcW, sH = cropPxH - overflowSrcH;
   if (sxp < sxStart || sxp > sxStart + sW || syp < syStart || syp > syStart + sH) return null;
-  let px = bx + ((sxp - sxStart) / sW) * bw;
-  let py = by + ((syp - syStart) / sH) * bh;
+  // Where the point sits ON the card, 0..1 (card space).
+  const u = (sxp - sxStart) / sW;
+  const v = (syp - syStart) / sH;
   const z = zoom?.zoomLevel ?? 1;
+  const tx = (0.5 - (zoom?.zoomTargetX ?? 0.5)) * (z - 1) * bw;
+  const ty = (0.5 - (zoom?.zoomTargetY ?? 0.5)) * (z - 1) * bh;
+  // 3D: push the card-space point through the SAME perspective matrix the
+  // card was drawn with, so the cursor / ripples / spotlight stay glued to the
+  // tilted surface. (projectCardPoint reproduces the flat 2D mapping exactly
+  // when rotation is zero — verified — but we keep the cheap 2D math for that
+  // case anyway so the legacy path is untouched.)
+  const rot = zoom?.rotation;
+  const scn = zoom?.scene;
+  if (scn && outWForCursor > 0) {
+    // Multi-card scene: glue the cursor to the card fronting the arrangement.
+    const cards = sceneInstances(scn.id, scn.p, scn.settings, scn.tSec);
+    if (cards?.length) {
+      const [cbx, cby, cbw, cbh] = sceneCardBox(bx, by, bw, bh, scn.settings, outWForCursor, outHForCursor);
+      const xf: CardXform = { outW: outWForCursor, outH: outHForCursor, bx: cbx, by: cby, bw: cbw, bh: cbh, zoom: z, zoomTx: tx, zoomTy: ty, rot: NO_ROTATION };
+      return projectCardPoint(xf, u, v, cards[heroIndex(cards)]);
+    }
+  }
+  if (hasRotation(rot) && outWForCursor > 0) {
+    const xf: CardXform = { outW: outWForCursor, outH: outHForCursor, bx, by, bw, bh, zoom: z, zoomTx: tx, zoomTy: ty, rot };
+    return projectCardPoint(xf, u, v);
+  }
+  let px = bx + u * bw;
+  let py = by + v * bh;
   if (z !== 1) {
     const cx0 = bx + bw / 2, cy0 = by + bh / 2;
-    const tx = (0.5 - (zoom?.zoomTargetX ?? 0.5)) * (z - 1) * bw;
-    const ty = (0.5 - (zoom?.zoomTargetY ?? 0.5)) * (z - 1) * bh;
     px = z * px + cx0 * (1 - z) + z * tx;
     py = z * py + cy0 * (1 - z) + z * ty;
   }
@@ -858,7 +966,16 @@ export function drawFrame(
   const padding = effects.paddingPct / 100;
   const innerScale = 1 - padding * 0.5;
 
-  const activeZoom = computeEasedZoom(items, ms);
+  // Zoom and rotation are separate lanes but render through ONE card transform
+  // (they compose in the same matrix), so attach the frame's rotation to the
+  // zoom object drawVideoBox / cursorToOutput already receive. Rotation with no
+  // zoom active still needs a carrier — a 1x zoom at centre is the identity.
+  const zoomOnly = computeEasedZoom(items, ms);
+  const rotation = computeRotation(items, ms);
+  const scene = computeScene(items, ms);
+  const activeZoom = rotation || scene
+    ? { ...(zoomOnly ?? { startMs: 0, endMs: 0, zoomLevel: 1, zoomTargetX: 0.5, zoomTargetY: 0.5 }), rotation: rotation ?? undefined, scene: scene ?? undefined }
+    : zoomOnly;
   const activeAnnotation = items.find(
     (it) => it.kind === 'annotation' && ms >= it.startMs && ms <= it.endMs
   );
@@ -913,7 +1030,7 @@ export function drawFrame(
         const cur = cursorAt(d.cursorSamples, ms);
         if (cur) {
           const { w: sw, h: sh } = srcDims(srcCanvas);
-          cursorPos = cursorToOutput(cur, sw, sh, cropRegion, innerX, innerY, innerW, innerH, activeZoom ?? undefined);
+          cursorPos = cursorToOutput(cur, sw, sh, cropRegion, innerX, innerY, innerW, innerH, activeZoom ?? undefined, outW, outH);
         }
       }
       const manualPos = (it: { posX?: number; posY?: number }) => ({ x: (it.posX ?? 0.5) * outW, y: (it.posY ?? 0.5) * outH });
@@ -937,11 +1054,14 @@ export function drawFrame(
     // pointer follows the (optionally smoothed) recorded path through the same
     // crop/zoom transform as the content, but its SIZE is constant in output
     // space (it doesn't grow when the video zooms in). Drawn on top of effects.
+    // During a multi-card scene there is no single surface the pointer belongs
+    // to, and a cursor floating over flying tiles reads as a glitch — hide it
+    // and let it return with the plain video when the scene ends.
     const cfx = d.cursorFx;
-    if (cfx?.enabled && (d.cursorSamples?.length || d.cursorClicks?.length)) {
+    if (cfx?.enabled && !scene && (d.cursorSamples?.length || d.cursorClicks?.length)) {
       const { w: sw, h: sh } = srcDims(srcCanvas);
       const toOut = (nx: number, ny: number) =>
-        cursorToOutput({ x: nx, y: ny }, sw, sh, cropRegion, innerX, innerY, innerW, innerH, activeZoom ?? undefined);
+        cursorToOutput({ x: nx, y: ny }, sw, sh, cropRegion, innerX, innerY, innerW, innerH, activeZoom ?? undefined, outW, outH);
       if (cfx.clicks && d.cursorClicks) {
         for (const c of d.cursorClicks) {
           const age = ms - c.t;
@@ -959,7 +1079,16 @@ export function drawFrame(
         raw && smooth ? { x: raw.x + (smooth.x - raw.x) * sm, y: raw.y + (smooth.y - raw.y) * sm } : smooth || raw;
       if (cur) {
         const p = toOut(cur.x, cur.y);
-        if (p) drawSyntheticCursor(ctx, p.x, p.y, cfx.size, outH, cfx.style, cfx.color);
+        // "Hide when idle": fade the pointer out while it sits still, so a
+        // paused demo isn't dominated by a parked arrow. Click ripples are
+        // exempt — a click is activity by definition.
+        const idleA = cfx.hideWhenIdle ? cursorIdleAlpha(d.cursorSamples, ms) : 1;
+        if (p && idleA > 0.01) {
+          ctx.save();
+          ctx.globalAlpha *= idleA;
+          drawSyntheticCursor(ctx, p.x, p.y, cfx.size, outH, cfx.style, cfx.color);
+          ctx.restore();
+        }
       }
     }
   }
@@ -1049,6 +1178,31 @@ function drawBlurRegions(
   }
 }
 
+// Scratch canvas the 3D path renders the flat card into before texturing it.
+// Reused across frames (resized when the box size changes) so the preview
+// doesn't allocate a 1440x810 canvas 60 times a second.
+let _cardCanvas: OffscreenCanvas | HTMLCanvasElement | null = null;
+// The unit card for a scene: the largest box of the chosen aspect that fits
+// inside the video box, centred. '16:9'-ish shapes keep the full box.
+function sceneCardBox(x: number, y: number, w: number, h: number, st: SceneSettings, outW: number, outH: number): [number, number, number, number] {
+  const r = SCENE_SHAPE_RATIO[st.shape];
+  const cw = Math.min(w, h * r);
+  const ch = cw / r;
+  // Position moves the whole arrangement: its centre lands at (posX, posY) of
+  // the frame instead of the frame centre.
+  const dx = (st.posX - 0.5) * outW, dy = (st.posY - 0.5) * outH;
+  return [x + (w - cw) / 2 + dx, y + (h - ch) / 2 + dy, cw, ch];
+}
+
+function cardCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
+  if (!_cardCanvas) {
+    _cardCanvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
+  } else if (_cardCanvas.width !== w || _cardCanvas.height !== h) {
+    _cardCanvas.width = w; _cardCanvas.height = h;
+  }
+  return _cardCanvas;
+}
+
 function drawVideoBox(
   ctx: CanvasRenderingContext2D,
   src: FrameSource,
@@ -1058,7 +1212,7 @@ function drawVideoBox(
   h: number,
   roundness: number,
   crop: CropRegion,
-  activeZoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number },
+  activeZoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number; rotation?: Rotation; scene?: { id: string; p: number; tSec: number; settings: SceneSettings } },
   shadowPct = 0,
   outH = 1080
 ) {
@@ -1075,11 +1229,60 @@ function drawVideoBox(
   // transform-origin centre: a point P maps to  centre + z·(P − centre) + z·t,
   // which the translate→scale→translate sequence below reproduces exactly.
   const z = activeZoom?.zoomLevel ?? 1;
+  const tx = (0.5 - (activeZoom?.zoomTargetX ?? 0.5)) * (z - 1) * w;
+  const ty = (0.5 - (activeZoom?.zoomTargetY ?? 0.5)) * (z - 1) * h;
+
+  // ── 3D rotation (tilt / spin) ─────────────────────────────────────────
+  // A 2D canvas can't do perspective, so when the zoom carries a rotation we
+  // render the card flat (cropped video + rounded corners, exactly as below)
+  // into an offscreen canvas and draw it as ONE textured quad on WebGL with a
+  // real perspective projection — zoom folded into the same matrix so it
+  // composes identically. The rotation-free path below is untouched, so every
+  // existing project renders byte-for-byte as before.
+  const rot = activeZoom?.rotation;
+  const scene = activeZoom?.scene;
+  const sceneCards = scene ? sceneInstances(scene.id, scene.p, scene.settings, scene.tSec) : null;
+  if (hasRotation(rot) || sceneCards) {
+    const outW = ctx.canvas.width;
+    // A scene can re-crop the card to a chosen shape (1:1, 9:16…); the unit
+    // card the instances are laid out around is then that smaller box.
+    const [cx0, cy0, cw, ch] = scene ? sceneCardBox(x, y, w, h, scene.settings, outW, outH) : [x, y, w, h];
+    const xf: CardXform = { outW, outH, bx: cx0, by: cy0, bw: cw, bh: ch, zoom: z, zoomTx: tx, zoomTy: ty, rot: rot ?? NO_ROTATION };
+    const card = cardCanvas(Math.max(2, Math.round(cw)), Math.max(2, Math.round(ch)));
+    const cctx = card.getContext('2d') as OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
+    cctx.clearRect(0, 0, card.width, card.height);
+    cctx.save();
+    roundedRectPath(cctx as CanvasRenderingContext2D, 0, 0, card.width, card.height, Math.min(roundness, Math.min(cw, ch) / 2));
+    cctx.clip();
+    drawCoverWithCrop(cctx as CanvasRenderingContext2D, src, crop, 0, 0, card.width, card.height);
+    cctx.restore();
+    const gl = sceneCards ? renderScene3D(card, xf, sceneCards) : renderCard3D(card, xf);
+    if (gl) {
+      // Shadow: let the canvas derive it from the GL image's own alpha, so it
+      // hugs the card's real silhouette — perspective AND rounded corners.
+      // (The old approach filled the projected 4-corner polygon with opaque
+      // black behind the card; the card's transparent rounded corners let that
+      // sharp polygon show through, which read as "roundness is broken".)
+      const shadowAlpha = Math.max(0, shadowPct) / 100;
+      ctx.save();
+      if (shadowAlpha > 0) {
+        const sc = outH / 1080;
+        ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
+        ctx.shadowBlur = (20 + shadowPct) * sc;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = (4 + shadowPct / 2) * sc;
+      }
+      ctx.drawImage(gl as CanvasImageSource, 0, 0, outW, outH);
+      ctx.restore();
+      ctx.restore();
+      return;
+    }
+    // WebGL unavailable → fall through to the flat path (rotation ignored).
+  }
+
   if (z !== 1) {
     const cx = x + w / 2;
     const cy = y + h / 2;
-    const tx = (0.5 - (activeZoom?.zoomTargetX ?? 0.5)) * (z - 1) * w;
-    const ty = (0.5 - (activeZoom?.zoomTargetY ?? 0.5)) * (z - 1) * h;
     ctx.translate(cx, cy);
     ctx.scale(z, z);
     ctx.translate(-cx + tx, -cy + ty);
@@ -1211,12 +1414,39 @@ const CLICK_RIPPLE_MS = 520;
 // (the actual pointer position) is the arrows' tip / the dot & ring centre.
 // Height is a constant fraction of the frame so the cursor reads the same
 // regardless of how far the video is zoomed. `scale` is the user multiplier.
-const CURSOR_MASKS: Record<string, [number, number][]> = {
-  // Classic OS-style arrow.
-  system: [[0, 0], [0, 16], [3.5, 12.5], [6, 18], [8, 17], [5.5, 11.5], [11, 11.5]],
-  // Bolder, stylized arrow.
-  arrow: [[0, 0], [0, 19], [4.6, 14.8], [7.4, 21], [10.2, 19.8], [7.3, 13.9], [13.2, 12.2]]
-};
+// Path2D per glyph, built once — the shapes never change between frames.
+const cursorPathCache = new Map<string, Path2D>();
+function cursorPath(style: string): Path2D | null {
+  const g = CURSOR_GLYPHS[style];
+  if (!g?.d) return null;
+  let path = cursorPathCache.get(style);
+  if (!path) { path = new Path2D(g.d); cursorPathCache.set(style, path); }
+  return path;
+}
+
+// Opacity of the pointer at `ms` when "hide when idle" is on: 1 while the
+// cursor is moving, fading to 0 once it has been still for CURSOR_IDLE_MS.
+// The backward walk is bounded by the fade window, so a long idle stretch
+// costs no more than a short one.
+function cursorIdleAlpha(samples: CursorSample[] | undefined, ms: number): number {
+  if (!samples?.length) return 1;
+  let lo = 0, hi = samples.length - 1, idx = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (samples[mid].t <= ms) { idx = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  if (idx < 0) return 1;
+  const cur = samples[idx];
+  const limit = ms - (CURSOR_IDLE_MS + CURSOR_IDLE_FADE_MS);
+  let lastMove = limit;
+  for (let i = idx; i >= 0 && samples[i].t >= limit; i--) {
+    const dx = samples[i].x - cur.x, dy = samples[i].y - cur.y;
+    if (dx * dx + dy * dy > CURSOR_MOVE_EPS_SQ) { lastMove = samples[i].t; break; }
+  }
+  const still = ms - lastMove;
+  if (still <= CURSOR_IDLE_MS) return 1;
+  return Math.max(0, 1 - (still - CURSOR_IDLE_MS) / CURSOR_IDLE_FADE_MS);
+}
 
 // Relative luminance of a #rrggbb colour — picks a contrasting outline so the
 // cursor stays visible whether its fill is light or dark.
@@ -1275,23 +1505,43 @@ function drawSyntheticCursor(
     return;
   }
 
-  const pts = CURSOR_MASKS[style] ?? CURSOR_MASKS.system;
-  ctx.beginPath();
-  pts.forEach(([px, py], i) => {
-    const X = x + px * f, Y = y + py * f;
-    if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
-  });
-  ctx.closePath();
-  ctx.shadowColor = 'rgba(0,0,0,0.4)';
-  ctx.shadowBlur = targetH * 0.18;
-  ctx.shadowOffsetY = targetH * 0.04;
-  ctx.fillStyle = fill;
-  ctx.fill();
-  ctx.shadowColor = 'transparent';
+  // Emoji pointer: a text glyph, drawn in its own colours (the fill/outline
+  // treatment below would flatten it).
+  const glyph = CURSOR_GLYPHS[style];
+  if (glyph?.char) {
+    ctx.font = `${targetH * 1.3}px "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur = targetH * 0.18;
+    ctx.shadowOffsetY = targetH * 0.04;
+    ctx.fillText(glyph.char, x, y - targetH * 0.08);
+    ctx.restore();
+    return;
+  }
+
+  // Scale the glyph into output space via the path itself, so the shadow and
+  // outline widths below stay in output px (a ctx.scale would blow them up).
+  const base = cursorPath(style) ?? cursorPath('system');
+  if (!base) { ctx.restore(); return; }
+  const path = new Path2D();
+  path.addPath(base, new DOMMatrix([f, 0, 0, f, x, y]));
+  // Outline FIRST at double weight, then fill over it. A centred stroke (the
+  // obvious way round) spends half its width inside the shape, shaving the
+  // point and rounding off every corner — which is what made the old arrow
+  // look blunt. Stroking underneath leaves the border entirely outside, so the
+  // silhouette keeps its full size and the tip stays sharp.
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowBlur = targetH * 0.16;
+  ctx.shadowOffsetY = targetH * 0.045;
   ctx.lineJoin = 'round';
-  ctx.lineWidth = Math.max(1, targetH * 0.06);
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(1.5, targetH * 0.085);
   ctx.strokeStyle = outline;
-  ctx.stroke();
+  ctx.stroke(path);
+  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = fill;
+  ctx.fill(path);
   ctx.restore();
 }
 

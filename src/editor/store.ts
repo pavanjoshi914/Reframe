@@ -1,14 +1,17 @@
 import { create } from 'zustand';
 import type { RecordingMeta, CursorSample, ClickSample } from '@shared/ipc';
 import { suggestZoomsFromActivity } from './autoZoom';
+import type { CursorStyleId } from './cursorGlyphs';
+import wallpaper01Url from '../../assets/wallpapers/wallpaper-01.jpg';
 
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
-export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed' | 'magnify' | 'spotlight' | 'blur';
+export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed' | 'magnify' | 'spotlight' | 'blur' | 'rotation' | 'scene';
 // Redaction style for a blur region.
 export type BlurStyle = 'blur' | 'pixelate';
-// Synthetic-cursor pointer masks: an OS-like arrow, a bolder stylized arrow,
-// a hollow ring, and a filled dot. Rendered by the compositor (export.ts).
-export type CursorStyle = 'system' | 'arrow' | 'ring' | 'dot';
+// Synthetic-cursor pointer styles — arrows, a pointing hand, a text I-beam,
+// ring/dot and the playful ones. Shapes live in cursorGlyphs.ts so the
+// compositor and the sidebar picker draw from one source.
+export type CursorStyle = CursorStyleId;
 
 export type AnnotationStyle = {
   // Visual styling for an annotation. All fields optional so older projects
@@ -36,6 +39,37 @@ export type LaneItem = {
   zoomLevel?: number;
   zoomTargetX?: number;
   zoomTargetY?: number;
+  // 3D rotation of the framed video "card" — its own lane ('rotation'), so it
+  // can be applied at any time, with or without a zoom (a tilt on an intro at
+  // 1x, a spin across a cut, a held lean over a whole section). Degrees; all
+  // default 0 = flat. tiltX nods the card about its horizontal axis, tiltY
+  // turns it about the vertical axis, spinZ rotates it in-plane. The *End
+  // values are the rotation at the region's end keyframe; when absent the
+  // rotation holds the start values throughout. It interpolates start→end
+  // across the region and eases in/out at the region's edges, so the card
+  // tilts in and flattens back out smoothly. Composes with any active zoom.
+  tiltX?: number;
+  tiltY?: number;
+  spinZ?: number;
+  tiltXEnd?: number;
+  tiltYEnd?: number;
+  spinZEnd?: number;
+  // Multi-card 3D scene preset id (see scenes.ts) — when set on a rotation
+  // item, it replaces the manual tilt for that region: the video renders as
+  // many cards (ring / grid / stream…) animated across the region.
+  scene?: string;
+  // Per-scene motion settings (see SceneSettings in scenes.ts). All optional;
+  // absent = the defaults there.
+  sceneSpeed?: number;    // cycles across the region (1 = one pass)
+  sceneZoom?: number;     // camera dolly on the whole arrangement (1 = as designed)
+  sceneTiltX?: number;    // group tilt of the arrangement, degrees
+  sceneTiltY?: number;
+  sceneDepth?: number;    // multiplies depth offsets
+  sceneSpacing?: number;  // multiplies in-plane spread
+  sceneRadius?: number;   // multiplies all offsets (ring radius)
+  sceneShape?: '1:1' | '4:3' | '3:2' | '16:9' | '9:16'; // card crop
+  scenePosX?: number;     // where the arrangement's centre sits in the frame (0..1)
+  scenePosY?: number;
   text?: string;
   speed?: number;
   // Spotlight / magnify: how the lens is positioned over its time range.
@@ -77,6 +111,11 @@ export type PolishPreset = 'subtle' | 'soft' | 'dramatic';
 // Circle is the full pill. The legacy 'rounded' value (square box, mid
 // radius) is migrated to 'square' on hydrate.
 export type WebcamShape = 'circle' | 'square' | 'rectangle';
+
+// Gap kept between the webcam PiP and the frame edge, as a fraction of the
+// frame. Used both when snapping to a corner and when clamping a drag, so the
+// box never ends up flush against the wall.
+export const WEBCAM_EDGE_MARGIN = 0.04;
 
 // Crop region in normalized 0..1 coordinates relative to the source frame.
 // Identity = full frame. Persisted with the project so saved files round-trip.
@@ -148,7 +187,7 @@ export type EditorState = {
   // smoothing 0..1: 0 = the raw cursor position (pixel-exact, no smoothing),
   // 1 = the full One Euro glide. Lets the user trade accuracy for buttery-ness.
   // style picks the pointer mask; color is its fill (outline auto-contrasts).
-  cursorFx: { enabled: boolean; size: number; clicks: boolean; smoothing: number; style: CursorStyle; color: string };
+  cursorFx: { enabled: boolean; size: number; clicks: boolean; smoothing: number; style: CursorStyle; color: string; hideWhenIdle: boolean };
 
   // Undo/redo history (session-only; never serialized). past/future hold
   // document snapshots; _applyingHistory suppresses capture while a snapshot is
@@ -219,7 +258,7 @@ export type SerializedProject = {
   cursorFx?: EditorState['cursorFx'];
 };
 
-const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = { enabled: false, size: 1.4, clicks: true, smoothing: 0.5, style: 'system', color: '#ffffff' };
+const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = { enabled: false, size: 1.4, clicks: true, smoothing: 0.5, style: 'system', color: '#ffffff', hideWhenIdle: false };
 
 function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
@@ -337,13 +376,15 @@ export const useEditor = create<EditorState>((set, get) => ({
   aspect: '16:9',
 
   cropRegion: DEFAULT_CROP_REGION,
-  background: { mode: 'gradient', value: 'linear-gradient(135deg,#fb923c,#ec4899)' },
+  // Default look: the first bundled wallpaper (not a gradient) and a
+  // rectangular webcam — the combination that reads best out of the box.
+  background: { mode: 'image', value: wallpaper01Url },
   // x,y are top-left position normalized to the stage (0..1).
   // size is the webcam's diameter as a fraction of stage HEIGHT — guarantees
   // it stays square AND fits inside any landscape aspect.
   // Default 0.25 = 25% of stage height. Corner position math:
   // x = 1 - size*9/16 - 0.04, y = 1 - size - 0.04.
-  webcam: { x: 0.85, y: 0.76, size: 0.2, enabled: false, shape: 'circle' },
+  webcam: { x: 0.76, y: 0.76, size: 0.2, enabled: false, shape: 'rectangle' },
   layoutPreset: 'pip-bottom-right',
 
   polish: 'soft',
@@ -442,7 +483,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const aspect = w.shape === 'rectangle' ? 16 / 9 : 1;
       const projectAspect = aspectToRatio(s.aspect, 16 / 9);
       const widthFrac = (next.size * aspect) / projectAspect;
-      const margin = 0.04;
+      const margin = WEBCAM_EDGE_MARGIN;
       // Anchor by the side the box is closer to. Compare midpoint vs 0.5 so
       // the snap feels right whether the user dragged a tiny bit off the
       // corner or kept the default.
@@ -461,7 +502,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const webcamAspect = s.webcam.shape === 'rectangle' ? 16 / 9 : 1;
       const projectAspect = aspectToRatio(s.aspect, 16 / 9);
       const widthFrac = (sz * webcamAspect) / projectAspect;
-      const margin = 0.04;
+      const margin = WEBCAM_EDGE_MARGIN;
       const right = 1 - widthFrac - margin;
       const bottom = 1 - sz - margin;
       const left = margin;
@@ -496,6 +537,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       // New cursor effects follow the recorded cursor by default.
       ...(kind === 'magnify' || kind === 'spotlight' ? { track: 'cursor' as const } : {}),
       ...(kind === 'annotation' ? { text: '' } : {}),
+      // A new rotation starts with a visible lean so it reads immediately.
+      ...(kind === 'rotation' ? { tiltX: 0, tiltY: 20, spinZ: 0 } : {}),
+      // A new scene starts on Orbit so something moves immediately.
+      ...(kind === 'scene' ? { scene: 'orbit' } : {}),
       ...(kind === 'blur'
         ? { rectX: 0.34, rectY: 0.4, rectW: 0.32, rectH: 0.14, blurStyle: 'blur' as const, blurStrength: 0.5 }
         : {})
