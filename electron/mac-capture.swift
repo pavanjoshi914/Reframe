@@ -17,6 +17,9 @@
 // electron/main.ts drives it unchanged:
 //   stdout:  "frame=N\nout_time_us=U\n"  periodically (the first one marks the
 //            video's t=0 — the cursor/click clock hangs off it)
+//            "ORIGIN <wall-ms> <x>,<y> <w>x<h>"  window capture only: where the
+//            window is (points), at start and on every move, so the cursor
+//            sidecar can be made relative to the window instead of the display
 //   stdin:   "q" (or SIGINT/SIGTERM) => finalize the MP4 cleanly and exit 0
 //   stderr:  diagnostics
 //
@@ -28,7 +31,14 @@
 // screen would yield a 1-frame video); scale for Retina; cap at H.264's
 // 4096x2304.
 //
-// Usage: mac-capture <displayIndex> <fps> <out.mp4>
+// Usage: mac-capture <displayIndex> <fps> <out.mp4> [windowID]
+//
+// windowID is a CGWindowID (the number Electron puts in its "window:<id>:<n>"
+// source id). When it is present and non-zero we capture THAT WINDOW ONLY,
+// via SCContentFilter(desktopIndependentWindow:) — the window is composited on
+// its own, so whatever is stacked on top of it never leaks into the recording
+// and switching to another app doesn't change what's captured. Without it we
+// capture the whole display, as before.
 
 import Foundation
 import AppKit
@@ -50,6 +60,9 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
     var stopping = false
     let lock = NSLock()
     var heartbeat: DispatchSourceTimer?
+    var originWatch: DispatchSourceTimer?
+    var lastOrigin: CGPoint?
+    var winPoints: CGSize = .zero
     let queue = DispatchQueue(label: "reframe.mac-capture", qos: .userInteractive)
 
     init(outURL: URL, fps: Int32) {
@@ -59,16 +72,31 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
     // MARK: - start
 
-    func start(displayIndex: Int) async throws {
+    func start(displayIndex: Int, windowID: CGWindowID) async throws {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         let displays = content.displays
         guard !displays.isEmpty else { throw NSError(domain: "mac-capture", code: 1, userInfo: [NSLocalizedDescriptionKey: "no displays"]) }
         let display = displays[min(max(displayIndex, 0), displays.count - 1)]
 
+        // Window capture. If the id doesn't resolve (the window closed between
+        // the picker and Record) we FAIL rather than silently recording the
+        // whole desktop -- main.ts then falls back to Chromium's window
+        // capture, which records the right window with the cursor visible.
+        // Recording everything when the user asked for one window would be a
+        // privacy bug, so "no filter" is never an acceptable outcome here.
+        var windowTarget: SCWindow? = nil
+        if windowID != 0 {
+            guard let w = content.windows.first(where: { $0.windowID == windowID }) else {
+                throw NSError(domain: "mac-capture", code: 4, userInfo: [NSLocalizedDescriptionKey: "window \(windowID) not found"])
+            }
+            windowTarget = w
+        }
+
         // Retina: capture at physical pixels, like the Linux/Windows paths.
         let scale = Int(NSScreen.screens.first(where: { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) == display.displayID })?.backingScaleFactor ?? 2)
-        var w = display.width * scale
-        var h = display.height * scale
+        var w = Int((windowTarget?.frame.width).map { Double($0) } ?? Double(display.width)) * scale
+        var h = Int((windowTarget?.frame.height).map { Double($0) } ?? Double(display.height)) * scale
+        guard w > 0 && h > 0 else { throw NSError(domain: "mac-capture", code: 5, userInfo: [NSLocalizedDescriptionKey: "target has no size"]) }
         // H.264 ceiling; a 5K display would otherwise crash the encoder.
         let maxW = 4096, maxH = 2304
         if w > maxW || h > maxH {
@@ -79,7 +107,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
         w -= w % 2; h -= h % 2
 
         // Stream: configured ONCE. showsCursor=false is the whole point.
-        let filter = SCContentFilter(display: display, excludingWindows: [])
+        let filter = windowTarget.map { SCContentFilter(desktopIndependentWindow: $0) }
+            ?? SCContentFilter(display: display, excludingWindows: [])
         let cfg = SCStreamConfiguration()
         cfg.width = w
         cfg.height = h
@@ -121,7 +150,23 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
         try await stream.startCapture()
         startHeartbeat()
-        FileHandle.standardError.write("mac-capture: started \(w)x\(h)@\(fps) display=\(display.displayID) cursor=hidden\n".data(using: .utf8)!)
+        // Where the window sits on screen, so the parent can normalize the
+        // cursor sidecar against the WINDOW rather than the display. Re-emitted
+        // whenever it moves: the user can drag the window mid-recording, and
+        // every cursor sample after that has to be measured against where the
+        // window actually was at that moment.
+        //
+        // kCGWindowBounds is in POINTS (global, top-left origin) -- the same
+        // space CGEvent reports cursor locations in -- so the parent compares
+        // the two series directly without any scaling.
+        // (named `wt`, not `w` — `w` is the video width in pixels, above)
+        if let wt = windowTarget {
+            winPoints = wt.frame.size
+            reportOrigin(wt.frame.origin.x, wt.frame.origin.y)
+            startOriginWatch(windowID: wt.windowID)
+        }
+        let target = windowTarget.map { "window=\($0.windowID) \($0.title ?? "")" } ?? "display=\(display.displayID)"
+        FileHandle.standardError.write("mac-capture: started \(w)x\(h)@\(fps) \(target) cursor=hidden\n".data(using: .utf8)!)
     }
 
     // SCK emits frames only when content changes. A static screen would give
@@ -150,6 +195,44 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
         }
         t.resume()
         heartbeat = t
+    }
+
+    // "ORIGIN <wall-ms> <x>,<y>" -- same line shape and same clock as the Linux
+    // helper, so electron/main.ts parses one format for both platforms.
+    func reportOrigin(_ x: CGFloat, _ y: CGFloat) {
+        let ms = Int64(Date().timeIntervalSince1970 * 1000)
+        // The trailing size is the window in POINTS. The video is in PIXELS, so
+        // the parent cannot divide one by the other -- it needs the window's
+        // extent in the same space the cursor is reported in, which is points.
+        let sz = "\(Int(winPoints.width.rounded()))x\(Int(winPoints.height.rounded()))"
+        FileHandle.standardOutput.write(
+            "ORIGIN \(ms) \(Int(x.rounded())),\(Int(y.rounded())) \(sz)\n".data(using: .utf8)!)
+    }
+
+    // CGWindowListCopyWindowInfo for one window id is cheap and synchronous, so
+    // a 10Hz poll costs nothing next to the capture itself. (SCShareableContent
+    // would mean an async round trip per tick.)
+    func startOriginWatch(windowID: CGWindowID) {
+        let t = DispatchSource.makeTimerSource(queue: queue)
+        t.schedule(deadline: .now() + 0.1, repeating: 0.1)
+        t.setEventHandler { [weak self] in
+            guard let self = self, !self.stopping else { return }
+            guard let info = CGWindowListCopyWindowInfo(
+                    [.optionIncludingWindow], windowID) as? [[String: Any]],
+                  let bounds = info.first?[kCGWindowBounds as String] as? [String: Any],
+                  // The values are NSNumbers; going through NSNumber rather than
+                  // casting the dictionary straight to [String: CGFloat] keeps
+                  // this working regardless of how the bridge decides to behave.
+                  let nx = bounds["X"] as? NSNumber,
+                  let ny = bounds["Y"] as? NSNumber else { return }
+            let p = CGPoint(x: CGFloat(nx.doubleValue), y: CGFloat(ny.doubleValue))
+            if self.lastOrigin != p {
+                self.lastOrigin = p
+                self.reportOrigin(p.x, p.y)
+            }
+        }
+        t.resume()
+        originWatch = t
     }
 
     func retimed(_ sb: CMSampleBuffer, to pts: CMTime) -> CMSampleBuffer? {
@@ -211,6 +294,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
         stopping = true
         lock.unlock()
         heartbeat?.cancel()
+        originWatch?.cancel()
         // Tear down off the caller's thread: this can be invoked from the capture
         // queue (didStopWithError) or a signal/stdin source, and stopCapture +
         // finishWriting are async. Blocking here on a semaphore that the Task
@@ -236,10 +320,11 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 let args = CommandLine.arguments
 guard args.count >= 4, let displayIndex = Int(args[1]), let fps = Int32(args[2]) else {
-    FileHandle.standardError.write("usage: mac-capture <displayIndex> <fps> <out.mp4>\n".data(using: .utf8)!)
+    FileHandle.standardError.write("usage: mac-capture <displayIndex> <fps> <out.mp4> [windowID]\n".data(using: .utf8)!)
     exit(64)
 }
 let outURL = URL(fileURLWithPath: args[3])
+let windowID = CGWindowID(args.count >= 5 ? (UInt32(args[4]) ?? 0) : 0)
 try? FileManager.default.removeItem(at: outURL)
 
 guard #available(macOS 12.3, *) else {
@@ -265,7 +350,7 @@ for sig in [SIGINT, SIGTERM] {
 
 Task {
     do {
-        try await rec.start(displayIndex: displayIndex)
+        try await rec.start(displayIndex: displayIndex, windowID: windowID)
     } catch {
         // Most likely: Screen Recording permission not granted for the app, or
         // SCK unavailable. main.ts treats a non-zero early exit as "backend

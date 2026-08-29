@@ -501,6 +501,37 @@ function writeRecordingSidecars(
       const vw = meta.width || Math.round(disp.bounds.width * (disp.scaleFactor || 1));
       const vh = meta.height || Math.round(disp.bounds.height * (disp.scaleFactor || 1));
       const norm = (arr: CursorPt[]) => {
+        // A single window was recorded: the frame IS the window, so fractions
+        // must be relative to the window, not the display. Getting this wrong
+        // doesn't just offset the synthetic cursor — the 0..1 filter below
+        // would discard most samples and the cursor would vanish.
+        if (recordedWindowSize && recordedWindowOrigins.length > 0) {
+          const { w: rw, h: rh } = recordedWindowSize;
+          // `k` converts a cursor sample into the space the helper reports the
+          // window rect in. That space differs by platform:
+          //   Linux  — the helper reports X11 PHYSICAL pixels. uiohook reports
+          //            physical pixels too (k=1); getCursorScreenPoint is
+          //            logical and has to be scaled up.
+          //   macOS  — the helper reports POINTS (kCGWindowBounds), and BOTH
+          //            cursor sources are already in points (CGEventGetLocation
+          //            and getCursorScreenPoint), so nothing needs scaling.
+          const k = process.platform === 'darwin'
+            ? 1
+            : (cursorFromUio ? 1 : (disp.scaleFactor || 1));
+          // Origins arrive in order; walk both series together instead of
+          // searching per sample.
+          let oi = 0;
+          return arr
+            .map((p) => {
+              // p.t is relative to cursorStart, and origins are wall-clock.
+              const wall = cursorStart + p.t;
+              while (oi + 1 < recordedWindowOrigins.length
+                     && recordedWindowOrigins[oi + 1].t <= wall) oi++;
+              const o = recordedWindowOrigins[oi];
+              return { t: p.t, x: (p.x * k - o.x) / rw, y: (p.y * k - o.y) / rh };
+            })
+            .filter((p) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1);
+        }
         if (cursorFromUio) {
           const scaleX = vw / Math.max(1, disp.bounds.width);
           const scaleY = vh / Math.max(1, disp.bounds.height);
@@ -724,12 +755,63 @@ let pendingCaptureSourceId: string | null = null;
 // primary — otherwise recording a secondary monitor offsets the whole cursor
 // path (Cap normalizes per recorded display for the same reason).
 let recordedDisplay: Electron.Display | null = null;
+// The window the user picked, when they picked a window rather than a screen.
+// `handle` is the OS window id parsed out of Electron's source id
+// ("window:<handle>:<n>"): a CGWindowID on macOS, an HWND on Windows, an X11
+// XID on Linux. Null whenever a screen was chosen.
+let pendingWindow: { handle: string; name: string } | null = null;
+
+// When a single WINDOW was captured: its size in physical pixels, plus where it
+// sat on screen over time. The cursor sidecar is normalized against the window
+// rather than the display — the video IS the window, so display-relative
+// fractions would put the editor's synthetic cursor in the wrong place.
+//
+// The origin is a timeline, not a constant, because the user can drag the window
+// mid-recording. That doesn't disturb the capture (ximagesrc reads the window's
+// own drawable, not a screen region), but every cursor sample after the drag has
+// to be measured against where the window was AT THAT MOMENT. The helper emits
+// "ORIGIN <wall-ms> <x>,<y>" at start and on every move; both series are stamped
+// with the same wall clock, so they line up without any handshake.
+// Null / empty for screen recordings.
+let recordedWindowSize: { w: number; h: number } | null = null;
+let recordedWindowOrigins: { t: number; x: number; y: number }[] = [];
+// Carries the tail of a partial stdout chunk so an ORIGIN line split across two
+// reads still parses.
+let helperStdoutTail = '';
+
+// Consume "ORIGIN <wall-ms> <x>,<y> [<w>x<h>]" lines from a capture helper's
+// stdout. Both the Linux and macOS helpers speak this, so the window-relative
+// cursor mapping is written once.
+//
+// The trailing size is present on macOS, where the helper reports POINTS while
+// the video is in PIXELS, so the two can't be derived from each other. Linux
+// omits it: there the helper's space IS the video's space (X11 physical px), so
+// the captured size already is the window's extent.
+function consumeHelperOrigins(chunk: string) {
+  helperStdoutTail += chunk;
+  const lines = helperStdoutTail.split('\n');
+  helperStdoutTail = lines.pop() ?? '';
+  for (const line of lines) {
+    const m = /^ORIGIN (\d+) (-?\d+),(-?\d+)(?: (\d+)x(\d+))?$/.exec(line.trim());
+    if (!m) continue;
+    recordedWindowOrigins.push({ t: Number(m[1]), x: Number(m[2]), y: Number(m[3]) });
+    if (m[4]) recordedWindowSize = { w: Number(m[4]), h: Number(m[5]) };
+  }
+}
+
 ipcMain.handle('capture:setPendingSource', async (_evt, sourceId: string) => {
   pendingCaptureSourceId = sourceId;
   recordedDisplay = null;
+  pendingWindow = null;
+  recordedWindowSize = null;
+  recordedWindowOrigins = [];
   try {
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
     const src = sources.find((s) => s.id === sourceId);
+    if (src && sourceId.startsWith('window:')) {
+      const handle = sourceId.split(':')[1] ?? '';
+      if (handle) pendingWindow = { handle, name: src.name };
+    }
     if (src && src.display_id) {
       recordedDisplay = screen.getAllDisplays().find((d) => String(d.id) === String(src.display_id)) ?? null;
     }
@@ -865,7 +947,8 @@ function startSeparateMicAudio(ts: string, source: string): { proc: ChildProcess
 async function tryStartPipewire(
   geom: { w: number; h: number; x: number; y: number },
   audio: { monitor: string | null; source: string | null; wantSys: boolean; wantMic: boolean },
-  ts: string
+  ts: string,
+  win?: { handle: string; name: string } | null
 ): Promise<{ ok: boolean }> {
   const script = helperScriptPath();
   if (!script) return { ok: false };
@@ -880,6 +963,12 @@ async function tryStartPipewire(
     String(geom.x), String(geom.y), String(geom.w), String(geom.h),
     '30', videoPath,
   ];
+  // Electron's Linux window source id carries the X11 window id verbatim
+  // ("window:<xid>:<n>"), which is exactly what ximagesrc's xid property wants,
+  // so the window the user picked in OUR picker is captured directly — no
+  // second dialog. The helper falls back to the portal's window chooser when
+  // there's no X display, which is how native Wayland windows are reached.
+  if (win) helperArgs.splice(1, 0, '--window-xid', win.handle);
   if (monitorInGst) helperArgs.push(monitorInGst);
 
   let proc: ChildProcess;
@@ -892,7 +981,14 @@ async function tryStartPipewire(
 
   let stdout = '';
   let stderr = '';
-  proc.stdout?.on('data', (d) => { stdout += String(d); });
+  recordedWindowOrigins = [];
+  helperStdoutTail = '';
+  proc.stdout?.on('data', (d) => {
+    stdout += String(d);
+    // Origins keep arriving for the whole recording, so parse them here rather
+    // than scanning `stdout` once after READY.
+    consumeHelperOrigins(String(d));
+  });
   proc.stderr?.on('data', (d) => { stderr += String(d); });
 
   const ready = await new Promise<boolean>((resolve) => {
@@ -925,6 +1021,12 @@ async function tryStartPipewire(
   ffDims = negotiated
     ? { width: Number(negotiated[1]), height: Number(negotiated[2]) }
     : { width: geom.w, height: geom.h };
+  // The window route reports where the window sits (and keeps reporting as it
+  // moves), so the cursor sidecar can be made relative to the window.
+  recordedWindowSize = win && recordedWindowOrigins.length > 0
+    ? { w: ffDims.width, h: ffDims.height }
+    : null;
+  helperStdoutTail = '';
   console.log(
     `[main] capture: pipewire via ${(/^BACKEND (\w+)$/m.exec(stdout) || [, '?'])[1]}` +
     ` @ ${ffDims.width}x${ffDims.height}`
@@ -953,6 +1055,21 @@ async function tryStartPipewire(
 //                    OFFLINE (deterministic, unlike live mixing).
 // The mic starts slightly AFTER the video, so it's delayed by the shortfall
 // (video length − mic length) to line up. Best-effort: returns a usable path.
+// Duration of `file` in ms per ffprobe, or `fallback` if it can't be read.
+// Only shortens: a probe that reads long (or fails) must never inflate the
+// timeline, and a normal stop should keep its wall-clock measurement.
+function actualDurationMs(file: string, fallback: number): number {
+  try {
+    const out = execFileSync(ffprobeBin(), [
+      '-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'default=nw=1:nk=1', file
+    ], { encoding: 'utf8' }).trim();
+    const ms = Math.round(Number(out) * 1000);
+    if (Number.isFinite(ms) && ms > 0 && ms < fallback) return ms;
+  } catch { /* keep the wall-clock figure */ }
+  return fallback;
+}
+
 function finalizePipewire(videoMkv: string, micFile: string | null): string {
   const outMp4 = videoMkv.replace(/\.mkv$/, '.mp4');
   try {
@@ -1057,7 +1174,8 @@ function nativeCaptureArgs(
   backend: NativeBackend,
   box: CaptureBox,
   displayIndex: number,
-  out: string
+  out: string,
+  win?: { handle: string; name: string } | null
 ): string[] {
   // yuv420p needs even dimensions and a display can report odd ones.
   const even = 'scale=trunc(iw/2)*2:trunc(ih/2)*2';
@@ -1085,6 +1203,17 @@ function nativeCaptureArgs(
     ];
   }
   if (backend === 'gdigrab') {
+    // Captures a picked window by title — gdigrab's only window handle. Kept
+    // working, but NOT currently reachable: tryStartNativeCapture declines
+    // window capture on Windows because it has no way to report the window's
+    // position, which the cursor sidecar needs. Wire up an HWND rect lookup
+    // (GetWindowRect) that streams "ORIGIN <ms> <x>,<y>" and this becomes live.
+    if (win) {
+      return [
+        '-f', 'gdigrab', '-draw_mouse', '0', '-framerate', '30',
+        '-i', 'title=' + win.name, '-vf', even, ...encode
+      ];
+    }
     return [
       '-f', 'gdigrab', '-draw_mouse', '0', '-framerate', '30',
       '-offset_x', String(box.x), '-offset_y', String(box.y),
@@ -1110,7 +1239,8 @@ function spawnNativeCapture(
   backend: NativeBackend,
   box: CaptureBox,
   displayIndex: number,
-  out: string
+  out: string,
+  win?: { handle: string; name: string } | null
 ): Promise<boolean> {
   return new Promise((resolve) => {
     let proc: ChildProcess;
@@ -1119,9 +1249,9 @@ function spawnNativeCapture(
     const bin = backend === 'sckit' ? macCaptureBin() : ffmpegBin();
     if (!bin) return resolve(false);
     const args = backend === 'sckit'
-      ? [String(displayIndex), '30', out]
+      ? [String(displayIndex), '30', out, win?.handle ?? '0']
       : ['-hide_banner', '-loglevel', 'error', '-nostats', '-progress', 'pipe:1',
-        ...nativeCaptureArgs(backend, box, displayIndex, out)];
+        ...nativeCaptureArgs(backend, box, displayIndex, out, win)];
     try {
       proc = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
     } catch (err) {
@@ -1130,6 +1260,9 @@ function spawnNativeCapture(
     }
     let settled = false;
     let errText = '';
+    recordedWindowOrigins = [];
+    recordedWindowSize = null;
+    helperStdoutTail = '';
     const done = (ok: boolean) => {
       if (settled) return;
       settled = true;
@@ -1141,6 +1274,10 @@ function spawnNativeCapture(
     };
     proc.stderr?.on('data', (d) => { errText += String(d); });
     proc.stdout?.on('data', (d) => {
+      // The macOS helper interleaves "ORIGIN <ms> <x>,<y> <w>x<h>" lines with
+      // the progress feed for the whole recording, so parse them on every
+      // chunk, not just the first. (ffmpeg's backends emit none.)
+      if (win) consumeHelperOrigins(String(d));
       // -progress keeps emitting for the whole recording; only the FIRST
       // report is the video's t=0. Without this guard the epoch kept being
       // pushed forward and the audio skew came out as minus the recording
@@ -1178,15 +1315,45 @@ function spawnNativeCapture(
   });
 }
 
-async function tryStartNativeCapture(box: CaptureBox, displayIndex: number, ts: string): Promise<boolean> {
+async function tryStartNativeCapture(
+  box: CaptureBox,
+  displayIndex: number,
+  ts: string,
+  win?: { handle: string; name: string } | null
+): Promise<boolean> {
   const out = path.join(recordingsTempDir, ts + '-screen.mp4');
   // ddagrab is GPU-side and cheap; gdigrab is the universal fallback and takes
   // explicit offsets, so it also copes with awkward multi-monitor layouts.
-  const backends: NativeBackend[] =
-    process.platform === 'win32' ? ['ddagrab', 'gdigrab'] : ['sckit', 'avfoundation'];
+  //
+  // When the user picked a WINDOW we only offer the backends that can actually
+  // capture one: gdigrab (by title) on Windows, ScreenCaptureKit (by
+  // CGWindowID) on macOS. ddagrab duplicates a whole output and avfoundation
+  // grabs a whole screen, so including them would "succeed" by recording the
+  // entire desktop — the user asked for one window and would silently get
+  // everything, which is both wrong and a privacy leak. Returning false here
+  // instead sends the caller to Chromium's window capture: the right window,
+  // with the cursor visible.
+  //
+  // Windows is deliberately absent from the window case. gdigrab CAN capture a
+  // window by title, but nothing on that path can tell us WHERE the window is,
+  // and the cursor sidecar has to be normalized against the window's rect or
+  // the editor's synthetic cursor lands somewhere else entirely. Since hiding
+  // the cursor exists precisely so that synthetic cursor can stand in, a
+  // cursor-free video we can't place a cursor on is worse than declining: the
+  // caller falls back to Chromium's window capture, which records the right
+  // window with a real cursor. (Linux gets the rect from X, macOS from
+  // kCGWindowBounds; Windows would need an HWND lookup we don't have.)
+  const backends: NativeBackend[] = win
+    ? (process.platform === 'win32' ? [] : ['sckit'])
+    : (process.platform === 'win32' ? ['ddagrab', 'gdigrab'] : ['sckit', 'avfoundation']);
+  if (win && backends.length === 0) {
+    console.log('[main] cursor-hidden capture declined: no window-rect source on this platform');
+    return false;
+  }
   for (const backend of backends) {
-    if (await spawnNativeCapture(backend, box, displayIndex, out)) {
-      console.log('[main] capture: ' + backend + ' (cursor omitted) @ ' + box.w + 'x' + box.h);
+    if (await spawnNativeCapture(backend, box, displayIndex, out, win)) {
+      console.log('[main] capture: ' + backend + ' (cursor omitted) '
+        + (win ? 'window "' + win.name + '"' : '@ ' + box.w + 'x' + box.h));
       return true;
     }
   }
@@ -1246,7 +1413,7 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
 
     ffStartedAt = Date.now();
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
-    if (await tryStartNativeCapture(box, index, ts)) {
+    if (await tryStartNativeCapture(box, index, ts, pendingWindow)) {
       // ffmpeg has no route to system audio on these platforms, so the renderer
       // records it and hands it to ffcap:stop for muxing.
       return { ok: true, width: ffDims.width, height: ffDims.height, audioFromRenderer: true };
@@ -1273,7 +1440,7 @@ ipcMain.handle('ffcap:start', async (_evt, opts: { withSystemAudio: boolean; wit
   const wantSys = !!opts.withSystemAudio && !!monitor;
   const wantMic = !!opts.withMic && !!source;
 
-  const pw = await tryStartPipewire({ w, h, x, y }, { monitor, source, wantSys, wantMic }, ts);
+  const pw = await tryStartPipewire({ w, h, x, y }, { monitor, source, wantSys, wantMic }, ts, pendingWindow);
   // tryStartPipewire trusts the size the ScreenCast actually negotiated, which
   // the portal may pick for us, so report ffDims rather than what we asked for.
   if (pw.ok) return { ok: true, width: ffDims.width, height: ffDims.height };
@@ -1302,6 +1469,11 @@ ipcMain.handle('ffcap:stop', async (_evt, audio?: { data: ArrayBuffer; startedAt
     await new Promise<void>((resolve) => {
       let done = false;
       const finish = () => { if (!done) { done = true; resolve(); } };
+      // The window routes can finish on their own: closing the captured window
+      // stops the ScreenCaptureKit stream on macOS and ends gdigrab on Windows.
+      // A process that has already exited never emits 'exit' again, so without
+      // this the stop would sit on the 7s timeout below before the HUD returned.
+      if (proc.exitCode !== null || proc.signalCode !== null) return resolve();
       proc.once('exit', finish);
       try { proc.stdin?.write('q'); } catch { /* ignore */ }
       setTimeout(() => { try { proc.kill('SIGINT'); } catch { /* ignore */ } }, 2000);
@@ -1310,7 +1482,11 @@ ipcMain.handle('ffcap:stop', async (_evt, audio?: { data: ArrayBuffer; startedAt
     });
 
     const out = muxNativeAudio(videoPath, audio, videoEpoch);
-    return { filePath: out, width: ffDims.width, height: ffDims.height, durationMs };
+    // Same reasoning as the Linux path: a capture that ended before the user
+    // pressed stop must not report wall-clock, or the editor's timeline runs
+    // past the end of the video and every keyframe lands at the wrong time.
+    return { filePath: out, width: ffDims.width, height: ffDims.height,
+      durationMs: actualDurationMs(out, durationMs) };
   }
   if (!pwProc || !pwVideoPath) return null;
   const durationMs = Date.now() - ffStartedAt;
@@ -1333,6 +1509,7 @@ ipcMain.handle('ffcap:stop', async (_evt, audio?: { data: ArrayBuffer; startedAt
     new Promise<void>((resolve) => {
       if (!aproc) return resolve();
       let done = false; const finish = () => { if (!done) { done = true; resolve(); } };
+      if (aproc.exitCode !== null || aproc.signalCode !== null) return resolve();
       aproc.once('exit', finish);
       try { aproc.stdin?.write('q'); } catch { /* ignore */ }
       setTimeout(() => { try { aproc.kill('SIGINT'); } catch { /* ignore */ } }, 300);
@@ -1340,6 +1517,11 @@ ipcMain.handle('ffcap:stop', async (_evt, audio?: { data: ArrayBuffer; startedAt
     }),
     new Promise<void>((resolve) => {
       let done = false; const finish = () => { if (!done) { done = true; resolve(); } };
+      // The window route can finish on its own -- closing or resizing the
+      // captured window makes the helper finalize and exit. A dead process
+      // never emits 'exit' again, so without this the stop would sit on the
+      // 6.5s timeout below before the HUD came back.
+      if (vproc.exitCode !== null || vproc.signalCode !== null) return resolve();
       vproc.once('exit', finish);
       try { vproc.kill('SIGTERM'); } catch { /* ignore */ }
       setTimeout(() => { try { vproc.kill('SIGKILL'); } catch { /* ignore */ } }, 6000);
@@ -1348,7 +1530,13 @@ ipcMain.handle('ffcap:stop', async (_evt, audio?: { data: ArrayBuffer; startedAt
   ]);
 
   const out = finalizePipewire(videoPath, audioPath);
-  return { filePath: out, width: ffDims.width, height: ffDims.height, durationMs };
+  // Wall-clock is right for a normal stop, but the window route can end early
+  // (the captured window was closed or resized). Reporting 20s for a 4s file
+  // would stretch the editor's timeline past the end of the video and put every
+  // cursor sample and zoom keyframe at the wrong time, so prefer the duration
+  // the file actually has whenever it's meaningfully shorter.
+  return { filePath: out, width: ffDims.width, height: ffDims.height,
+    durationMs: actualDurationMs(out, durationMs) };
 });
 
 ipcMain.handle('hud:setRecording', (_evt, recording: boolean) => {
