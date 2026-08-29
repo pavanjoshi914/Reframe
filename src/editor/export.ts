@@ -15,10 +15,10 @@ import {
 } from 'mediabunny';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
 import { useEditor, type CropRegion, ANNOTATION_DEFAULTS } from './store';
-import type { CursorSample, ClickSample } from '@shared/ipc';
+import type { CursorSample, ClickSample, CursorKindSample } from '@shared/ipc';
 import { renderCard3D, renderScene3D, projectCardPoint, type CardXform } from './card3d';
 import { sceneInstances, heroIndex, DEFAULT_SCENE_SETTINGS, SCENE_SHAPE_RATIO, type SceneSettings } from './scenes';
-import { CURSOR_GLYPHS, CURSOR_IDLE_MS, CURSOR_IDLE_FADE_MS, CURSOR_MOVE_EPS_SQ } from './cursorGlyphs';
+import { CURSOR_GLYPHS, KIND_GLYPHS, CURSOR_IDLE_MS, CURSOR_IDLE_FADE_MS, CURSOR_MOVE_EPS_SQ } from './cursorGlyphs';
 
 // Export pipeline — frame-accurate, NOT real-time.
 //
@@ -469,7 +469,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   const ctx = canvas.getContext('2d', { willReadFrequently: isGif });
   if (!ctx) throw new Error('2D canvas unavailable');
 
-  const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle };
+  const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorKinds: state.cursorKinds, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle };
 
   // Motion blur: composite each frame onto a scratch canvas, then blend it onto
   // the output at alpha (1-k) so the output is an exponential frame average
@@ -847,6 +847,7 @@ export type DrawCtx = {
   cursorSamples?: CursorSample[];
   cursorSamplesSmooth?: CursorSample[];
   cursorClicks?: ClickSample[];
+  cursorKinds?: CursorKindSample[];
   cursorFx?: { enabled: boolean; size: number; clicks: boolean; smoothing?: number; style?: string; color?: string; hideWhenIdle?: boolean; emoji?: string; motionBlur?: number; tilt?: number };
   zoomStyle?: ZoomStyle;
 };
@@ -1177,9 +1178,15 @@ export function drawFrame(
         if (p && idleA > 0.01) {
           ctx.save();
           ctx.globalAlpha *= idleA;
+          // 'system' means "whatever the OS was showing", resolved per frame
+          // from the captured kinds; every other style is a fixed glyph.
+          const style = (cfx.style ?? 'system') === 'system'
+            ? glyphForKind(d.cursorKinds, ms)
+            : cfx.style!;
+          const press = cfx.clicks ? clickPressScale(d.cursorClicks, ms) : 1;
           drawCursorWithMotion(
             ctx, p.x, p.y, pPrev?.x ?? null, pPrev?.y ?? null,
-            cfx.size, outH, cfx.style ?? 'system', cfx.color ?? '#ffffff', cfx.emoji ?? '',
+            cfx.size * press, outH, style, cfx.color ?? '#ffffff', cfx.emoji ?? '',
             cfx.motionBlur ?? 0, cfx.tilt ?? 0
           );
           ctx.restore();
@@ -1624,6 +1631,23 @@ function hexLuminance(hex: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+// The captured system-cursor kind in effect at `ms`, as a glyph id. The kinds
+// list is a sparse timeline of CHANGES (each entry holds until the next), so
+// this is a walk back to the last entry at or before `ms`. Returns the arrow
+// when the recording carries no kinds at all — which is every recording made
+// before capture existed, plus Wayland sessions.
+function glyphForKind(kinds: CursorKindSample[] | undefined, ms: number): string {
+  if (!kinds || kinds.length === 0) return 'system';
+  let lo = 0, hi = kinds.length - 1;
+  if (ms < kinds[0].t) return 'system';
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (kinds[mid].t <= ms) lo = mid; else hi = mid;
+  }
+  const k = kinds[hi].t <= ms ? kinds[hi].k : kinds[lo].k;
+  return KIND_GLYPHS[k] ?? 'system';
+}
+
 // How far back to look when measuring cursor velocity: one frame at 60fps.
 // Short enough to track a flick, long enough not to be dominated by sampling
 // noise (the path is already One-Euro smoothed upstream).
@@ -1632,6 +1656,45 @@ const CURSOR_MOTION_DT_MS = 16;
 // no blur, no lean. Scaled by cursor size so it holds at any resolution.
 const CURSOR_MOTION_MIN_PX = 0.35;
 const CURSOR_MAX_TILT_RAD = (14 * Math.PI) / 180;
+
+// A click PRESS: the pointer shrinks and springs back.
+//
+// This is what the reference recordings actually do on click — not a ripple.
+// Tracking the cursor as a connected blob through a click shows it scale
+// UNIFORMLY (its aspect holds at 1.10 the whole way, so the glyph isn't
+// deforming) down to 0.79 and back, identically for the arrow, the hand and
+// the I-beam. Earlier I looked for a ripple, found none, and wrongly concluded
+// there was no click effect at all; the effect is on the pointer itself.
+//
+// Every number here is fitted to that measurement (315ms, easeOutQuad down
+// over the first 54%, a brief hold, then back up — 0.45% mean error against
+// 21 sampled frames). It is deliberately slower and deeper than it feels like
+// it should be: a 16%/260ms version read as a twitch beside the reference.
+const CLICK_PRESS_MS = 315;
+const CLICK_PRESS_DEPTH = 0.211;
+const CLICK_PRESS_DOWN = 0.54;  // fraction of the duration spent shrinking
+const CLICK_PRESS_HOLD = 0.62;  // …and held at the bottom until here
+
+// Scale multiplier for the pointer at `ms`. 1 when no click is near.
+function clickPressScale(clicks: ClickSample[] | undefined, ms: number): number {
+  if (!clicks || clicks.length === 0) return 1;
+  const easeOutQuad = (t: number) => {
+    const x = Math.max(0, Math.min(1, t));
+    return 1 - (1 - x) * (1 - x);
+  };
+  let dip = 0;
+  for (const c of clicks) {
+    const age = ms - c.t;
+    if (age < 0 || age > CLICK_PRESS_MS) continue;
+    const u = age / CLICK_PRESS_MS;
+    const d = u < CLICK_PRESS_DOWN ? easeOutQuad(u / CLICK_PRESS_DOWN)
+      : u < CLICK_PRESS_HOLD ? 1
+      : easeOutQuad(1 - (u - CLICK_PRESS_HOLD) / (1 - CLICK_PRESS_HOLD));
+    // Overlapping clicks take the deepest press rather than compounding.
+    dip = Math.max(dip, d);
+  }
+  return 1 - CLICK_PRESS_DEPTH * dip;
+}
 
 // Draw the pointer with velocity-derived motion: a directional smear while it
 // travels, and a slight lean into the direction of travel.
@@ -1782,6 +1845,16 @@ function drawSyntheticCursor(
   ctx.shadowColor = 'transparent';
   ctx.fillStyle = fill;
   ctx.fill(path);
+  // Interior line work (the hand's finger separations) goes ON TOP of the
+  // fill, in the outline colour — as part of `d` it would be painted over.
+  const detail = CURSOR_GLYPHS[style]?.detail;
+  if (detail) {
+    const dp = new Path2D();
+    dp.addPath(new Path2D(detail), new DOMMatrix([f, 0, 0, f, x, y]));
+    ctx.lineWidth = Math.max(1, targetH * 0.045);
+    ctx.strokeStyle = outline;
+    ctx.stroke(dp);
+  }
   ctx.restore();
 }
 

@@ -549,13 +549,26 @@ function writeRecordingSidecars(
           }))
           .filter((p) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1);
       };
-      fs.writeFileSync(cursorFilePath, JSON.stringify({ samples: norm(cursorSamples), clicks: norm(clickSamples) }));
+      // Cursor kinds share the sample clock: both are stamped with wall time,
+      // so subtracting cursorStart puts them on the same timeline the editor
+      // scrubs. Runs shorter than a frame are dropped — they can only have come
+      // from a transient the viewer never saw.
+      const kinds = cursorKinds
+        .map((p) => ({ t: p.t - cursorStart, k: p.k }))
+        .filter((p) => p.t >= -500)
+        .map((p) => ({ t: Math.max(0, p.t), k: p.k }))
+        .filter((p, i, a) => i === 0 || p.k !== a[i - 1].k);
+      fs.writeFileSync(cursorFilePath, JSON.stringify({
+        samples: norm(cursorSamples), clicks: norm(clickSamples),
+        ...(kinds.length > 0 ? { kinds } : {})
+      }));
     } catch (err) {
       console.warn('[main] failed to write cursor sidecar', err);
       cursorFilePath = undefined;
     }
   }
   cursorSamples = [];
+  cursorKinds = [];
   clickSamples = [];
   const { webcamData, ...rest } = meta;
   void webcamData;
@@ -646,6 +659,51 @@ let cursorFromUio = false;
 // an earlier frame. Null for the Chromium path (its clock already starts ~with
 // the recorder, so "now" is correct there).
 let captureVideoEpoch: number | null = null;
+
+// ── cursor KIND (arrow / text / pointer …) ─────────────────────────────────
+// Sampled by a small per-platform helper for the duration of the recording, so
+// the editor can swap its synthetic pointer the way the real one changed. The
+// helper prints "<epoch_ms> <kind>" on every change; we keep the timeline and
+// write it into the cursor sidecar. Entirely optional: no helper, an
+// unsupported session (Wayland), or a helper that fails simply means no kinds,
+// and the editor keeps whatever fixed style the user picked.
+type CursorKindPt = { t: number; k: string };
+let cursorKinds: CursorKindPt[] = [];
+let cursorKindProc: ChildProcess | null = null;
+let cursorKindTail = '';
+
+function startCursorKindTracking() {
+  stopCursorKindTracking();
+  cursorKinds = [];
+  cursorKindTail = '';
+  const helper = cursorKindHelper();
+  if (!helper) return;
+  try {
+    cursorKindProc = spawn(helper.bin, helper.args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (err) {
+    console.warn('[main] cursor-kind helper spawn failed', err);
+    cursorKindProc = null;
+    return;
+  }
+  cursorKindProc.stdout?.on('data', (d) => {
+    cursorKindTail += String(d);
+    const lines = cursorKindTail.split('\n');
+    cursorKindTail = lines.pop() ?? '';
+    for (const line of lines) {
+      const m = /^(\d+)\s+([a-z-]+)$/.exec(line.trim());
+      if (m) cursorKinds.push({ t: Number(m[1]), k: m[2] });
+    }
+  });
+  cursorKindProc.once('error', () => { cursorKindProc = null; });
+}
+
+function stopCursorKindTracking() {
+  const p = cursorKindProc;
+  cursorKindProc = null;
+  if (!p) return;
+  try { p.kill('SIGTERM'); } catch { /* ignore */ }
+  setTimeout(() => { try { p.kill('SIGKILL'); } catch { /* ignore */ } }, 1500);
+}
 
 function startCursorTracking() {
   stopCursorTracking();
@@ -852,6 +910,31 @@ function restoreTokenPath(): string {
 
 // Locate the PipeWire capture helper: alongside the source in dev, or in the
 // packaged app's resources. Returns null when it isn't present.
+// The cursor-KIND helper for this platform, or null if we don't ship one.
+// Same lookup shape as helperScriptPath: dev tree first, then the packaged
+// resources dir.
+function cursorKindHelper(): { bin: string; args: string[] } | null {
+  const file =
+    process.platform === 'linux' ? 'cursor-kind.py' :
+    process.platform === 'win32' ? 'cursor-kind.ps1' :
+    process.platform === 'darwin' ? 'cursor-kind' : null;
+  if (!file) return null;
+  const candidates = [
+    path.join(__dirname, '..', 'electron', file),
+    path.join(process.resourcesPath || '', file),
+  ];
+  let found: string | null = null;
+  for (const c of candidates) {
+    try { if (c && fs.existsSync(c)) { found = c; break; } } catch { /* ignore */ }
+  }
+  if (!found) return null;
+  if (process.platform === 'linux') return { bin: 'python3', args: [found] };
+  if (process.platform === 'win32') {
+    return { bin: 'powershell.exe', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', found] };
+  }
+  return { bin: found, args: [] }; // macOS: a compiled binary
+}
+
 function helperScriptPath(): string | null {
   const candidates = [
     path.join(__dirname, '..', 'electron', 'linux-capture.py'),
@@ -1541,8 +1624,8 @@ ipcMain.handle('ffcap:stop', async (_evt, audio?: { data: ArrayBuffer; startedAt
 
 ipcMain.handle('hud:setRecording', (_evt, recording: boolean) => {
   isRecording = !!recording;
-  if (isRecording) { startCursorTracking(); startClickTracking(); }
-  else { stopCursorTracking(); stopClickTracking(); }
+  if (isRecording) { startCursorTracking(); startClickTracking(); startCursorKindTracking(); }
+  else { stopCursorTracking(); stopClickTracking(); stopCursorKindTracking(); }
   if (hudWindow) {
     // Keep setContentProtection on — excludes the HUD from screen capture on
     // macOS/Windows. On Linux it's a no-op (the HUD will be visible in the
@@ -1559,11 +1642,17 @@ ipcMain.handle('cursor:load', async (_evt, filePath: string) => {
     if (!isInsideDir(recordingsTempDir, resolved)) return null;
     const raw = await fs.promises.readFile(resolved, 'utf-8');
     const data = JSON.parse(raw);
-    // Legacy sidecars are a bare CursorSample[]; current ones are
-    // { samples, clicks }. Normalize to { samples, clicks }.
-    if (Array.isArray(data)) return { samples: data, clicks: [] };
+    // Legacy sidecars are a bare CursorSample[]; then { samples, clicks }; and
+    // current ones may also carry { kinds }. Normalize to all three, with
+    // `kinds` empty when the recording predates cursor-kind capture or the
+    // platform couldn't provide it.
+    if (Array.isArray(data)) return { samples: data, clicks: [], kinds: [] };
     if (data && Array.isArray(data.samples)) {
-      return { samples: data.samples, clicks: Array.isArray(data.clicks) ? data.clicks : [] };
+      return {
+        samples: data.samples,
+        clicks: Array.isArray(data.clicks) ? data.clicks : [],
+        kinds: Array.isArray(data.kinds) ? data.kinds : []
+      };
     }
     return null;
   } catch {

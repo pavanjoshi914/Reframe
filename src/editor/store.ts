@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { RecordingMeta, CursorSample, ClickSample } from '@shared/ipc';
+import type { RecordingMeta, CursorSample, ClickSample, CursorKindSample } from '@shared/ipc';
 import { suggestZoomsFromActivity } from './autoZoom';
 import type { CursorStyleId } from './cursorGlyphs';
 import type { ZoomStyle } from './export';
@@ -194,6 +194,10 @@ export type EditorState = {
   cursorSamples: CursorSample[];
   cursorSamplesSmooth: CursorSample[];
   cursorClicks: ClickSample[];
+  // Which system cursor was showing over time. Empty when the recording
+  // predates cursor-kind capture or the platform couldn't read it; the 'auto'
+  // cursor style then falls back to the arrow.
+  cursorKinds: CursorKindSample[];
   // Synthetic-cursor styling (serialized). When enabled, the compositor draws a
   // smoothed, scalable cursor + optional click ripples on top of the video.
   // smoothing 0..1: 0 = the raw cursor position (pixel-exact, no smoothing),
@@ -255,6 +259,7 @@ export type EditorState = {
   setPixelsPerSecond: (pps: number) => void;
   setCursorSamples: (s: CursorSample[]) => void;
   setCursorClicks: (c: ClickSample[]) => void;
+  setCursorKinds: (k: CursorKindSample[]) => void;
   setCursorFx: (patch: Partial<EditorState['cursorFx']>) => void;
   // Replace existing zoom items with auto-suggested ones derived from the
   // captured cursor movement. Returns how many were added.
@@ -415,15 +420,14 @@ export const useEditor = create<EditorState>((set, get) => ({
   // it stays square AND fits inside any landscape aspect.
   // Default 0.25 = 25% of stage height. Corner position math:
   // x = 1 - size*9/16 - 0.04, y = 1 - size - 0.04.
-  // Square by default, and big. Measured off the reference demos: a 340x340
-  // bubble on a 1280x720 frame is 0.47 of the frame HEIGHT, bottom-left with a
-  // ~3% left / ~5% bottom margin. A 16:9 bubble at 0.2 reads as a video-call
-  // inset; this reads as a presenter.
-  // x/y are the box's TOP-LEFT, so a bottom-left park is y = 1 - size - margin.
-  // Uses the app's own WEBCAM_EDGE_MARGIN so the default and the corner-snap
-  // agree; the reference's margin is 36px (0.028 of width, 0.05 of height),
-  // which 0.04 sits between.
-  webcam: { x: WEBCAM_EDGE_MARGIN, y: 1 - 0.47 - WEBCAM_EDGE_MARGIN, size: 0.47, enabled: false, shape: 'square', zoomFollow: 1 },
+  // Square, parked bottom-left. `size` is the box's height as a fraction of the
+  // stage, and the sidebar slider shows it as a percentage — so 0.3 is the 30%
+  // the slider reads. (The reference demos run their bubble at 0.47, but that
+  // is a presenter-forward hero video; 30% leaves the recording room to be the
+  // subject.) x/y are the box's TOP-LEFT, so a bottom-left park is
+  // y = 1 - size - margin, using the app's own WEBCAM_EDGE_MARGIN so the
+  // default and the corner-snap agree.
+  webcam: { x: WEBCAM_EDGE_MARGIN, y: 1 - 0.3 - WEBCAM_EDGE_MARGIN, size: 0.3, enabled: false, shape: 'square', zoomFollow: 1 },
   layoutPreset: 'pip-bottom-right',
 
   polish: 'soft',
@@ -450,6 +454,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   cursorSamples: [],
   cursorSamplesSmooth: [],
   cursorClicks: [],
+  cursorKinds: [],
   cursorFx: { ...DEFAULT_CURSOR_FX },
 
   past: [],
@@ -646,6 +651,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setPixelsPerSecond: (pps) => set({ pixelsPerSecond: Math.max(10, Math.min(800, pps)) }),
   setCursorSamples: (s) => set({ cursorSamples: s, cursorSamplesSmooth: smoothCursor(s) }),
   setCursorClicks: (c) => set({ cursorClicks: c }),
+  setCursorKinds: (k) => set({ cursorKinds: k }),
   setCursorFx: (patch) => set((st) => ({ cursorFx: { ...st.cursorFx, ...patch } })),
   suggestZooms: () => {
     const s = get();

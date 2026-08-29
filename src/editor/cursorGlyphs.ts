@@ -13,6 +13,14 @@ export type CursorGlyph = {
   view: string;
   /** Drawn as a text glyph (emoji) instead of a filled path. */
   char?: string;
+  /**
+   * Interior line work, stroked in the OUTLINE colour on top of the fill —
+   * the finger separations on the pointing hand, for instance. It has to be a
+   * separate path drawn after the fill: as a subpath of `d` it would sit under
+   * the fill (the glyph is painted stroke-then-fill so the outline reads as a
+   * halo) and vanish.
+   */
+  detail?: string;
 };
 
 export const CURSOR_GLYPHS: Record<string, CursorGlyph> = {
@@ -52,6 +60,10 @@ export const CURSOR_GLYPHS: Record<string, CursorGlyph> = {
   // Pointing hand: index finger up (hotspot at the fingertip), three folded
   // knuckles to its right and a thumb bulge on the left.
   hand: {
+    // Three finger separations across the knuckles. Without them the hand is a
+    // flat silhouette; the system cursors this stands in for all carry the
+    // line work, and it's most of why theirs reads as drawn rather than traced.
+    detail: 'M1.4 12.6 L1.4 15.9 M3.7 12.9 L3.7 16.2 M5.9 13.4 L5.9 16.4',
     d:
       'M-1.9 2.1 A1.9 1.9 0 0 1 1.9 2.1 L1.9 9.1 C2.3 8.5 3.6 8.5 4 9.1 L4 10.3 ' +
       'C4.4 9.7 5.7 9.7 6.1 10.4 L6.1 11.5 C6.5 11 7.7 11.1 8 11.8 L8 15.6 ' +
@@ -60,12 +72,21 @@ export const CURSOR_GLYPHS: Record<string, CursorGlyph> = {
       'L-1.9 14.1 Z',
     view: '-8 -1.5 17 24'
   },
-  // Text I-beam, centred on the hotspot.
+  // Text I-beam, centred on the hotspot. Modelled on the macOS text cursor:
+  // thin serifs that flare out at top and bottom with a DEEP concave sweep into
+  // a narrow stem, plus the small centre crossbar. The old glyph was a plain
+  // square-serif "I" (straight rectangles), which is the shape difference you
+  // notice against a real system cursor.
+  //
+  // Proportions measured off a reference recording: overall aspect h/w = 2.00,
+  // stem width = 0.33 of the serif width, serif arm ~0.16 of the height.
   beam: {
     d:
-      'M-2.6 -8 L2.6 -8 L2.6 -6.6 L0.9 -6.6 L0.9 6.6 L2.6 6.6 L2.6 8 L-2.6 8 ' +
-      'L-2.6 6.6 L-0.9 6.6 L-0.9 -6.6 L-2.6 -6.6 Z',
-    view: '-5 -10 10 20'
+      'M-4.5 -9 L4.5 -9 L4.5 -8 L3.65 -8 Q1.35 -8 1.35 -5.7 L1.35 5.7 ' +
+      'Q1.35 8 3.65 8 L4.5 8 L4.5 9 L-4.5 9 L-4.5 8 L-3.65 8 ' +
+      'Q-1.35 8 -1.35 5.7 L-1.35 -5.7 Q-1.35 -8 -3.65 -8 L-4.5 -8 Z ' +
+      'M-2.5 -0.4 L2.5 -0.4 L2.5 0.4 L-2.5 0.4 Z',
+    view: '-6 -10.5 12 21'
   },
   // Paw print — pad plus four toes, centred on the hotspot.
   paw: {
@@ -81,10 +102,28 @@ export const CURSOR_GLYPHS: Record<string, CursorGlyph> = {
   emoji: { d: '', view: '0 0 20 20', char: '👆' }
 };
 
+// Captured system-cursor kind -> the glyph that stands in for it. The 'system'
+// style picks through this per frame, so a recording shows an I-beam over text
+// and a pointing hand over a link exactly where the real cursor did. Kinds we
+// have no distinct glyph for fall back to the arrow rather than inventing one.
+export const KIND_GLYPHS: Record<string, string> = {
+  default: 'system',
+  text: 'beam',
+  pointer: 'hand',
+  grab: 'hand',
+  crosshair: 'system',
+  wait: 'system'
+};
+
 /** Ring and dot are drawn procedurally (they scale as circles, not paths). */
 export const CURSOR_CIRCLE_STYLES = new Set(['ring', 'dot']);
 
 export type CursorStyleId =
+  // 'system' FOLLOWS the cursor captured during recording — arrow over chrome,
+  // I-beam over text, hand over links — which is what "system cursor" should
+  // mean. It falls back to the arrow when the recording carries no cursor-kind
+  // data (anything recorded before capture existed, or a Wayland session), so
+  // it is safe as the default. Every other id is a fixed glyph.
   | 'system'
   | 'arrow'
   | 'modern'

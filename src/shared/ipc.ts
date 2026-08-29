@@ -39,9 +39,18 @@ export type CursorSample = { t: number; x: number; y: number };
 // A mouse click captured during recording (ms since start; normalized 0..1).
 // Drives the editor's click-highlight ripples and click-aware auto-zoom.
 export type ClickSample = { t: number; x: number; y: number };
-// Parsed cursor sidecar: position samples + click events. The on-disk file may
-// be a bare CursorSample[] (legacy) or { samples, clicks } (current).
-export type CursorData = { samples: CursorSample[]; clicks: ClickSample[] };
+// Which system cursor was showing, from `t` ms until the next entry. Captured
+// live during recording by a small per-platform helper, because the shape isn't
+// recoverable from the video or from the position samples. Absent for
+// recordings made before this existed, and on platforms/sessions where it can't
+// be read (Wayland) — the editor then keeps whatever fixed style is selected.
+export type CursorKind = 'default' | 'text' | 'pointer' | 'grab' | 'crosshair' | 'wait';
+export type CursorKindSample = { t: number; k: CursorKind };
+
+// Parsed cursor sidecar: position samples + click events + cursor-shape
+// timeline. The on-disk file may be a bare CursorSample[] (legacy),
+// { samples, clicks }, or { samples, clicks, kinds } (current).
+export type CursorData = { samples: CursorSample[]; clicks: ClickSample[]; kinds: CursorKindSample[] };
 
 export type RecordingMeta = {
   filePath: string;

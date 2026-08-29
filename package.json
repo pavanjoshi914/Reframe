@@ -2,7 +2,7 @@
   "name": "reframe",
   "private": true,
   "version": "0.2.0",
-  "description": "Reframe — cross-platform screen recorder + post-recording editor (Linux/Windows/macOS).",
+  "description": "Reframe \u2014 cross-platform screen recorder + post-recording editor (Linux/Windows/macOS).",
   "author": {
     "name": "Pavan Joshi",
     "email": "pavanj914@gmail.com"
@@ -106,6 +106,10 @@
         {
           "from": "electron/linux-capture.py",
           "to": "linux-capture.py"
+        },
+        {
+          "from": "electron/cursor-kind.py",
+          "to": "cursor-kind.py"
         }
       ]
     },
@@ -132,7 +136,13 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "assets/logo-transparent.png"
+      "icon": "assets/logo-transparent.png",
+      "extraResources": [
+        {
+          "from": "electron/cursor-kind.ps1",
+          "to": "cursor-kind.ps1"
+        }
+      ]
     },
     "mac": {
       "target": "dmg",
@@ -142,6 +152,10 @@
         {
           "from": "electron/mac-capture",
           "to": "mac-capture"
+        },
+        {
+          "from": "electron/cursor-kind",
+          "to": "cursor-kind"
         }
       ]
     }

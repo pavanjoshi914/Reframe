@@ -140,18 +140,32 @@ jobs:
             -o electron/mac-capture electron/mac-capture.swift
           chmod +x electron/mac-capture
           file electron/mac-capture
+      # Reports which system cursor is showing, so the editor can swap its
+      # synthetic pointer (arrow / I-beam / hand) the way the real one did.
+      # AppKit has no API that NAMES the current cursor, so this fingerprints
+      # NSCursor.currentSystem's image against a prebuilt index.
+      - name: Build the cursor-kind helper (${{ matrix.arch }})
+        run: |
+          ARCH=$([ "${{ matrix.arch }}" = "arm64" ] && echo arm64 || echo x86_64)
+          swiftc -O -target ${ARCH}-apple-macos12.3 \
+            -framework AppKit \
+            -o electron/cursor-kind electron/cursor-kind.swift
+          chmod +x electron/cursor-kind
+          file electron/cursor-kind
       - name: Package macOS app (${{ matrix.arch }})
         run: npm run package:mac -- --${{ matrix.arch }} --publish never
       # Prove the SCK helper actually shipped inside the .app (not just compiled).
       # A missing binary would silently fall back to the avfoundation path and
       # the cursor bug would look unfixed. Fail the job loudly instead.
-      - name: Verify the capture helper is bundled in the .app
+      - name: Verify the capture helpers are bundled in the .app
         run: |
           APP=$(find release/mac* -maxdepth 1 -name "*.app" | head -1)
           echo "app bundle: $APP"
           ls -la "$APP/Contents/Resources/" | head -20
           test -x "$APP/Contents/Resources/mac-capture" || { echo "::error::mac-capture missing from Contents/Resources"; exit 1; }
           file "$APP/Contents/Resources/mac-capture"
+          test -x "$APP/Contents/Resources/cursor-kind" || { echo "::error::cursor-kind missing from Contents/Resources"; exit 1; }
+          file "$APP/Contents/Resources/cursor-kind"
         env:
           # No Apple Developer cert wired up — build unsigned. The .dmg works
           # but macOS Gatekeeper flags it as "unidentified developer"; users

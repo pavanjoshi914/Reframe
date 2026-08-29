@@ -51,6 +51,7 @@ export function EditorApp() {
       if (cancelled) return;
       useEditor.getState().setCursorSamples(data?.samples ?? []);
       useEditor.getState().setCursorClicks(data?.clicks ?? []);
+      useEditor.getState().setCursorKinds(data?.kinds ?? []);
     }
 
     async function hydrateForRecording(rec: import('@shared/ipc').RecordingMeta) {

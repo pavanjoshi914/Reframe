@@ -313,6 +313,7 @@ export function Preview() {
         cursorSamples: st.cursorSamples,
         cursorSamplesSmooth: st.cursorSamplesSmooth,
         cursorClicks: st.cursorClicks,
+        cursorKinds: st.cursorKinds,
         cursorFx: st.cursorFx,
         zoomStyle: st.zoomStyle
       });

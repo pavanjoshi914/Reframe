@@ -908,7 +908,24 @@ function CursorStyleTile({
       }
     >
       <span className="flex h-7 w-full items-center justify-center">
-        {id === 'ring' || id === 'dot' ? (
+        {id === 'system' ? (
+          // 'system' has no single glyph — it follows the recording. Show the
+          // two it swaps between most, so the tile says what it does.
+          <span className="flex items-center gap-0.5">
+            {(['arrow', 'beam'] as const).map((gid) => (
+              <svg key={gid} viewBox={CURSOR_GLYPHS[gid].view} className="h-5 w-4" aria-hidden="true">
+                <path
+                  d={CURSOR_GLYPHS[gid].d}
+                  fill={color}
+                  stroke={outline}
+                  strokeWidth="1.7"
+                  strokeLinejoin="round"
+                  paintOrder="stroke"
+                />
+              </svg>
+            ))}
+          </span>
+        ) : id === 'ring' || id === 'dot' ? (
           <svg viewBox="-10 -10 20 20" className="h-6 w-6" aria-hidden="true">
             <circle
               cx="0" cy="0" r={id === 'dot' ? 6.5 : 7}
@@ -929,6 +946,9 @@ function CursorStyleTile({
               strokeLinejoin="round"
               paintOrder="stroke"
             />
+            {g.detail && (
+              <path d={g.detail} fill="none" stroke={outline} strokeWidth="0.9" strokeLinecap="round" />
+            )}
           </svg>
         )}
       </span>
