@@ -848,7 +848,7 @@ export type DrawCtx = {
   cursorSamplesSmooth?: CursorSample[];
   cursorClicks?: ClickSample[];
   cursorKinds?: CursorKindSample[];
-  cursorFx?: { enabled: boolean; size: number; clicks: boolean; smoothing?: number; style?: string; color?: string; hideWhenIdle?: boolean; emoji?: string; motionBlur?: number; tilt?: number };
+  cursorFx?: { enabled: boolean; size: number; clicks: boolean; clickPress?: boolean; smoothing?: number; style?: string; color?: string; hideWhenIdle?: boolean; emoji?: string; motionBlur?: number; tilt?: number };
   zoomStyle?: ZoomStyle;
 };
 
@@ -1183,7 +1183,7 @@ export function drawFrame(
           const style = (cfx.style ?? 'system') === 'system'
             ? glyphForKind(d.cursorKinds, ms)
             : cfx.style!;
-          const press = cfx.clicks ? clickPressScale(d.cursorClicks, ms) : 1;
+          const press = (cfx.clickPress ?? true) ? clickPressScale(d.cursorClicks, ms) : 1;
           drawCursorWithMotion(
             ctx, p.x, p.y, pPrev?.x ?? null, pPrev?.y ?? null,
             cfx.size * press, outH, style, cfx.color ?? '#ffffff', cfx.emoji ?? '',
@@ -1839,7 +1839,9 @@ function drawSyntheticCursor(
   ctx.shadowOffsetY = targetH * 0.045;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  ctx.lineWidth = Math.max(1.5, targetH * 0.085);
+  // Per-glyph weight: the system pointers carry a heavier border than the
+  // decorative ones, and it's most of what keeps them crisp when small.
+  ctx.lineWidth = Math.max(1.5, targetH * 0.085 * (CURSOR_GLYPHS[style]?.weight ?? 1));
   ctx.strokeStyle = outline;
   ctx.stroke(path);
   ctx.shadowColor = 'transparent';

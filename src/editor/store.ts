@@ -208,6 +208,12 @@ export type EditorState = {
   cursorFx: {
     enabled: boolean; size: number; clicks: boolean; smoothing: number;
     style: CursorStyle; color: string; hideWhenIdle: boolean; emoji: string;
+    // Click feedback, deliberately TWO independent switches. They are different
+    // ideas: `clicks` draws a ring that radiates from where the pointer was,
+    // `clickPress` scales the pointer itself the way a real press does. Some
+    // people want the ring for emphasis, some want only the press because it's
+    // what the system cursors actually do, some want both.
+    clickPress: boolean;
     // Velocity-driven motion. Both are 0..1 strengths, both cost nothing when 0.
     //  motionBlur — smears the pointer along its travel while it's moving fast,
     //               which is what stops a quick flick reading as a teleport.
@@ -292,7 +298,8 @@ export type SerializedProject = {
 
 const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = {
   enabled: false, size: 1.4, clicks: true, smoothing: 0.5, style: 'system',
-  color: '#ffffff', hideWhenIdle: false, emoji: '👆', motionBlur: 0.6, tilt: 0.5
+  color: '#ffffff', hideWhenIdle: false, emoji: '👆', motionBlur: 0.6, tilt: 0.5,
+  clickPress: true
 };
 
 function clamp01(n: number) {

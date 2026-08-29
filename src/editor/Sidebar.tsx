@@ -942,7 +942,7 @@ function CursorStyleTile({
               d={g.d}
               fill={color}
               stroke={outline}
-              strokeWidth="1.7"
+              strokeWidth={1.7 * (g.weight ?? 1)}
               strokeLinejoin="round"
               paintOrder="stroke"
             />
@@ -1076,7 +1076,10 @@ function CursorSection() {
             />
           </div>
           <div data-cursorctl="clicks">
-            <ToggleRow label={t('side.clickHighlights')} checked={cursorFx.clicks} onChange={(v) => setCursorFx({ clicks: v })} />
+            <ToggleRow label={t('side.clickRipple')} checked={cursorFx.clicks} onChange={(v) => setCursorFx({ clicks: v })} />
+          </div>
+          <div data-cursorctl="clickpress">
+            <ToggleRow label={t('side.clickPress')} checked={cursorFx.clickPress ?? true} onChange={(v) => setCursorFx({ clickPress: v })} />
           </div>
         </>
       )}

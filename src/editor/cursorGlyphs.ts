@@ -14,6 +14,13 @@ export type CursorGlyph = {
   /** Drawn as a text glyph (emoji) instead of a filled path. */
   char?: string;
   /**
+   * Outline weight multiplier. The system cursors carry a noticeably heavier
+   * border than a default stroke gives — measured at 6.2% of the glyph height
+   * against the 3.4% our base weight produces — and that heft is a lot of why
+   * they read as crisp rather than thin at small sizes. Defaults to 1.
+   */
+  weight?: number;
+  /**
    * Interior line work, stroked in the OUTLINE colour on top of the fill —
    * the finger separations on the pointing hand, for instance. It has to be a
    * separate path drawn after the fill: as a subpath of `d` it would sit under
@@ -60,17 +67,33 @@ export const CURSOR_GLYPHS: Record<string, CursorGlyph> = {
   // Pointing hand: index finger up (hotspot at the fingertip), three folded
   // knuckles to its right and a thumb bulge on the left.
   hand: {
-    // Three finger separations across the knuckles. Without them the hand is a
-    // flat silhouette; the system cursors this stands in for all carry the
-    // line work, and it's most of why theirs reads as drawn rather than traced.
-    detail: 'M1.4 12.6 L1.4 15.9 M3.7 12.9 L3.7 16.2 M5.9 13.4 L5.9 16.4',
+    // Pointing hand, matched to the macOS link cursor.
+    //
+    // FOUR fingers, not a mitten: a tilted index raised on the left (both its
+    // edges move right as they descend, so the tip sits left of the knuckle —
+    // that lean is what makes it read as pointing), then three curled fingers
+    // as separate raised shapes with deep notches, merging into the palm around
+    // 0.42 of the height. A thumb reaches the far left at mid-height and the
+    // base carries a notch. The bars are the finger separations.
+    //
+    // Aspect h/w is ~1.41, deliberately narrower than the reference's 1.077
+    // bounding box. Matching that number looked squat: the reference gets its
+    // slim read from a longer, thinner index finger, which makes its palm
+    // smaller at the same overall size. Narrowing the whole glyph reaches the
+    // same impression without redrawing the finger. Settled by looking at the
+    // rendered result at real cursor size, not by the measurement — the
+    // bounding-box number matched long before the glyph actually looked right.
+    //
+    // DRAWN, not copied. The SVG sets carrying this artwork are either Apple's
+    // own (Apple User Agreement) or GPL-3.0; neither can be redistributed
+    // inside an MIT app.
+    //
+    // Origin is the HOTSPOT, at the index fingertip.
+    weight: 1.8,
+    detail: 'M 2.76 9.63 L 2.76 14.94 M 4.56 9.63 L 4.56 14.94 M 6.35 9.63 L 6.35 14.94',
     d:
-      'M-1.9 2.1 A1.9 1.9 0 0 1 1.9 2.1 L1.9 9.1 C2.3 8.5 3.6 8.5 4 9.1 L4 10.3 ' +
-      'C4.4 9.7 5.7 9.7 6.1 10.4 L6.1 11.5 C6.5 11 7.7 11.1 8 11.8 L8 15.6 ' +
-      'C8 18.6 5.9 20.8 3.1 20.8 L0 20.8 C-2.2 20.8 -4 19.6 -4.8 17.6 L-6.4 13.8 ' +
-      'C-6.8 12.9 -6.4 11.9 -5.5 11.6 C-4.7 11.3 -3.8 11.7 -3.4 12.5 L-2.6 14.1 ' +
-      'L-1.9 14.1 Z',
-    view: '-8 -1.5 17 24'
+      'M 0.0 7.2 L -0.7 0.99 Q -0.02 -0.45 0.74 0.72 L 1.67 6.84 Q 2.09 7.92 2.52 6.75 L 2.52 6.75 L 2.52 5.17 Q 3.36 4.36 4.2 5.17 L 4.2 6.75 Q 4.61 7.92 5.04 6.75 L 5.04 6.75 L 5.04 5.17 Q 5.91 4.36 6.77 5.17 L 6.77 6.75 Q 7.23 8.1 7.61 6.93 L 7.61 8.1 L 7.61 6.53 Q 8.18 5.72 8.75 6.53 L 8.75 8.1 L 8.75 10.08 Q 8.57 13.86 7.37 15.57 Q 6.89 16.83 6.35 16.65 Q 5.57 15.84 4.73 16.83 Q 3.12 17.37 1.55 16.65 Q 0.12 15.84 -0.84 13.32 Q -2.16 10.44 -3.17 8.73 Q -2.64 7.11 -1.44 7.56 Q -0.53 7.74 0.0 7.2 Z',
+    view: '-5 -2 14 20'
   },
   // Text I-beam, centred on the hotspot. Modelled on the macOS text cursor:
   // thin serifs that flare out at top and bottom with a DEEP concave sweep into
