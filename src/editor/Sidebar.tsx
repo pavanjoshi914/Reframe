@@ -79,6 +79,7 @@ function SelectionSection() {
           fmt={(v) => `${v}×`}
           onPick={(v) => updateItem(item.id, { zoomLevel: v })}
         />
+        <ZoomStylePicker />
         <NumberInput
           label={t('side.custom')}
           value={zoom}
@@ -586,6 +587,15 @@ function CompositionSection() {
         <Label>{t('side.webcam')}</Label>
         <ToggleRow label={t('side.enable')} checked={webcam.enabled} onChange={(v) => setWebcam({ enabled: v })} />
         <RangeRow label={t('side.size')} value={webcam.size} min={0.08} max={0.6} step={0.01} onChange={(v) => setWebcam({ size: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
+        <RangeRow
+          label={t('side.webcamZoomFollow')}
+          value={Math.round((webcam.zoomFollow ?? 0) * 100)}
+          min={0}
+          max={100}
+          step={5}
+          onChange={(v) => setWebcam({ zoomFollow: v / 100 })}
+          fmt={(v) => (v === 0 ? t('side.webcamZoomFollowOff') : `${v}%`)}
+        />
         <div className="mt-2">
           <div className="mb-1 text-xs text-white/70">{t('side.shape')}</div>
           <div className="grid grid-cols-3 gap-1.5">
@@ -1023,6 +1033,28 @@ function CursorSection() {
               fmt={(v) => (v === 0 ? t('side.cursorSmoothingOff') : `${v}%`)}
             />
           </div>
+          <div data-cursorctl="motionblur">
+            <RangeRow
+              label={t('side.cursorMotionBlur')}
+              value={Math.round((cursorFx.motionBlur ?? 0) * 100)}
+              min={0}
+              max={100}
+              step={5}
+              onChange={(v) => setCursorFx({ motionBlur: v / 100 })}
+              fmt={(v) => (v === 0 ? t('side.cursorSmoothingOff') : `${v}%`)}
+            />
+          </div>
+          <div data-cursorctl="tilt">
+            <RangeRow
+              label={t('side.cursorTilt')}
+              value={Math.round((cursorFx.tilt ?? 0) * 100)}
+              min={0}
+              max={100}
+              step={5}
+              onChange={(v) => setCursorFx({ tilt: v / 100 })}
+              fmt={(v) => (v === 0 ? t('side.cursorSmoothingOff') : `${v}%`)}
+            />
+          </div>
           <div data-cursorctl="clicks">
             <ToggleRow label={t('side.clickHighlights')} checked={cursorFx.clicks} onChange={(v) => setCursorFx({ clicks: v })} />
           </div>
@@ -1188,6 +1220,29 @@ function ExportProgressModal({ busy, onCancel }: { busy: BusyState; onCancel: ()
 
 function Label({ children }: { children: React.ReactNode }) {
   return <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-white/50">{children}</div>;
+}
+
+// How zoom transitions move. Document-level, not per-region: mixing a snappy
+// zoom with a cinematic one in the same video reads as a mistake, so the choice
+// applies to every zoom at once.
+function ZoomStylePicker() {
+  const t = useT();
+  const zoomStyle = useEditor((s) => s.zoomStyle);
+  const setZoomStyle = useEditor((s) => s.setZoomStyle);
+  return (
+    <div className="mt-2">
+      <div className="mb-1 text-xs text-white/70">{t('side.zoomStyle')}</div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <ChipBtn active={zoomStyle === 'cinematic'} onClick={() => setZoomStyle('cinematic')}>
+          {t('side.zoomStyleCinematic')}
+        </ChipBtn>
+        <ChipBtn active={zoomStyle === 'snappy'} onClick={() => setZoomStyle('snappy')}>
+          {t('side.zoomStyleSnappy')}
+        </ChipBtn>
+      </div>
+      <p className="mt-1 text-[11px] text-white/40">{t('side.zoomStyleTip')}</p>
+    </div>
+  );
 }
 
 function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {

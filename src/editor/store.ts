@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { RecordingMeta, CursorSample, ClickSample } from '@shared/ipc';
 import { suggestZoomsFromActivity } from './autoZoom';
 import type { CursorStyleId } from './cursorGlyphs';
+import type { ZoomStyle } from './export';
 import wallpaper01Url from '../../assets/wallpapers/wallpaper-01.jpg';
 
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
@@ -140,13 +141,24 @@ export type EditorState = {
   // Composition
   cropRegion: CropRegion;
   background: { mode: BackgroundMode; value: string };
-  webcam: { x: number; y: number; size: number; enabled: boolean; shape: WebcamShape }; // x,y in 0..1 (normalized)
+  // x,y in 0..1 (normalized). `zoomFollow` (0..1) is how strongly the bubble
+  // shrinks as the camera zooms in: 0 keeps it a fixed size, 1 applies the full
+  // inverse-zoom curve. The point is that when you magnify detail, the face
+  // should give up screen real estate rather than cover what you zoomed into.
+  webcam: { x: number; y: number; size: number; enabled: boolean; shape: WebcamShape; zoomFollow: number };
   layoutPreset: 'pip-bottom-right' | 'pip-bottom-left' | 'pip-top-right' | 'pip-top-left' | 'side-by-side';
 
   // Style
   polish: PolishPreset;
   showAdvanced: boolean;
   effects: { roundnessPx: number; paddingPct: number; shadowPct: number; motionBlur: number; blurBg: boolean; cursorSpotlight: number; cursorMagnifier: number };
+
+  // How zoom transitions move. Kept OUT of `effects` on purpose: setPolish
+  // swaps that whole object, and the zoom's feel shouldn't reset when someone
+  // changes the look preset.
+  //   snappy    — 450ms, symmetric ease-in-out (the original)
+  //   cinematic — 900ms, ease-out: leaves fast, settles slow
+  zoomStyle: ZoomStyle;
 
   // On-disk path of the auto-saved project file (set when a recording is
   // first loaded, kept stable for the rest of the session). Used by the editor
@@ -189,7 +201,17 @@ export type EditorState = {
   // style picks the pointer mask; color is its fill (outline auto-contrasts).
   // `emoji` is the glyph drawn when style === 'emoji' — any emoji the user
   // picks or types, not a fixed one. Ignored by every other style.
-  cursorFx: { enabled: boolean; size: number; clicks: boolean; smoothing: number; style: CursorStyle; color: string; hideWhenIdle: boolean; emoji: string };
+  cursorFx: {
+    enabled: boolean; size: number; clicks: boolean; smoothing: number;
+    style: CursorStyle; color: string; hideWhenIdle: boolean; emoji: string;
+    // Velocity-driven motion. Both are 0..1 strengths, both cost nothing when 0.
+    //  motionBlur — smears the pointer along its travel while it's moving fast,
+    //               which is what stops a quick flick reading as a teleport.
+    //  tilt       — leans the pointer a few degrees into its direction of
+    //               travel. Tiny, but it's the difference between a sprite
+    //               being moved and something with momentum.
+    motionBlur: number; tilt: number;
+  };
 
   // Undo/redo history (session-only; never serialized). past/future hold
   // document snapshots; _applyingHistory suppresses capture while a snapshot is
@@ -215,6 +237,7 @@ export type EditorState = {
   setPolish: (p: PolishPreset) => void;
   setShowAdvanced: (v: boolean) => void;
   setEffect: <K extends keyof EditorState['effects']>(key: K, value: EditorState['effects'][K]) => void;
+  setZoomStyle: (z: ZoomStyle) => void;
   setExportFormat: (f: 'mp4' | 'webm' | 'gif') => void;
   setExportQuality: (q: 'low' | 'medium' | 'high') => void;
   setVideoVolume: (v: number) => void;
@@ -254,13 +277,18 @@ export type SerializedProject = {
   polish: PolishPreset;
   showAdvanced: boolean;
   effects: EditorState['effects'];
+  // Optional: projects saved before zoom styles existed load with the default.
+  zoomStyle?: ZoomStyle;
   exportFormat: EditorState['exportFormat'];
   exportQuality: EditorState['exportQuality'];
   items: LaneItem[];
   cursorFx?: EditorState['cursorFx'];
 };
 
-const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = { enabled: false, size: 1.4, clicks: true, smoothing: 0.5, style: 'system', color: '#ffffff', hideWhenIdle: false, emoji: '👆' };
+const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = {
+  enabled: false, size: 1.4, clicks: true, smoothing: 0.5, style: 'system',
+  color: '#ffffff', hideWhenIdle: false, emoji: '👆', motionBlur: 0.6, tilt: 0.5
+};
 
 function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
@@ -332,6 +360,7 @@ function docOf(s: EditorState): SerializedProject {
     polish: s.polish,
     showAdvanced: s.showAdvanced,
     effects: s.effects,
+    zoomStyle: s.zoomStyle,
     exportFormat: s.exportFormat,
     exportQuality: s.exportQuality,
     items: s.items,
@@ -386,12 +415,24 @@ export const useEditor = create<EditorState>((set, get) => ({
   // it stays square AND fits inside any landscape aspect.
   // Default 0.25 = 25% of stage height. Corner position math:
   // x = 1 - size*9/16 - 0.04, y = 1 - size - 0.04.
-  webcam: { x: 0.76, y: 0.76, size: 0.2, enabled: false, shape: 'rectangle' },
+  // Square by default, and big. Measured off the reference demos: a 340x340
+  // bubble on a 1280x720 frame is 0.47 of the frame HEIGHT, bottom-left with a
+  // ~3% left / ~5% bottom margin. A 16:9 bubble at 0.2 reads as a video-call
+  // inset; this reads as a presenter.
+  // x/y are the box's TOP-LEFT, so a bottom-left park is y = 1 - size - margin.
+  // Uses the app's own WEBCAM_EDGE_MARGIN so the default and the corner-snap
+  // agree; the reference's margin is 36px (0.028 of width, 0.05 of height),
+  // which 0.04 sits between.
+  webcam: { x: WEBCAM_EDGE_MARGIN, y: 1 - 0.47 - WEBCAM_EDGE_MARGIN, size: 0.47, enabled: false, shape: 'square', zoomFollow: 1 },
   layoutPreset: 'pip-bottom-right',
 
   polish: 'soft',
   showAdvanced: false,
   effects: presetEffects.soft,
+  // Cinematic by default: the slow-settling ease-out is what makes a zoom read
+  // as a camera move rather than a cut. Existing projects load their own saved
+  // value, so nothing already made changes feel.
+  zoomStyle: 'cinematic',
 
   exportFormat: 'mp4',
   exportQuality: 'medium',
@@ -522,6 +563,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setPolish: (p) => set({ polish: p, effects: presetEffects[p] }),
   setShowAdvanced: (v) => set({ showAdvanced: v }),
   setEffect: (key, value) => set((s) => ({ effects: { ...s.effects, [key]: value } })),
+  setZoomStyle: (z) => set({ zoomStyle: z }),
   setExportFormat: (f) => set({ exportFormat: f }),
   setExportQuality: (q) => set({ exportQuality: q }),
   setVideoVolume: (v) => set({ videoVolume: Math.max(0, Math.min(1, v)) }),
@@ -635,12 +677,16 @@ export const useEditor = create<EditorState>((set, get) => ({
       // (which now rounds its corners by default) is the closest match.
       webcam: {
         ...data.webcam,
-        shape: (data.webcam.shape as string) === 'rounded' ? 'square' : data.webcam.shape
+        shape: (data.webcam.shape as string) === 'rounded' ? 'square' : data.webcam.shape,
+        zoomFollow: data.webcam.zoomFollow ?? 0 // pre-existing projects keep a fixed-size bubble
       },
       layoutPreset: data.layoutPreset,
       polish: data.polish,
       showAdvanced: data.showAdvanced,
       effects: data.effects,
+      // A project saved before zoom styles existed keeps the feel it was made
+      // with, rather than silently becoming cinematic.
+      zoomStyle: data.zoomStyle ?? 'snappy',
       exportFormat: data.exportFormat,
       exportQuality: data.exportQuality,
       items: data.items,
@@ -664,6 +710,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       polish: snap.polish,
       showAdvanced: snap.showAdvanced,
       effects: snap.effects,
+      zoomStyle: snap.zoomStyle ?? s.zoomStyle,
       exportFormat: snap.exportFormat,
       exportQuality: snap.exportQuality,
       items: snap.items,

@@ -95,17 +95,46 @@ const LAYOUT_COORDS: Record<
   'side-by-side': { x: 0.5, y: 0.5, size: 0.4, sideBySide: true }
 };
 
-// Must stay in sync with the editor preview's zoom-container CSS transition
-// (Preview.tsx: `transition-transform duration-[450ms] ease-[cubic-bezier(0.65,0,0.35,1)]`).
-// easeInOutCubic ≈ that bezier — a gentle accelerate-then-decelerate ramp that
-// reads as more cinematic than the old easeOutCubic punch-in, and identical
-// between preview and export so the zoom looks the same in both. Keep the
-// duration + curve matched on both sides.
-const ZOOM_TRANSITION_MS = 450;
+// Zoom transition shape. The preview composites with this same drawFrame, so
+// there is no CSS transition to keep in sync — changing it here changes both.
+//
+// Two styles, because they are genuinely different intents:
+//
+//  • snappy    — 450ms easeInOutCubic. Symmetric: accelerates and decelerates
+//                equally, peak speed at the halfway point. The original feel.
+//  • cinematic — 1100ms critically damped spring. Accelerates hard, then settles
+//                slowly onto the target without overshoot, so
+//                the move reads as a camera being placed rather than a jump.
+//                Measured off reference demos from the tools people compare us
+//                to: their transitions run ~1.1s with peak velocity at 6-12% of
+//                the duration, which is an ease-OUT. A symmetric curve peaks at
+//                50% — that difference is most of why 450ms/easeInOutCubic
+//                reads as "snappy" and theirs reads as "expensive".
+export type ZoomStyle = 'snappy' | 'cinematic';
+
 function easeInOutCubic(t: number): number {
   const x = Math.max(0, Math.min(1, t));
   return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 }
+// Critically damped spring — the step response of a mass-spring-damper at
+// exactly zeta=1: moves off immediately, never overshoots, settles asymptotically.
+//
+// k=10 puts peak velocity at 10% of the duration, which is what the reference
+// demos measure at (6%, 12%, 12% across their three transitions). The obvious
+// alternatives are wrong in a way you can feel rather than see: easeOutExpo and
+// easeOutQuint both peak at t=0, i.e. they START at full speed — a velocity step
+// that reads as a snap. A real camera move accelerates, however briefly.
+// Normalized by its own value at t=1 so the zoom lands exactly on target
+// (the raw response is at 99.95%, and that last 0.05% would be a visible
+// half-pixel of drift at high zoom).
+const SPRING_K = 10;
+const SPRING_END = 1 - (1 + SPRING_K) * Math.exp(-SPRING_K);
+function easeOutSpring(t: number): number {
+  const x = Math.max(0, Math.min(1, t));
+  return (1 - (1 + SPRING_K * x) * Math.exp(-SPRING_K * x)) / SPRING_END;
+}
+const zoomTransitionMs = (style?: ZoomStyle) => (style === 'snappy' ? 450 : 1100);
+const zoomEase = (style?: ZoomStyle) => (style === 'snappy' ? easeInOutCubic : easeOutSpring);
 
 // 3D rotation of the video card (degrees). All-zero = flat = the legacy 2D path.
 export type Rotation = { tiltX: number; tiltY: number; spinZ: number };
@@ -205,14 +234,17 @@ function computeRotation(items: ReturnType<typeof useEditor.getState>['items'], 
 // and eased from one region's focus/level to the next across a window centred
 // on their boundary (so the camera glides between clicks). The chain's outer
 // ease-in/out is applied separately, on the level only.
-function sampleChainFocus(chain: ZoomItem[], ms: number): FocusLevel {
+function sampleChainFocus(chain: ZoomItem[], ms: number, style?: ZoomStyle): FocusLevel {
   const first = chain[0];
   const last = chain[chain.length - 1];
   if (ms <= first.startMs) return focusOf(first);
   if (ms >= last.endMs) return focusOf(last);
-  const half = ZOOM_TRANSITION_MS / 2;
+  const T0 = zoomTransitionMs(style);
+  const half = T0 / 2;
   const panAt = (aItem: ZoomItem, bItem: ZoomItem, boundary: number): FocusLevel => {
-    const p = easeInOutCubic(clamp01n((ms - (boundary - half)) / ZOOM_TRANSITION_MS));
+    // A PAN between two focuses is symmetric either way — it has no "arrival"
+    // to settle into, so it keeps the in-out curve even in cinematic mode.
+    const p = easeInOutCubic(clamp01n((ms - (boundary - half)) / T0));
     const a = focusOf(aItem);
     const b = focusOf(bItem);
     return { fx: lerp(a.fx, b.fx, p), fy: lerp(a.fy, b.fy, p), target: lerp(a.target, b.target, p) };
@@ -241,7 +273,8 @@ function sampleChainFocus(chain: ZoomItem[], ms: number): FocusLevel {
 // ease out). Returns null when no zoom is active nor easing out.
 function computeEasedZoom(
   items: ReturnType<typeof useEditor.getState>['items'],
-  ms: number
+  ms: number,
+  style?: ZoomStyle
 ): ZoomItem | null {
   const zooms = (items.filter((it) => it.kind === 'zoom') as ZoomItem[])
     .slice()
@@ -258,7 +291,8 @@ function computeEasedZoom(
 
   // The chain covering ms is active from its start until ZOOM_TRANSITION_MS
   // after its end (the ease-out tail).
-  const T = ZOOM_TRANSITION_MS;
+  const T = zoomTransitionMs(style);
+  const ease = zoomEase(style);
   const chain = chains.find((c) => ms >= c[0].startMs && ms <= c[c.length - 1].endMs + T);
   if (!chain) return null;
   const chainStart = chain[0].startMs;
@@ -267,12 +301,24 @@ function computeEasedZoom(
   // Level envelope: ease in over the chain's first T, hold, ease out over the T
   // after its end — NOT reset between the chain's own regions.
   let env: number;
-  if (ms < chainStart + T) env = easeInOutCubic((ms - chainStart) / T);
-  else if (ms > chainEnd) env = 1 - easeInOutCubic((ms - chainEnd) / T);
+  if (ms < chainStart + T) env = ease((ms - chainStart) / T);
+  // Zoom OUT is 1 - ease(u), NOT ease(1 - u).
+  //
+  // They look interchangeable and are not. ease(1-u) plays the curve backwards:
+  // a fast-then-slow curve reversed is slow-then-FAST, so the camera sits at 96%
+  // zoom for half the tail and then slams to wide at peak speed — the "it just
+  // stops instantly" feel. 1 - ease(u) keeps the shape and only flips the
+  // direction: it leaves briskly and glides to rest.
+  //
+  // The spring's derivative is zero at both ends (k²u·e^(-ku) vanishes at u=0
+  // and u=1), so this is continuous in position AND velocity at every boundary,
+  // which is the whole reason spring-driven motion reads as smooth rather than
+  // merely eased.
+  else if (ms > chainEnd) env = 1 - ease((ms - chainEnd) / T);
   else env = 1;
   env = clamp01n(env);
 
-  const { fx, fy, target } = sampleChainFocus(chain, ms);
+  const { fx, fy, target } = sampleChainFocus(chain, ms, style);
   return {
     startMs: chainStart,
     endMs: chainEnd,
@@ -423,7 +469,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   const ctx = canvas.getContext('2d', { willReadFrequently: isGif });
   if (!ctx) throw new Error('2D canvas unavailable');
 
-  const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorFx: state.cursorFx };
+  const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle };
 
   // Motion blur: composite each frame onto a scratch canvas, then blend it onto
   // the output at alpha (1-k) so the output is an exponential frame average
@@ -801,7 +847,8 @@ export type DrawCtx = {
   cursorSamples?: CursorSample[];
   cursorSamplesSmooth?: CursorSample[];
   cursorClicks?: ClickSample[];
-  cursorFx?: { enabled: boolean; size: number; clicks: boolean; smoothing?: number; style?: string; color?: string; hideWhenIdle?: boolean; emoji?: string };
+  cursorFx?: { enabled: boolean; size: number; clicks: boolean; smoothing?: number; style?: string; color?: string; hideWhenIdle?: boolean; emoji?: string; motionBlur?: number; tilt?: number };
+  zoomStyle?: ZoomStyle;
 };
 
 // Interpolated cursor position (normalized 0..1 of the source frame) at `ms`,
@@ -970,7 +1017,7 @@ export function drawFrame(
   // (they compose in the same matrix), so attach the frame's rotation to the
   // zoom object drawVideoBox / cursorToOutput already receive. Rotation with no
   // zoom active still needs a carrier — a 1x zoom at centre is the identity.
-  const zoomOnly = computeEasedZoom(items, ms);
+  const zoomOnly = computeEasedZoom(items, ms, d.zoomStyle);
   const rotation = computeRotation(items, ms);
   const scene = computeScene(items, ms);
   const activeZoom = rotation || scene
@@ -1001,13 +1048,45 @@ export function drawFrame(
     const innerY = (outH - innerH) / 2;
     drawVideoBox(ctx, srcCanvas, innerX, innerY, innerW, innerH, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH);
     if (webcam.enabled) {
-      const wcH = outH * webcam.size;
+      // Shrink the bubble as the camera zooms in. Driven by the SAME eased zoom
+      // level the video card uses, so the two move in lockstep instead of the
+      // webcam popping after the zoom lands.
+      //
+      // zoom^-0.75, floored at 0.45.
+      //
+      // The reference sits at ~0.75x while zoomed to roughly 2x (zoom^-0.4), but
+      // that's subtle enough to read as "the webcam didn't change" rather than as
+      // a deliberate move. This is tuned DELIBERATELY past the reference so the
+      // shrink is legible: at 2.5x the bubble is now half its wide size instead
+      // of 0.69 — about 20 points more reduction.
+      //
+      // The floor has to come down with the exponent or it does nothing: the old
+      // 0.6 clamp would have caught 2.5x (0.50) and cancelled the change outright.
+      const zLevel = Math.max(1, activeZoom?.zoomLevel ?? 1);
+      const follow = Math.max(0, Math.min(1, webcam.zoomFollow ?? 0));
+      const zoomScale = 1 + (Math.max(0.45, Math.pow(zLevel, -0.75)) - 1) * follow;
+      const wcH = outH * webcam.size * zoomScale;
       const wcW = wcH * (webcam.shape === 'rectangle' ? 16 / 9 : 1);
-      const wx = webcam.x * outW;
-      const wy = webcam.y * outH;
+      // Keep the bubble's MARGIN constant as it resizes, so it stays pinned to
+      // its corner instead of drifting inward (x/y are the top-left, so a
+      // shrinking box would otherwise pull away from the bottom/right edges).
+      const fullH = outH * webcam.size;
+      const fullW = fullH * (webcam.shape === 'rectangle' ? 16 / 9 : 1);
+      const anchorR = webcam.x * outW + fullW;   // right edge at full size
+      const anchorB = webcam.y * outH + fullH;   // bottom edge at full size
+      // Which corner it's parked in is decided by the box's CENTRE, not its
+      // top-left: a tall bubble sitting on the bottom edge still has a top-left
+      // y well above the midpoint (the reference's is 0.48), and anchoring that
+      // to the top would make it climb away from the edge as it shrank.
+      const cxFull = webcam.x + fullW / outW / 2;
+      const cyFull = webcam.y + fullH / outH / 2;
+      const wx = cxFull > 0.5 ? anchorR - wcW : webcam.x * outW;
+      const wy = cyFull > 0.5 ? anchorB - wcH : webcam.y * outH;
+      // Radius as a FRACTION of the box, not a pixel cap. The old
+      // min(h/4, 24px@1080) capped a 0.45-height bubble at ~24px of rounding,
+      // which reads as a plain rectangle; the reference sits at 0.35 of the box.
       const cornerRadius =
-        webcam.shape === 'circle' ? wcH / 2 :
-        Math.min(wcH / 4, 24 * (outH / 1080));
+        webcam.shape === 'circle' ? wcH / 2 : Math.min(wcW, wcH) * WEBCAM_CORNER_RATIO;
       if (webcamCanvas) {
         drawWebcamVideo(ctx, webcamCanvas, wx, wy, wcW, wcH, cornerRadius, webcam.shape === 'circle');
       } else {
@@ -1079,6 +1158,18 @@ export function drawFrame(
         raw && smooth ? { x: raw.x + (smooth.x - raw.x) * sm, y: raw.y + (smooth.y - raw.y) * sm } : smooth || raw;
       if (cur) {
         const p = toOut(cur.x, cur.y);
+        // Where the pointer was one frame ago, measured through the SAME blend
+        // and projection, so the travel vector is in output pixels and already
+        // accounts for zoom/rotation — a flick during a 2x zoom smears twice as
+        // far on screen, which is correct.
+        const pm = ms - CURSOR_MOTION_DT_MS;
+        const rawPrev = cursorAt(d.cursorSamples, pm);
+        const smoothPrev = d.cursorSamplesSmooth?.length ? cursorAtSpline(d.cursorSamplesSmooth, pm) : rawPrev;
+        const prev =
+          rawPrev && smoothPrev
+            ? { x: rawPrev.x + (smoothPrev.x - rawPrev.x) * sm, y: rawPrev.y + (smoothPrev.y - rawPrev.y) * sm }
+            : smoothPrev || rawPrev;
+        const pPrev = prev ? toOut(prev.x, prev.y) : null;
         // "Hide when idle": fade the pointer out while it sits still, so a
         // paused demo isn't dominated by a parked arrow. Click ripples are
         // exempt — a click is activity by definition.
@@ -1086,7 +1177,11 @@ export function drawFrame(
         if (p && idleA > 0.01) {
           ctx.save();
           ctx.globalAlpha *= idleA;
-          drawSyntheticCursor(ctx, p.x, p.y, cfx.size, outH, cfx.style, cfx.color, cfx.emoji ?? '');
+          drawCursorWithMotion(
+            ctx, p.x, p.y, pPrev?.x ?? null, pPrev?.y ?? null,
+            cfx.size, outH, cfx.style ?? 'system', cfx.color ?? '#ffffff', cfx.emoji ?? '',
+            cfx.motionBlur ?? 0, cfx.tilt ?? 0
+          );
           ctx.restore();
         }
       }
@@ -1314,6 +1409,63 @@ function drawVideoBox(
   ctx.restore();
 }
 
+// Superellipse ("squircle") corner exponent. A plain rounded rect is n=2: the
+// corner is a circular arc, and the curvature jumps discontinuously where the
+// arc meets the straight edge — which is exactly what makes it read as "a
+// rectangle with the corners filed off". n>2 blends the curvature in, so the
+// outline flows continuously; that's the shape Apple uses for app icons and
+// what the reference demos use for the camera bubble.
+//
+// n=3.15 and r=0.35*box are MEASURED off a reference bubble: fitting
+// |dx/r|^n + |dy/r|^n = 1 to its top-left corner boundary gave n=3.15, r=118px
+// on a 340px box (residual 0.014).
+const SQUIRCLE_N = 3.15;
+export const WEBCAM_CORNER_RATIO = 0.35;
+
+// Superellipse-cornered rectangle. Sampled as a polyline rather than
+// bezier-approximated: 24 segments per corner is visually exact at any size we
+// draw, and it takes the exponent as a parameter instead of hard-coding control
+// points for one particular n.
+function squirclePath(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number, n = SQUIRCLE_N
+) {
+  const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+  if (rr <= 0.5) {
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    return;
+  }
+  const SEG = 24;
+  const p = 2 / n;
+  // Each corner is walked CLOCKWISE from where it leaves one edge to where it
+  // meets the next. The sin/cos pair swaps between corners because the sweep
+  // direction alternates — getting that wrong makes the outline cross itself.
+  const l = x + rr, rgt = x + w - rr, t = y + rr, b = y + h - rr;
+  const arc = (
+    cx: number, cy: number,
+    fx: (c: number, s: number) => number,
+    fy: (c: number, s: number) => number,
+    first: boolean
+  ) => {
+    for (let i = 0; i <= SEG; i++) {
+      const th = (i / SEG) * (Math.PI / 2);
+      const c = Math.pow(Math.cos(th), p);
+      const sn = Math.pow(Math.sin(th), p);
+      const px = cx + rr * fx(c, sn);
+      const py = cy + rr * fy(c, sn);
+      if (first && i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+  };
+  ctx.beginPath();
+  arc(rgt, t, (_c, sn) => sn, (c) => -c, true);      // top-right:    (0,-r) -> (r,0)
+  arc(rgt, b, (c) => c, (_c, sn) => sn, false);      // bottom-right: (r,0)  -> (0,r)
+  arc(l, b, (_c, sn) => -sn, (c) => c, false);       // bottom-left:  (0,r)  -> (-r,0)
+  arc(l, t, (c) => -c, (_c, sn) => -sn, false);      // top-left:     (-r,0) -> (0,-r)
+  ctx.closePath();
+}
+
 function drawWebcamVideo(
   ctx: CanvasRenderingContext2D,
   src: FrameSource,
@@ -1324,26 +1476,39 @@ function drawWebcamVideo(
   roundness: number,
   circle: boolean
 ) {
+  const path = () => {
+    if (circle) {
+      const r = Math.min(w, h) / 2;
+      ctx.beginPath();
+      ctx.arc(x + w / 2, y + h / 2, r, 0, Math.PI * 2);
+      ctx.closePath();
+    } else {
+      squirclePath(ctx, x, y, w, h, roundness);
+    }
+  };
+
+  // Soft drop shadow, so the bubble sits ABOVE the composition instead of
+  // looking pasted onto it. Painted by filling the shape with the shadow on —
+  // the fill is then covered by the video, so only the halo survives.
+  // Measured off the reference: the halo reaches ~9% of the box beyond its
+  // edge and is offset slightly downward.
   ctx.save();
-  if (circle) {
-    const r = Math.min(w, h) / 2;
-    ctx.beginPath();
-    ctx.arc(x + w / 2, y + h / 2, r, 0, Math.PI * 2);
-    ctx.closePath();
-  } else {
-    roundedRectPath(ctx, x, y, w, h, Math.min(roundness, Math.min(w, h) / 2));
-  }
+  ctx.shadowColor = 'rgba(0,0,0,0.45)';
+  ctx.shadowBlur = Math.min(w, h) * 0.09;
+  ctx.shadowOffsetY = Math.min(w, h) * 0.02;
+  path();
+  ctx.fillStyle = '#000';
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  path();
   ctx.clip();
   drawCover(ctx, src, x, y, w, h);
   ctx.restore();
+
   ctx.save();
-  if (circle) {
-    const r = Math.min(w, h) / 2;
-    ctx.beginPath();
-    ctx.arc(x + w / 2, y + h / 2, r, 0, Math.PI * 2);
-  } else {
-    roundedRectPath(ctx, x, y, w, h, Math.min(roundness, Math.min(w, h) / 2));
-  }
+  path();
   ctx.strokeStyle = 'rgba(255,255,255,0.3)';
   ctx.lineWidth = 2;
   ctx.stroke();
@@ -1457,6 +1622,77 @@ function hexLuminance(hex: string): number {
   const g = parseInt(h.slice(2, 4), 16) / 255;
   const b = parseInt(h.slice(4, 6), 16) / 255;
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+// How far back to look when measuring cursor velocity: one frame at 60fps.
+// Short enough to track a flick, long enough not to be dominated by sampling
+// noise (the path is already One-Euro smoothed upstream).
+const CURSOR_MOTION_DT_MS = 16;
+// Below this many output pixels of travel per frame the pointer is "settled" —
+// no blur, no lean. Scaled by cursor size so it holds at any resolution.
+const CURSOR_MOTION_MIN_PX = 0.35;
+const CURSOR_MAX_TILT_RAD = (14 * Math.PI) / 180;
+
+// Draw the pointer with velocity-derived motion: a directional smear while it
+// travels, and a slight lean into the direction of travel.
+//
+// The smear is an ACCUMULATION blur — the same sprite stamped N times along the
+// path it covered this frame, each at 1/N alpha — which is what a real camera
+// shutter does and what reference demos show (a fast flick renders as a smeared
+// arrow, sharp again the moment it settles). It is not a canvas filter blur:
+// that would soften the sprite in every direction and just look out of focus.
+function drawCursorWithMotion(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number,
+  px: number | null, py: number | null,
+  scale: number, outH: number,
+  style: string, color: string, emoji: string,
+  motionBlur: number, tilt: number
+) {
+  const targetH = outH * 0.05 * Math.max(0.3, scale);
+  const dx = px === null || py === null ? 0 : x - px;
+  const dy = px === null || py === null ? 0 : y - py;
+  const dist = Math.hypot(dx, dy);
+  const moving = dist > CURSOR_MOTION_MIN_PX * (targetH / 18);
+
+  // Lean into the horizontal component of travel. Vertical moves stay upright,
+  // which is what reads naturally — a pointer leans the way it's thrown.
+  let angle = 0;
+  if (moving && tilt > 0) {
+    const norm = Math.max(-1, Math.min(1, dx / Math.max(1, targetH)));
+    angle = norm * CURSOR_MAX_TILT_RAD * Math.max(0, Math.min(1, tilt));
+  }
+
+  const draw = (cx: number, cy: number, alpha: number) => {
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    if (angle !== 0) {
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.translate(-cx, -cy);
+    }
+    drawSyntheticCursor(ctx, cx, cy, scale, outH, style, color, emoji);
+    ctx.restore();
+  };
+
+  const strength = Math.max(0, Math.min(1, motionBlur));
+  // One stamp per ~1.5px of travel keeps the smear continuous without paying
+  // for stamps nobody can distinguish; capped so a huge jump stays cheap.
+  const steps = !moving || strength <= 0
+    ? 1
+    : Math.max(1, Math.min(14, Math.round((dist * strength) / 1.5)));
+  if (steps <= 1) {
+    draw(x, y, 1);
+    return;
+  }
+  // Trail BEHIND the current position: the head stays where the cursor
+  // actually is, so the blur never makes the pointer feel like it lags.
+  for (let i = steps - 1; i >= 0; i--) {
+    const u = (i / steps) * strength;
+    // Fade toward the tail so the leading edge stays readable.
+    const a = (1 - i / steps) / steps * 1.8;
+    draw(x - dx * u, y - dy * u, Math.min(1, a));
+  }
 }
 
 function drawSyntheticCursor(
@@ -1584,7 +1820,7 @@ function drawWebcamPlaceholder(
   roundness: number
 ) {
   ctx.save();
-  roundedRectPath(ctx, x, y, w, h, Math.min(roundness, Math.min(w, h) / 2));
+  squirclePath(ctx, x, y, w, h, roundness);
   ctx.fillStyle = 'rgba(0,0,0,0.7)';
   ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.2)';

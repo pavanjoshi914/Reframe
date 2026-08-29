@@ -313,7 +313,8 @@ export function Preview() {
         cursorSamples: st.cursorSamples,
         cursorSamplesSmooth: st.cursorSamplesSmooth,
         cursorClicks: st.cursorClicks,
-        cursorFx: st.cursorFx
+        cursorFx: st.cursorFx,
+        zoomStyle: st.zoomStyle
       });
       const k = Math.max(0, Math.min(0.9, st.effects.motionBlur || 0));
       ctx.globalAlpha = 1 - k;
