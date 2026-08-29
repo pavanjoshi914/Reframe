@@ -330,13 +330,21 @@ ipcMain.handle('sources:get', async () => {
   const sources = await desktopCapturer.getSources({
     types: ['screen', 'window'],
     thumbnailSize: { width: 320, height: 200 },
-    fetchWindowIcons: false
+    // The app icon for each window (Chrome's, VS Code's, ours…). The picker
+    // shows it beside the title so a window is recognisable at a glance
+    // instead of by reading text. Ignored for screens, and not every window
+    // manager supplies one — the picker falls back to a generic glyph.
+    fetchWindowIcons: true
   });
   return sources.map((s) => ({
     id: s.id,
     name: s.name,
     type: s.id.startsWith('screen:') ? 'screen' : 'window',
-    thumbnailDataUrl: s.thumbnail.toDataURL()
+    thumbnailDataUrl: s.thumbnail.toDataURL(),
+    // appIcon is a NativeImage or null; keep it small — it renders at 16px.
+    appIconDataUrl: s.appIcon && !s.appIcon.isEmpty()
+      ? s.appIcon.resize({ width: 32, height: 32 }).toDataURL()
+      : undefined
   }));
 });
 

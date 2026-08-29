@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Crop } from 'lucide-react';
+import { Check, Crop, Monitor } from 'lucide-react';
 import type { DesktopSource, DisplayInfo } from '@shared/ipc';
 import { useT } from '../i18n';
 
@@ -220,7 +220,18 @@ function SourceCard({
       <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
         <img src={source.thumbnailDataUrl} alt={source.name} className="h-full w-full object-contain" />
       </div>
-      <div className="mt-2 truncate px-1 text-xs text-white/80">{source.name}</div>
+      {/* App icon beside the title so a window is recognisable at a glance
+          (Chrome's globe, VS Code's ribbon, ours) rather than by reading text.
+          Screens have no icon, and some window managers don't supply one, so a
+          generic monitor glyph stands in. */}
+      <div className="mt-2 flex items-center gap-1.5 px-1">
+        {source.appIconDataUrl ? (
+          <img src={source.appIconDataUrl} alt="" aria-hidden="true" className="h-4 w-4 shrink-0 rounded-[3px] object-contain" />
+        ) : (
+          <Monitor size={14} className="shrink-0 text-white/35" aria-hidden="true" />
+        )}
+        <span className="truncate text-xs text-white/80">{source.name}</span>
+      </div>
       {selected && (
         <span className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-400 text-black shadow-lg">
           <Check size={16} strokeWidth={3} />

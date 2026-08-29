@@ -3,6 +3,10 @@ export type DesktopSource = {
   name: string;
   thumbnailDataUrl: string;
   type: 'screen' | 'window';
+  /** The owning app's icon (Chrome, VS Code, …), shown beside the window title
+   *  in the picker. Absent for screens and for windows whose window manager
+   *  doesn't supply one. */
+  appIconDataUrl?: string;
 };
 
 // Normalized region (0..1) inside the source frame. The overlay reports
