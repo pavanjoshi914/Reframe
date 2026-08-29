@@ -343,6 +343,8 @@ export function HudApp() {
     : t('hud.screen');
 
   const recording = phase === 'recording';
+  // A source (or an area) has been explicitly picked — the chip lights up.
+  const sourceActive = !!source || !!region;
 
   return (
     // Outer wrap is `items-end` so the pill sits at the bottom of the window.
@@ -380,10 +382,18 @@ export function HudApp() {
         <button
           onClick={handlePickSource}
           disabled={recording}
-          className="no-drag relative flex h-8 items-center gap-1.5 rounded-full bg-white/[0.04] px-3 text-xs font-medium text-hud-icon ring-1 ring-white/10 transition hover:bg-white/[0.07] hover:ring-white/15 disabled:opacity-50"
+          className={
+            'no-drag relative flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition disabled:opacity-50 ' +
+            // Lit green once a screen/window/area has actually been chosen, the
+            // same active treatment the other toggles use — so "selected" reads
+            // at a glance instead of the chip looking identical either way.
+            (sourceActive
+              ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/30 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.10)] hover:bg-emerald-500/20'
+              : 'bg-white/[0.04] text-hud-icon ring-1 ring-white/10 hover:bg-white/[0.07] hover:ring-white/15')
+          }
           title={t('hud.pickSource')}
         >
-          <MdMonitor size={14} className="text-hud-icon/80" />
+          <MdMonitor size={14} className={sourceActive ? 'text-emerald-300' : 'text-hud-icon/80'} />
           <span className="max-w-[120px] truncate">{sourceLabel}</span>
         </button>
 
