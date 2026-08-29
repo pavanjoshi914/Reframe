@@ -187,7 +187,9 @@ export type EditorState = {
   // smoothing 0..1: 0 = the raw cursor position (pixel-exact, no smoothing),
   // 1 = the full One Euro glide. Lets the user trade accuracy for buttery-ness.
   // style picks the pointer mask; color is its fill (outline auto-contrasts).
-  cursorFx: { enabled: boolean; size: number; clicks: boolean; smoothing: number; style: CursorStyle; color: string; hideWhenIdle: boolean };
+  // `emoji` is the glyph drawn when style === 'emoji' — any emoji the user
+  // picks or types, not a fixed one. Ignored by every other style.
+  cursorFx: { enabled: boolean; size: number; clicks: boolean; smoothing: number; style: CursorStyle; color: string; hideWhenIdle: boolean; emoji: string };
 
   // Undo/redo history (session-only; never serialized). past/future hold
   // document snapshots; _applyingHistory suppresses capture while a snapshot is
@@ -258,7 +260,7 @@ export type SerializedProject = {
   cursorFx?: EditorState['cursorFx'];
 };
 
-const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = { enabled: false, size: 1.4, clicks: true, smoothing: 0.5, style: 'system', color: '#ffffff', hideWhenIdle: false };
+const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = { enabled: false, size: 1.4, clicks: true, smoothing: 0.5, style: 'system', color: '#ffffff', hideWhenIdle: false, emoji: '👆' };
 
 function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));

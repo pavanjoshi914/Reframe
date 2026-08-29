@@ -821,9 +821,67 @@ const CURSOR_STYLE_LABEL: Record<CursorStyle, string> = {
 // One pointer tile. The preview is drawn from the SAME path data the
 // compositor renders, in the currently chosen colour, so the tile is a true
 // preview rather than a stand-in icon.
+// Emoji cursor: any emoji, not a fixed one. The grid is a shortcut for common
+// picks; the input accepts anything the user types or pastes (including emoji
+// the grid doesn't list and multi-codepoint ones like 👨‍💻 or 🇮🇳), and the OS
+// emoji keyboard works in it too. Kept to a single glyph — a cursor is one
+// symbol — using Intl.Segmenter so a ZWJ sequence counts as one character
+// rather than being cut in half.
+const EMOJI_QUICK = ['👆','👉','👋','🖐️','✌️','🤙','👀','✨','⭐','🔥','💡','🎯','❤️','🚀','🎉','🐱','🐶','🦊','🌈','☕'];
+
+function firstGrapheme(v: string): string {
+  const t = v.trim();
+  if (!t) return '';
+  try {
+    const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    return [...seg.segment(t)][0]?.segment ?? t;
+  } catch {
+    return [...t][0] ?? t; // older runtimes: code points, close enough
+  }
+}
+
+function EmojiCursorPicker() {
+  const t = useT();
+  const emoji = useEditor((s) => s.cursorFx.emoji);
+  const setCursorFx = useEditor((s) => s.setCursorFx);
+  return (
+    <div className="mt-2 rounded-md border border-white/10 p-2">
+      <div className="mb-1.5 flex items-center justify-between">
+        <Label>{t('side.cursorEmoji')}</Label>
+        <span className="text-[19px] leading-none">{emoji || '👆'}</span>
+      </div>
+      <div className="grid grid-cols-10 gap-1">
+        {EMOJI_QUICK.map((e) => (
+          <button
+            key={e}
+            type="button"
+            title={e}
+            onClick={() => setCursorFx({ emoji: e })}
+            className={
+              'rounded text-[16px] leading-none transition ' +
+              (emoji === e ? 'bg-emerald-500/25 ring-1 ring-emerald-400/50' : 'hover:bg-white/10')
+            }
+          >
+            {e}
+          </button>
+        ))}
+      </div>
+      <input
+        type="text"
+        value={emoji}
+        onChange={(e) => setCursorFx({ emoji: firstGrapheme(e.target.value) })}
+        placeholder={t('side.cursorEmojiPlaceholder')}
+        aria-label={t('side.cursorEmoji')}
+        className="mt-1.5 w-full rounded bg-white/5 px-2 py-1 text-center text-[16px] leading-relaxed outline-none ring-1 ring-white/10 focus:ring-emerald-400/50"
+      />
+      <p className="mt-1 text-[11px] text-white/40">{t('side.cursorEmojiTip')}</p>
+    </div>
+  );
+}
+
 function CursorStyleTile({
-  id, label, color, active, onClick
-}: { id: CursorStyle; label: string; color: string; active: boolean; onClick: () => void }) {
+  id, label, color, active, onClick, emojiPreview
+}: { id: CursorStyle; label: string; color: string; active: boolean; onClick: () => void; emojiPreview?: string }) {
   const g = CURSOR_GLYPHS[id];
   const outline = 'rgba(0,0,0,0.7)';
   return (
@@ -850,7 +908,7 @@ function CursorStyleTile({
             />
           </svg>
         ) : g?.char ? (
-          <span className="text-[19px] leading-none">{g.char}</span>
+          <span className="text-[19px] leading-none">{id === 'emoji' ? emojiPreview || g.char : g.char}</span>
         ) : (
           <svg viewBox={g.view} className="h-6 w-6" aria-hidden="true">
             <path
@@ -911,10 +969,12 @@ function CursorSection() {
                   label={t(CURSOR_STYLE_LABEL[id])}
                   color={color}
                   active={style === id}
+                  emojiPreview={cursorFx.emoji}
                   onClick={() => setCursorFx({ style: id })}
                 />
               ))}
             </div>
+            {style === 'emoji' ? <EmojiCursorPicker /> : null}
           </div>
           <div data-cursorctl="color">
             <Label>{t('side.color')}</Label>

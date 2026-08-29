@@ -801,7 +801,7 @@ export type DrawCtx = {
   cursorSamples?: CursorSample[];
   cursorSamplesSmooth?: CursorSample[];
   cursorClicks?: ClickSample[];
-  cursorFx?: { enabled: boolean; size: number; clicks: boolean; smoothing?: number; style?: string; color?: string; hideWhenIdle?: boolean };
+  cursorFx?: { enabled: boolean; size: number; clicks: boolean; smoothing?: number; style?: string; color?: string; hideWhenIdle?: boolean; emoji?: string };
 };
 
 // Interpolated cursor position (normalized 0..1 of the source frame) at `ms`,
@@ -1086,7 +1086,7 @@ export function drawFrame(
         if (p && idleA > 0.01) {
           ctx.save();
           ctx.globalAlpha *= idleA;
-          drawSyntheticCursor(ctx, p.x, p.y, cfx.size, outH, cfx.style, cfx.color);
+          drawSyntheticCursor(ctx, p.x, p.y, cfx.size, outH, cfx.style, cfx.color, cfx.emoji ?? '');
           ctx.restore();
         }
       }
@@ -1466,7 +1466,8 @@ function drawSyntheticCursor(
   scale: number,
   outH: number,
   style = 'system',
-  color = '#ffffff'
+  color = '#ffffff',
+  emoji = ''
 ) {
   const unitH = 18;
   const targetH = outH * 0.05 * Math.max(0.3, scale);
@@ -1507,15 +1508,18 @@ function drawSyntheticCursor(
 
   // Emoji pointer: a text glyph, drawn in its own colours (the fill/outline
   // treatment below would flatten it).
+  // The user's chosen emoji wins; the glyph table's char is the fallback for
+  // older projects (and any future glyph-based style).
   const glyph = CURSOR_GLYPHS[style];
-  if (glyph?.char) {
+  const char = (style === 'emoji' && emoji.trim()) || glyph?.char;
+  if (char) {
     ctx.font = `${targetH * 1.3}px "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.shadowColor = 'rgba(0,0,0,0.4)';
     ctx.shadowBlur = targetH * 0.18;
     ctx.shadowOffsetY = targetH * 0.04;
-    ctx.fillText(glyph.char, x, y - targetH * 0.08);
+    ctx.fillText(char, x, y - targetH * 0.08);
     ctx.restore();
     return;
   }
