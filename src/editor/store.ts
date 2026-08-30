@@ -141,11 +141,11 @@ export type EditorState = {
   // Composition
   cropRegion: CropRegion;
   background: { mode: BackgroundMode; value: string };
-  // x,y in 0..1 (normalized). `zoomFollow` (0..1) is how strongly the bubble
-  // shrinks as the camera zooms in: 0 keeps it a fixed size, 1 applies the full
-  // inverse-zoom curve. The point is that when you magnify detail, the face
-  // should give up screen real estate rather than cover what you zoomed into.
-  webcam: { x: number; y: number; size: number; enabled: boolean; shape: WebcamShape; zoomFollow: number };
+  // x,y in 0..1 (normalized). The bubble always shrinks as the camera zooms in
+  // — see the curve in export.ts. It used to be a slider, but nobody wants the
+  // face covering the detail they just zoomed into, so it is simply how the
+  // webcam behaves rather than a decision to make.
+  webcam: { x: number; y: number; size: number; enabled: boolean; shape: WebcamShape };
   layoutPreset: 'pip-bottom-right' | 'pip-bottom-left' | 'pip-top-right' | 'pip-top-left' | 'side-by-side';
 
   // Style
@@ -439,7 +439,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   // subject.) x/y are the box's TOP-LEFT, so a bottom-left park is
   // y = 1 - size - margin, using the app's own WEBCAM_EDGE_MARGIN so the
   // default and the corner-snap agree.
-  webcam: { x: WEBCAM_EDGE_MARGIN, y: 1 - 0.3 - WEBCAM_EDGE_MARGIN, size: 0.3, enabled: false, shape: 'square', zoomFollow: 1 },
+  webcam: { x: WEBCAM_EDGE_MARGIN, y: 1 - 0.3 - WEBCAM_EDGE_MARGIN, size: 0.3, enabled: false, shape: 'square' },
   layoutPreset: 'pip-bottom-right',
 
   polish: 'soft',
@@ -695,8 +695,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       // (which now rounds its corners by default) is the closest match.
       webcam: {
         ...data.webcam,
-        shape: (data.webcam.shape as string) === 'rounded' ? 'square' : data.webcam.shape,
-        zoomFollow: data.webcam.zoomFollow ?? 0 // pre-existing projects keep a fixed-size bubble
+        shape: (data.webcam.shape as string) === 'rounded' ? 'square' : data.webcam.shape
       },
       layoutPreset: data.layoutPreset,
       polish: data.polish,

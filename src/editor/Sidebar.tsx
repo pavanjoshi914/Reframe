@@ -587,15 +587,6 @@ function CompositionSection() {
         <Label>{t('side.webcam')}</Label>
         <ToggleRow label={t('side.enable')} checked={webcam.enabled} onChange={(v) => setWebcam({ enabled: v })} />
         <RangeRow label={t('side.size')} value={webcam.size} min={0.08} max={0.6} step={0.01} onChange={(v) => setWebcam({ size: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
-        <RangeRow
-          label={t('side.webcamZoomFollow')}
-          value={Math.round((webcam.zoomFollow ?? 0) * 100)}
-          min={0}
-          max={100}
-          step={5}
-          onChange={(v) => setWebcam({ zoomFollow: v / 100 })}
-          fmt={(v) => (v === 0 ? t('side.webcamZoomFollowOff') : `${v}%`)}
-        />
         <div className="mt-2">
           <div className="mb-1 text-xs text-white/70">{t('side.shape')}</div>
           <div className="grid grid-cols-3 gap-1.5">
@@ -912,18 +903,21 @@ function CursorStyleTile({
           // 'system' has no single glyph — it follows the recording. Show the
           // two it swaps between most, so the tile says what it does.
           <span className="flex items-center gap-0.5">
-            {(['arrow', 'beam'] as const).map((gid) => (
-              <svg key={gid} viewBox={CURSOR_GLYPHS[gid].view} className="h-5 w-4" aria-hidden="true">
-                <path
-                  d={CURSOR_GLYPHS[gid].d}
-                  fill={color}
-                  stroke={outline}
-                  strokeWidth="1.7"
-                  strokeLinejoin="round"
-                  paintOrder="stroke"
-                />
-              </svg>
-            ))}
+            {(['arrow', 'beam'] as const).map((gid) => {
+              const gg = CURSOR_GLYPHS[gid];
+              return (
+                <svg key={gid} viewBox={gg.view} className="h-5 w-4" aria-hidden="true">
+                  {gg.stroke ? (
+                    <>
+                      <path d={gg.d} fill="none" stroke={outline} strokeWidth={gg.stroke + 2.2} strokeLinecap="round" strokeLinejoin="round" />
+                      <path d={gg.d} fill="none" stroke={color} strokeWidth={gg.stroke} strokeLinecap="round" strokeLinejoin="round" />
+                    </>
+                  ) : (
+                    <path d={gg.d} fill={color} stroke={outline} strokeWidth="1.7" strokeLinejoin="round" paintOrder="stroke" />
+                  )}
+                </svg>
+              );
+            })}
           </span>
         ) : id === 'ring' || id === 'dot' ? (
           <svg viewBox="-10 -10 20 20" className="h-6 w-6" aria-hidden="true">
@@ -938,14 +932,19 @@ function CursorStyleTile({
           <span className="text-[19px] leading-none">{id === 'emoji' ? emojiPreview || g.char : g.char}</span>
         ) : (
           <svg viewBox={g.view} className="h-6 w-6" aria-hidden="true">
-            <path
-              d={g.d}
-              fill={color}
-              stroke={outline}
-              strokeWidth={1.7 * (g.weight ?? 1)}
-              strokeLinejoin="round"
-              paintOrder="stroke"
-            />
+            {/* Same three passes as the compositor (halo under, fill, fill-colour
+                round stroke over) so the tile previews the rounded look. */}
+            {g.stroke ? (
+              <>
+                <path d={g.d} fill="none" stroke={outline} strokeWidth={g.stroke + 3.6 * (g.weight ?? 1)} strokeLinecap="round" strokeLinejoin="round" />
+                <path d={g.d} fill="none" stroke={color} strokeWidth={g.stroke} strokeLinecap="round" strokeLinejoin="round" />
+              </>
+            ) : (
+              <>
+                <path d={g.d} fill={color} stroke={outline} strokeWidth={1.26 + 3.6 * (g.weight ?? 1)} strokeLinejoin="round" paintOrder="stroke" />
+                <path d={g.d} fill="none" stroke={color} strokeWidth={1.26} strokeLinejoin="round" />
+              </>
+            )}
             {g.detail && (
               <path d={g.detail} fill="none" stroke={outline} strokeWidth="0.9" strokeLinecap="round" />
             )}

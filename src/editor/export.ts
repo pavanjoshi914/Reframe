@@ -1064,8 +1064,7 @@ export function drawFrame(
       // The floor has to come down with the exponent or it does nothing: the old
       // 0.6 clamp would have caught 2.5x (0.50) and cancelled the change outright.
       const zLevel = Math.max(1, activeZoom?.zoomLevel ?? 1);
-      const follow = Math.max(0, Math.min(1, webcam.zoomFollow ?? 0));
-      const zoomScale = 1 + (Math.max(0.45, Math.pow(zLevel, -0.75)) - 1) * follow;
+      const zoomScale = Math.max(0.45, Math.pow(zLevel, -0.75));
       const wcH = outH * webcam.size * zoomScale;
       const wcW = wcH * (webcam.shape === 'rectangle' ? 16 / 9 : 1);
       // Keep the bubble's MARGIN constant as it resizes, so it stays pinned to
@@ -1637,15 +1636,15 @@ function hexLuminance(hex: string): number {
 // when the recording carries no kinds at all — which is every recording made
 // before capture existed, plus Wayland sessions.
 function glyphForKind(kinds: CursorKindSample[] | undefined, ms: number): string {
-  if (!kinds || kinds.length === 0) return 'system';
+  if (!kinds || kinds.length === 0) return 'arrow';
   let lo = 0, hi = kinds.length - 1;
-  if (ms < kinds[0].t) return 'system';
+  if (ms < kinds[0].t) return 'arrow';
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
     if (kinds[mid].t <= ms) lo = mid; else hi = mid;
   }
   const k = kinds[hi].t <= ms ? kinds[hi].k : kinds[lo].k;
-  return KIND_GLYPHS[k] ?? 'system';
+  return KIND_GLYPHS[k] ?? 'arrow';
 }
 
 // How far back to look when measuring cursor velocity: one frame at 60fps.
@@ -1726,7 +1725,7 @@ function drawCursorWithMotion(
     angle = norm * CURSOR_MAX_TILT_RAD * Math.max(0, Math.min(1, tilt));
   }
 
-  const draw = (cx: number, cy: number, alpha: number) => {
+  const draw = (cx: number, cy: number, alpha: number, pass: CursorPass = 'both') => {
     ctx.save();
     ctx.globalAlpha *= alpha;
     if (angle !== 0) {
@@ -1734,29 +1733,73 @@ function drawCursorWithMotion(
       ctx.rotate(angle);
       ctx.translate(-cx, -cy);
     }
-    drawSyntheticCursor(ctx, cx, cy, scale, outH, style, color, emoji);
+    drawSyntheticCursor(ctx, cx, cy, scale, outH, style, color, emoji, pass);
     ctx.restore();
   };
 
   const strength = Math.max(0, Math.min(1, motionBlur));
-  // One stamp per ~1.5px of travel keeps the smear continuous without paying
-  // for stamps nobody can distinguish; capped so a huge jump stays cheap.
-  const steps = !moving || strength <= 0
-    ? 1
-    : Math.max(1, Math.min(14, Math.round((dist * strength) / 1.5)));
-  if (steps <= 1) {
-    draw(x, y, 1);
+  if (!moving || strength <= 0) {
+    draw(x, y, 1, 'both');
     return;
   }
-  // Trail BEHIND the current position: the head stays where the cursor
-  // actually is, so the blur never makes the pointer feel like it lags.
-  for (let i = steps - 1; i >= 0; i--) {
-    const u = (i / steps) * strength;
-    // Fade toward the tail so the leading edge stays readable.
-    const a = (1 - i / steps) / steps * 1.8;
-    draw(x - dx * u, y - dy * u, Math.min(1, a));
+
+  // The trail is a SMEAR of the finished pointer, not a stack of pointers.
+  //
+  // Stamping the glyph repeatedly along the path — the previous approach —
+  // has two failure modes once the halo is wide: stamps layered in any order
+  // put someone's halo over someone's fill, and even with that solved, stamps
+  // ~1.5px apart each leave a hard-edged black outline, which shows on the
+  // trailing side as a staircase. Real motion blur is the average of many
+  // copies at sub-pixel spacing, so: render the pointer ONCE into a sprite
+  // (halo and body composited correctly), then draw that sprite densely along
+  // the travel at low alpha. Copies under 1px apart blend into a gradient. The
+  // head goes on top, complete and opaque — it is the object in front.
+  const sprite = cursorSprite(targetH);
+  const sctx = sprite.getContext('2d');
+  if (!sctx) { draw(x, y, 1, 'both'); return; }
+  const half = sprite.width / 2;
+  sctx.clearRect(0, 0, sprite.width, sprite.height);
+  drawSyntheticCursor(sctx, half, half, scale, outH, style, color, emoji, 'both');
+
+  const spacing = 0.75;
+  const len = dist * strength;
+  const n = Math.max(2, Math.min(40, Math.ceil(len / spacing)));
+  // Enough alpha per copy that the overlap near the head reads solid and the
+  // tail end fades out; scales with n so density doesn't change brightness.
+  const base = Math.min(0.9, 2.2 / n);
+  ctx.save();
+  if (angle !== 0) {
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.translate(-x, -y);
   }
+  for (let i = n; i >= 1; i--) {
+    const u = (i / n) * strength;
+    ctx.globalAlpha = base * (1 - i / n);
+    ctx.drawImage(sprite, x - dx * u - half, y - dy * u - half);
+  }
+  ctx.restore();
+  draw(x, y, 1, 'both');
 }
+
+// Offscreen canvas the motion smear renders the pointer into. Reused across
+// frames; sized generously around the hotspot so every glyph (the hand
+// extends left of it, the caret is centred on it) fits with its halo.
+let cursorSpriteCanvas: HTMLCanvasElement | null = null;
+function cursorSprite(targetH: number): HTMLCanvasElement {
+  const side = Math.ceil(targetH * 3.2);
+  if (!cursorSpriteCanvas) cursorSpriteCanvas = document.createElement('canvas');
+  if (cursorSpriteCanvas.width !== side) {
+    cursorSpriteCanvas.width = side;
+    cursorSpriteCanvas.height = side;
+  }
+  return cursorSpriteCanvas;
+}
+
+// Which layers of the pointer to paint. 'halo' is the outline (with its
+// shadow) and 'body' the fill; the motion trail paints all halos before any
+// body so a halo never lands on a neighbouring stamp's fill.
+type CursorPass = 'both' | 'halo' | 'body';
 
 function drawSyntheticCursor(
   ctx: CanvasRenderingContext2D,
@@ -1766,7 +1809,8 @@ function drawSyntheticCursor(
   outH: number,
   style = 'system',
   color = '#ffffff',
-  emoji = ''
+  emoji = '',
+  pass: CursorPass = 'both'
 ) {
   const unitH = 18;
   const targetH = outH * 0.05 * Math.max(0.3, scale);
@@ -1774,6 +1818,13 @@ function drawSyntheticCursor(
   const fill = color || '#ffffff';
   const outline = hexLuminance(fill) > 0.6 ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.92)';
   ctx.save();
+
+  // Dot / ring / emoji are single-layer glyphs: they paint once, on the body
+  // pass, and contribute nothing to a halo pass.
+  if (pass === 'halo' && (style === 'dot' || style === 'ring' || style === 'emoji' || CURSOR_GLYPHS[style]?.char)) {
+    ctx.restore();
+    return;
+  }
 
   // Dot / ring pointers are centred on the hotspot.
   if (style === 'dot' || style === 'ring') {
@@ -1829,24 +1880,64 @@ function drawSyntheticCursor(
   if (!base) { ctx.restore(); return; }
   const path = new Path2D();
   path.addPath(base, new DOMMatrix([f, 0, 0, f, x, y]));
-  // Outline FIRST at double weight, then fill over it. A centred stroke (the
-  // obvious way round) spends half its width inside the shape, shaving the
-  // point and rounding off every corner — which is what made the old arrow
-  // look blunt. Stroking underneath leaves the border entirely outside, so the
-  // silhouette keeps its full size and the tip stays sharp.
+  // Three passes, all with round joins, which together give the soft, chunky
+  // look of a real system pointer:
+  //
+  //   1. the OUTLINE, stroked under everything at a wide width — the visible
+  //      halo is the part that sticks out past the fill;
+  //   2. the fill;
+  //   3. the fill's OWN colour stroked over its edge at a narrow width.
+  //
+  // Pass 3 is the one that was missing. The outline under the fill rounds the
+  // outer silhouette, but the fill drawn on top still came to hard points at
+  // every corner — so the arrow read as sharp and thin however wide the border
+  // was. Stroking the fill colour with a round join rounds the fill itself, the
+  // way the real pointer's corners are rounded.
+  //
+  // Sized as fractions of the glyph height so it holds at any resolution:
+  // the halo showing past the fill is ~10% of the height (measured off a
+  // reference pointer at display size), and the fill's corner radius ~3.5%.
+  // `weight` scales the halo per glyph; 1 is the pointer.
+  const weight = CURSOR_GLYPHS[style]?.weight ?? 1;
+  const roundW = Math.max(1, targetH * 0.07);                     // fill stroke → corner radius 0.035H
+  const haloW = Math.max(1.5, targetH * 0.20 * weight);           // extra beyond the fill stroke → 0.10H visible
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
   ctx.shadowColor = 'rgba(0,0,0,0.35)';
   ctx.shadowBlur = targetH * 0.16;
   ctx.shadowOffsetY = targetH * 0.045;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-  // Per-glyph weight: the system pointers carry a heavier border than the
-  // decorative ones, and it's most of what keeps them crisp when small.
-  ctx.lineWidth = Math.max(1.5, targetH * 0.085 * (CURSOR_GLYPHS[style]?.weight ?? 1));
-  ctx.strokeStyle = outline;
-  ctx.stroke(path);
+  const strokeUnits = CURSOR_GLYPHS[style]?.stroke;
+  if (strokeUnits) {
+    // Centreline glyph (the caret): the line itself is the body, so stroke it
+    // in the fill colour, with the halo as a wider stroke underneath. Same
+    // visible halo as the filled glyphs — haloW/2 either side.
+    const bodyW = strokeUnits * f;
+    if (pass !== 'body') {
+      ctx.lineWidth = bodyW + haloW;
+      ctx.strokeStyle = outline;
+      ctx.stroke(path);
+    }
+    ctx.shadowColor = 'transparent';
+    if (pass !== 'halo') {
+      ctx.lineWidth = bodyW;
+      ctx.strokeStyle = fill;
+      ctx.stroke(path);
+    }
+    ctx.restore();
+    return;
+  }
+  if (pass !== 'body') {
+    ctx.lineWidth = roundW + haloW;
+    ctx.strokeStyle = outline;
+    ctx.stroke(path);
+  }
   ctx.shadowColor = 'transparent';
+  if (pass === 'halo') { ctx.restore(); return; }
   ctx.fillStyle = fill;
   ctx.fill(path);
+  ctx.lineWidth = roundW;
+  ctx.strokeStyle = fill;
+  ctx.stroke(path);
   // Interior line work (the hand's finger separations) goes ON TOP of the
   // fill, in the outline colour — as part of `d` it would be painted over.
   const detail = CURSOR_GLYPHS[style]?.detail;

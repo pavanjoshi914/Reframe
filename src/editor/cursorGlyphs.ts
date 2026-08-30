@@ -14,12 +14,21 @@ export type CursorGlyph = {
   /** Drawn as a text glyph (emoji) instead of a filled path. */
   char?: string;
   /**
-   * Outline weight multiplier. The system cursors carry a noticeably heavier
-   * border than a default stroke gives — measured at 6.2% of the glyph height
-   * against the 3.4% our base weight produces — and that heft is a lot of why
-   * they read as crisp rather than thin at small sizes. Defaults to 1.
+   * Halo weight multiplier. The renderer sizes the visible outline at ~10% of
+   * the glyph height (matched to a real system pointer); this nudges it per
+   * glyph — the beam and hand sit a little lighter so their interior detail
+   * stays legible. Defaults to 1.
    */
   weight?: number;
+  /**
+   * When set, `d` is a CENTRELINE and the glyph is drawn by stroking it at this
+   * width (glyph units) with round caps and joins, instead of filling it. The
+   * text caret needs this: it is a uniform-width line — stem, two curved serif
+   * arms, a crossbar — and expressing that as a filled outline is what made it
+   * come out as flat blocks that the fill-rounding then fattened. A stroked
+   * centreline gives the smooth sweeps for free.
+   */
+  stroke?: number;
   /**
    * Interior line work, stroked in the OUTLINE colour on top of the fill —
    * the finger separations on the pointing hand, for instance. It has to be a
@@ -36,8 +45,19 @@ export const CURSOR_GLYPHS: Record<string, CursorGlyph> = {
   // reverted) makes the silhouette read as subtly bent; the crispness comes
   // from the outline being painted underneath the fill, not from the geometry.
   system: {
-    d: 'M0 0 L0 16 L3.5 12.5 L6 18 L8 17 L5.5 11.5 L11 11.5 Z',
-    view: '-1.5 -1.5 15 22'
+    // Outline weight matched to a real system pointer: 5.5% of the glyph
+    // height against the 4.0% a default stroke gives. Because the outline is
+    // stroked UNDER the fill with round joins, a heavier one also rounds the
+    // silhouette — which is what stops the arrow reading as sharp and thin.
+    // Proportions read off a real system pointer, row by row: aspect h/w 1.80,
+    // the head reaching full width at 57% of the height, the tail starting at
+    // 78% and 0.30 of the width across. The earlier arrow was 5% wider with a
+    // head that ran to 62% and a tail that only began at 88% — which is what
+    // read as fat with a stubby tail.
+    weight: 1.0,
+    d:
+      'M 0.0 0.0 L 0.0 13.86 L 3.99 14.22 L 5.48 17.46 L 8.38 16.56 L 5.48 10.8 L 9.67 10.26 Z',
+    view: '-1.5 -1.5 13 22'
   },
   // Bolder, stylized arrow.
   arrow: {
@@ -89,7 +109,7 @@ export const CURSOR_GLYPHS: Record<string, CursorGlyph> = {
     // inside an MIT app.
     //
     // Origin is the HOTSPOT, at the index fingertip.
-    weight: 1.8,
+    weight: 0.9,
     detail: 'M 2.76 9.63 L 2.76 14.94 M 4.56 9.63 L 4.56 14.94 M 6.35 9.63 L 6.35 14.94',
     d:
       'M 0.0 7.2 L -0.7 0.99 Q -0.02 -0.45 0.74 0.72 L 1.67 6.84 Q 2.09 7.92 2.52 6.75 L 2.52 6.75 L 2.52 5.17 Q 3.36 4.36 4.2 5.17 L 4.2 6.75 Q 4.61 7.92 5.04 6.75 L 5.04 6.75 L 5.04 5.17 Q 5.91 4.36 6.77 5.17 L 6.77 6.75 Q 7.23 8.1 7.61 6.93 L 7.61 8.1 L 7.61 6.53 Q 8.18 5.72 8.75 6.53 L 8.75 8.1 L 8.75 10.08 Q 8.57 13.86 7.37 15.57 Q 6.89 16.83 6.35 16.65 Q 5.57 15.84 4.73 16.83 Q 3.12 17.37 1.55 16.65 Q 0.12 15.84 -0.84 13.32 Q -2.16 10.44 -3.17 8.73 Q -2.64 7.11 -1.44 7.56 Q -0.53 7.74 0.0 7.2 Z',
@@ -104,12 +124,21 @@ export const CURSOR_GLYPHS: Record<string, CursorGlyph> = {
   // Proportions measured off a reference recording: overall aspect h/w = 2.00,
   // stem width = 0.33 of the serif width, serif arm ~0.16 of the height.
   beam: {
+    // Text I-beam, drawn as a STROKED centreline (see `stroke`): a stem with
+    // a curved arm sweeping out to each of the four corners, and a short
+    // crossbar just below centre. Measured off a real system caret, row by
+    // row: body aspect h/w 2.33, stroke 0.18 of the width, arms meeting the
+    // stem 13.5% down, crossbar 0.45 of the width across at 52%. The earlier
+    // filled version had flat serif blocks — the reference's serifs are the
+    // same thin line as the stem, just curved — and rounding its fill only
+    // made the blocks fatter.
+    //
+    // Origin is the HOTSPOT, the centre of the stem.
+    weight: 0.9,
+    stroke: 1.39,
     d:
-      'M-4.5 -9 L4.5 -9 L4.5 -8 L3.65 -8 Q1.35 -8 1.35 -5.7 L1.35 5.7 ' +
-      'Q1.35 8 3.65 8 L4.5 8 L4.5 9 L-4.5 9 L-4.5 8 L-3.65 8 ' +
-      'Q-1.35 8 -1.35 5.7 L-1.35 -5.7 Q-1.35 -8 -3.65 -8 L-4.5 -8 Z ' +
-      'M-2.5 -0.4 L2.5 -0.4 L2.5 0.4 L-2.5 0.4 Z',
-    view: '-6 -10.5 12 21'
+      'M -3.17 -8.3 Q -0.4 -8.3 0 -6.57 L 0 6.57 Q -0.4 8.3 -3.17 8.3 M 3.17 -8.3 Q 0.4 -8.3 0 -6.57 M 0 6.57 Q 0.4 8.3 3.17 8.3 M -1.04 0.3 L 1.04 0.3',
+    view: '-5 -10.5 10 21'
   },
   // Paw print — pad plus four toes, centred on the hotspot.
   paw: {
@@ -130,12 +159,15 @@ export const CURSOR_GLYPHS: Record<string, CursorGlyph> = {
 // and a pointing hand over a link exactly where the real cursor did. Kinds we
 // have no distinct glyph for fall back to the arrow rather than inventing one.
 export const KIND_GLYPHS: Record<string, string> = {
-  default: 'system',
+  // The pointer is the classic 'arrow' glyph — straight edges, clean corners —
+  // not the 'system' path, whose base/tail notch reads as broken at the halo
+  // weight we now draw with.
+  default: 'arrow',
   text: 'beam',
   pointer: 'hand',
   grab: 'hand',
-  crosshair: 'system',
-  wait: 'system'
+  crosshair: 'arrow',
+  wait: 'arrow'
 };
 
 /** Ring and dot are drawn procedurally (they scale as circles, not paths). */

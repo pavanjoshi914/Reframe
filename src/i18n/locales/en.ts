@@ -113,8 +113,6 @@ export default {
   'side.cursorSize': 'Cursor size',
   'side.cursorMotionBlur': 'Motion blur',
   'side.cursorTilt': 'Tilt with motion',
-  'side.webcamZoomFollow': 'Shrink when zoomed',
-  'side.webcamZoomFollowOff': 'Off',
   'side.zoomStyle': 'Zoom style',
   'side.zoomStyleCinematic': 'Cinematic',
   'side.zoomStyleSnappy': 'Snappy',
