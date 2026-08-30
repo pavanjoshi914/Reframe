@@ -34,6 +34,17 @@ export function UpdateApp() {
     return off;
   }, []);
 
+  // Escape dismisses, like "Later" — unless the update is mandatory. Declared
+  // BEFORE the early return below: hooks must run in the same order on every
+  // render, and a hook after a conditional return crashes React the moment
+  // `info` arrives (the window stays blank).
+  useEffect(() => {
+    if (info?.required) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') window.updateApi.later(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [info?.required]);
+
   if (!info) return <div className="h-screen w-screen bg-[#0e0f12]" />;
 
   const primaryLabel =
@@ -54,7 +65,23 @@ export function UpdateApp() {
   };
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-[#0e0f12] text-white" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+    <div className="relative flex h-screen w-screen flex-col bg-[#0e0f12] text-white" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+      {/* Close — the window is frameless, so it has no title-bar X of its own.
+          Same as "Later"; hidden when the update is mandatory. */}
+      {!info.required ? (
+        <button
+          type="button"
+          onClick={() => window.updateApi.later()}
+          aria-label="Close"
+          title="Close"
+          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition hover:bg-white/10 hover:text-white"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <path d="M2 2l10 10M12 2L2 12" />
+          </svg>
+        </button>
+      ) : null}
       {/* Header */}
       <div className="flex items-start gap-4 px-7 pb-4 pt-7">
         <img src={logoUrl} alt="" className="h-12 w-12 shrink-0" />
