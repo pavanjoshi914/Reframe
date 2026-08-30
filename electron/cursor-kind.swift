@@ -21,8 +21,6 @@
 // (openHand/closedHand share a size) are harmless because they map to the same
 // kind.
 //
-// NSCursor.currentSystemCursor is deprecated in macOS 15 in favour of
-// NSCursor.currentSystem, so we prefer the new one where it exists.
 //
 // Usage: cursor-kind [--interval-ms N]
 
@@ -70,8 +68,10 @@ func buildIndex() -> [String: String] {
 }
 
 func currentCursor() -> NSCursor? {
-    if #available(macOS 15.0, *) { return NSCursor.currentSystem }
-    return NSCursor.currentSystemCursor
+    // `currentSystemCursor` is a hard rename to `currentSystem` in current SDKs
+    // (the old name is an error, not a deprecation), and `currentSystem` has
+    // been available since 10.6 — so there is nothing to branch on.
+    return NSCursor.currentSystem
 }
 
 let index = buildIndex()
