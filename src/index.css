@@ -17,6 +17,20 @@ button {
   font-family: inherit;
 }
 
+/* Focus rings belong to keyboard users. Dragging a slider with the mouse — the
+   scrubber under the preview, the volume, any sidebar slider — used to leave a
+   ring sitting on it afterwards, which reads as "this is selected" and looks
+   like the reason the letter shortcuts stopped responding. Show the ring only
+   for :focus-visible, so keyboard navigation keeps it and a mouse drag doesn't. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid rgba(52, 211, 153, 0.9);
+  outline-offset: 2px;
+}
+
+
 .draggable {
   -webkit-app-region: drag;
   cursor: grab;

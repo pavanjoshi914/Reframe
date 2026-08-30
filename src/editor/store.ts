@@ -296,8 +296,13 @@ export type SerializedProject = {
   cursorFx?: EditorState['cursorFx'];
 };
 
+// `clicks` (the ripple) is OFF and `clickPress` is ON by default: the press is
+// what real system cursors do on a click, so it belongs in the baseline look,
+// while a ring radiating out of the pointer is an added flourish to opt into.
+// Saved projects keep whatever they had — hydrate spreads their cursorFx over
+// these — so this only decides how a NEW recording starts out.
 const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = {
-  enabled: false, size: 1.4, clicks: true, smoothing: 0.5, style: 'system',
+  enabled: false, size: 1.4, clicks: false, smoothing: 0.5, style: 'system',
   color: '#ffffff', hideWhenIdle: false, emoji: '👆', motionBlur: 0.6, tilt: 0.5,
   clickPress: true
 };

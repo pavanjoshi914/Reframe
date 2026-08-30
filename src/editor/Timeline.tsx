@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Minus, ZoomIn, Scissors, MessageSquare, Gauge, Trash2, Maximize2, Sparkles, Search, Flashlight, EyeOff, type LucideIcon, Rotate3d, Boxes } from 'lucide-react';
 import { useEditor, type LaneItem, type LaneKind } from './store';
+import { isTextEntry } from './textEntry';
 import { useT } from '../i18n';
 
 const LANES: { kind: LaneKind; label: string; key: string; icon: LucideIcon; color: string; chip: string }[] = [
@@ -96,10 +97,10 @@ export function Timeline() {
   // Keyboard shortcuts: Z/T/A/S add items, Delete removes selected
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      const tgt = e.target as HTMLElement | null;
-      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA')) return;
-      // Don't hijack keys while typing an annotation on the canvas (contentEditable).
-      if (tgt?.isContentEditable || useEditor.getState().editingAnnotationId) return;
+      // Stand down only for real TEXT entry. A range slider is an <input> too,
+      // and the scrubber keeps focus after a drag — testing for the tag alone
+      // killed every shortcut until you clicked away.
+      if (isTextEntry(e.target) || useEditor.getState().editingAnnotationId) return;
       // Let modifier combos through (Ctrl+Z undo, Ctrl+S save, …) — only bare
       // letter keys add lane items.
       if (e.ctrlKey || e.metaKey || e.altKey) return;

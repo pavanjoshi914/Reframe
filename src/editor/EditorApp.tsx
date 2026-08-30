@@ -5,6 +5,7 @@ import { Preview } from './Preview';
 import { Sidebar } from './Sidebar';
 import { Timeline } from './Timeline';
 import { useEditor, type SerializedProject } from './store';
+import { isTextEntry } from './textEntry';
 import type { ProjectFile } from '@shared/ipc';
 import wordmarkUrl from '../../assets/logo-wordmark-transparent.png';
 import { useT } from '../i18n';
@@ -220,8 +221,9 @@ export function EditorApp() {
   // Spacebar play/pause + undo/redo shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      const tgt = e.target as HTMLElement | null;
-      const typing = (!!tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT' || tgt.isContentEditable)) || !!useEditor.getState().editingAnnotationId;
+      // Only REAL text entry suppresses shortcuts — a focused range slider (the
+      // scrubber, the volume, every sidebar slider) must not.
+      const typing = isTextEntry(e.target) || !!useEditor.getState().editingAnnotationId;
       const mod = e.ctrlKey || e.metaKey;
       // Undo / redo — skip while typing so the browser's native text undo works.
       if (mod && (e.key === 'z' || e.key === 'Z')) {
