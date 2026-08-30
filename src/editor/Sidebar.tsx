@@ -1327,13 +1327,17 @@ const ROT_POSES: RotPreset[] = [
 const thumbTransform = (v: [number, number, number]) =>
   `perspective(140px) rotateX(${-v[0]}deg) rotateY(${v[1]}deg) rotateZ(${-v[2]}deg)`;
 
-function PresetThumb({ p, onApply, label }: { p: RotPreset; onApply: () => void; label: string }) {
+function PresetThumb({ p, onApply, label, active = false }: { p: RotPreset; onApply: () => void; label: string; active?: boolean }) {
   return (
     <button
       type="button"
       onClick={onApply}
       title={label}
-      className="group flex flex-col items-center gap-1 rounded-md border border-white/10 p-1.5 hover:border-emerald-400/40 hover:bg-emerald-500/10"
+      aria-pressed={active}
+      className={
+        'group flex flex-col items-center gap-1 rounded-md border p-1.5 transition ' +
+        (active ? 'border-emerald-400 bg-emerald-500/15' : 'border-white/10 hover:border-emerald-400/40 hover:bg-emerald-500/10')
+      }
     >
       <span className="relative flex h-12 w-full items-center justify-center overflow-hidden rounded bg-black/40">
         {/* End pose as a ghost so a motion's tile shows where it's going. */}
@@ -1368,81 +1372,149 @@ function Rotation3DPanel({ item }: { item: LaneItem }) {
   const updateItem = useEditor((s) => s.updateItem);
   const setCurrent = useEditor((s) => s.setCurrent);
   const setPlaying = useEditor((s) => s.setPlaying);
+  // A region is EITHER a preset OR custom keyframes. The lane item records
+  // which (`rotPreset`); the panel shows one or the other, never both stacked.
+  const [mode, setMode] = useState<'preset' | 'custom'>(item.rotPreset ? 'preset' : 'custom');
   const [kf, setKf] = useState<'start' | 'end'>('start');
-  // Where on the timeline each keyframe's pose is actually visible: the region
-  // eases in over ROT_TRANSITION_MS, so Start's pose holds from start+500ms
-  // (same convention as previewPointFor); End's pose is exact at endMs.
+  // "Animate" is simply whether an End pose exists: with one, the card moves
+  // Start → End across the region; without, it holds Start.
+  const animate = item.tiltXEnd !== undefined || item.tiltYEnd !== undefined || item.spinZEnd !== undefined;
+  // Where on the timeline each keyframe's pose is visible: the region eases in
+  // over ROT_TRANSITION_MS, so Start's pose holds from start+500ms; End's pose
+  // is exact at endMs.
   const seekKf = (which: 'start' | 'end') => {
     setKf(which);
     setPlaying(false);
     setCurrent(which === 'start' ? Math.min(item.endMs, item.startMs + 500) : item.endMs);
   };
+  const playThrough = () => {
+    setKf('start');
+    setCurrent(item.startMs);
+    setPlaying(true);
+  };
   const get = (axis: 'tiltX' | 'tiltY' | 'spinZ') =>
-    kf === 'start' ? (item[axis] ?? 0) : (item[`${axis}End` as const] ?? item[axis] ?? 0);
+    kf === 'start' || !animate ? (item[axis] ?? 0) : (item[`${axis}End` as const] ?? item[axis] ?? 0);
+  // Any slider edit makes the region custom.
   const set = (axis: 'tiltX' | 'tiltY' | 'spinZ', v: number) =>
-    updateItem(item.id, kf === 'start' ? { [axis]: v } : { [`${axis}End`]: v });
-  const applyPreset = (p: RotPreset) => {
-    updateItem(item.id, {
-      tiltX: p.s[0], tiltY: p.s[1], spinZ: p.s[2],
-      tiltXEnd: p.e?.[0], tiltYEnd: p.e?.[1], spinZEnd: p.e?.[2]
-    });
-    if (p.e) {
-      // A motion is only legible in motion: play it through from the region
-      // start so the preset previews itself the moment it's clicked.
-      setKf('start');
-      setCurrent(item.startMs);
-      setPlaying(true);
+    updateItem(item.id, { rotPreset: undefined, ...(kf === 'start' || !animate ? { [axis]: v } : { [`${axis}End`]: v }) });
+  const setAnimate = (on: boolean) => {
+    if (on) {
+      // End starts as a copy of Start, so turning this on changes nothing until
+      // the End keyframe is actually edited.
+      updateItem(item.id, {
+        rotPreset: undefined,
+        tiltXEnd: item.tiltX ?? 0, tiltYEnd: item.tiltY ?? 0, spinZEnd: item.spinZ ?? 0
+      });
+      seekKf('end');
     } else {
+      updateItem(item.id, { rotPreset: undefined, tiltXEnd: undefined, tiltYEnd: undefined, spinZEnd: undefined });
       seekKf('start');
     }
   };
+  const applyPreset = (p: RotPreset) => {
+    updateItem(item.id, {
+      rotPreset: p.key,
+      tiltX: p.s[0], tiltY: p.s[1], spinZ: p.s[2],
+      tiltXEnd: p.e?.[0], tiltYEnd: p.e?.[1], spinZEnd: p.e?.[2]
+    });
+    // A motion is only legible in motion: play it through from the region
+    // start so the preset previews itself the moment it's clicked.
+    if (p.e) playThrough(); else seekKf('start');
+  };
   const any = [item.tiltX, item.tiltY, item.spinZ, item.tiltXEnd, item.tiltYEnd, item.spinZEnd].some((n) => n && Math.abs(n) > 1e-6);
   const fmt = (v: number) => `${v >= 0 ? '+' : ''}${Math.round(v)}°`;
+  const pose = (x?: number, y?: number, z?: number) => `${fmt(x ?? 0)} / ${fmt(y ?? 0)} / ${fmt(z ?? 0)}`;
   return (
-    <div className="space-y-2 rounded-lg border border-white/10 p-3">
+    <div className="space-y-3 rounded-lg border border-white/10 p-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-white/80">{t('side.rotation3d')}</span>
         {any ? (
           <button
             type="button"
-            onClick={() => updateItem(item.id, { tiltX: 0, tiltY: 0, spinZ: 0, tiltXEnd: undefined, tiltYEnd: undefined, spinZEnd: undefined })}
+            onClick={() => updateItem(item.id, { rotPreset: undefined, tiltX: 0, tiltY: 0, spinZ: 0, tiltXEnd: undefined, tiltYEnd: undefined, spinZEnd: undefined })}
             className="text-[11px] text-white/50 hover:text-white"
           >
             {t('side.rotationReset')}
           </button>
         ) : null}
       </div>
-      <div>
-        <Label>{t('side.rotationKeyframe')}</Label>
-        <div className="grid grid-cols-2 gap-1.5">
-          <ChipBtn active={kf === 'start'} onClick={() => seekKf('start')}>{t('side.rotationStart')}</ChipBtn>
-          <ChipBtn active={kf === 'end'} onClick={() => seekKf('end')}>{t('side.rotationEnd')}</ChipBtn>
-        </div>
+
+      {/* Preset OR custom — one of the two, never both stacked. */}
+      <div className="grid grid-cols-2 gap-1.5">
+        <ChipBtn active={mode === 'preset'} onClick={() => setMode('preset')}>{t('side.rotModePreset')}</ChipBtn>
+        <ChipBtn active={mode === 'custom'} onClick={() => setMode('custom')}>{t('side.rotModeCustom')}</ChipBtn>
       </div>
-      <div>
-        <Label>{t('side.rotPresetMotions')}</Label>
-        <div className="grid grid-cols-3 gap-1.5">
-          {ROT_MOTIONS.map((p) => (
-            <PresetThumb key={p.key} p={p} label={t(`side.rotPreset.${p.key}`)} onApply={() => applyPreset(p)} />
-          ))}
-        </div>
-      </div>
-      <div>
-        <Label>{t('side.rotPresetPoses')}</Label>
-        <div className="grid grid-cols-3 gap-1.5">
-          {ROT_POSES.map((p) => (
-            <PresetThumb key={p.key} p={p} label={t(`side.rotPreset.${p.key}`)} onApply={() => applyPreset(p)} />
-          ))}
-        </div>
-      </div>
-      <RangeRow label={t('side.tiltX')} value={get('tiltX')} min={-60} max={60} step={1} fmt={fmt} onChange={(v) => set('tiltX', v)} />
-      <RangeRow label={t('side.tiltY')} value={get('tiltY')} min={-60} max={60} step={1} fmt={fmt} onChange={(v) => set('tiltY', v)} />
-      <RangeRow label={t('side.spinZ')} value={get('spinZ')} min={-180} max={180} step={1} fmt={fmt} onChange={(v) => set('spinZ', v)} />
-      <p className="text-[11px] text-white/40">{t('side.rotationTip')}</p>
+
+      {mode === 'preset' ? (
+        <>
+          <p className="text-[11px] text-white/40">{t('side.rotPresetTip')}</p>
+          <div>
+            <Label>{t('side.rotPresetMotions')}</Label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {ROT_MOTIONS.map((p) => (
+                <PresetThumb key={p.key} p={p} active={item.rotPreset === p.key} label={t(`side.rotPreset.${p.key}`)} onApply={() => applyPreset(p)} />
+              ))}
+            </div>
+          </div>
+          <div>
+            <Label>{t('side.rotPresetPoses')}</Label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {ROT_POSES.map((p) => (
+                <PresetThumb key={p.key} p={p} active={item.rotPreset === p.key} label={t(`side.rotPreset.${p.key}`)} onApply={() => applyPreset(p)} />
+              ))}
+            </div>
+          </div>
+          {item.rotPreset ? (
+            <button
+              type="button"
+              onClick={() => setMode('custom')}
+              className="w-full rounded-md border border-white/10 py-1.5 text-[11px] text-white/60 transition hover:border-emerald-400/40 hover:text-white"
+            >
+              {t('side.rotCustomize')}
+            </button>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {/* Static pose vs. animated Start → End. */}
+          <ToggleRow label={t('side.rotAnimate')} checked={animate} onChange={setAnimate} />
+          <p className="text-[11px] text-white/40">{animate ? t('side.rotAnimateOnTip') : t('side.rotAnimateOffTip')}</p>
+          {animate ? (
+            <div>
+              <Label>{t('side.rotationKeyframe')}</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <ChipBtn active={kf === 'start'} onClick={() => seekKf('start')}>
+                  <span className="flex flex-col leading-tight">
+                    <span>{t('side.rotationStart')}</span>
+                    <span className="font-mono text-[10px] opacity-60">{pose(item.tiltX, item.tiltY, item.spinZ)}</span>
+                  </span>
+                </ChipBtn>
+                <ChipBtn active={kf === 'end'} onClick={() => seekKf('end')}>
+                  <span className="flex flex-col leading-tight">
+                    <span>{t('side.rotationEnd')}</span>
+                    <span className="font-mono text-[10px] opacity-60">{pose(item.tiltXEnd, item.tiltYEnd, item.spinZEnd)}</span>
+                  </span>
+                </ChipBtn>
+              </div>
+            </div>
+          ) : null}
+          <RangeRow label={t('side.tiltX')} value={get('tiltX')} min={-60} max={60} step={1} fmt={fmt} onChange={(v) => set('tiltX', v)} />
+          <RangeRow label={t('side.tiltY')} value={get('tiltY')} min={-60} max={60} step={1} fmt={fmt} onChange={(v) => set('tiltY', v)} />
+          <RangeRow label={t('side.spinZ')} value={get('spinZ')} min={-180} max={180} step={1} fmt={fmt} onChange={(v) => set('spinZ', v)} />
+          {animate ? (
+            <button
+              type="button"
+              onClick={playThrough}
+              className="w-full rounded-md border border-white/10 py-1.5 text-[11px] text-white/60 transition hover:border-emerald-400/40 hover:text-white"
+            >
+              {t('side.rotPlay')}
+            </button>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
-
 // Multi-card 3D scenes (rings / streams / grids) — the selection panel for a
 // 'scene' lane item: a visual palette (each tile is the real arrangement,
 // rendered with CSS 3D from the same generator the compositor uses) plus the

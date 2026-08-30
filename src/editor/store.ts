@@ -55,6 +55,10 @@ export type LaneItem = {
   tiltXEnd?: number;
   tiltYEnd?: number;
   spinZEnd?: number;
+  // Which rotation preset this region was set from, if any. Cleared the moment
+  // a slider is touched: a region is either "a preset" or "custom keyframes",
+  // never a blend, and the panel shows whichever it is.
+  rotPreset?: string;
   // Multi-card 3D scene preset id (see scenes.ts) — when set on a rotation
   // item, it replaces the manual tilt for that region: the video renders as
   // many cards (ring / grid / stream…) animated across the region.
