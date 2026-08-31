@@ -212,6 +212,15 @@ export function Timeline() {
 
   const playheadPx = (currentMs / 1000) * pixelsPerSecond;
 
+  // A lane only earns a row once it holds something. Nine always-on lanes cost
+  // ~430px of mostly-empty "Press T to add trim" rows, which on a 1080p laptop
+  // squeezes the video preview down to a thumbnail. Empty lanes collapse into
+  // one compact add-strip instead, so the timeline is only as tall as the work
+  // actually in it and the preview keeps the rest.
+  const laneRows = LANES.map((lane) => ({ lane, laneItems: items.filter((it) => it.kind === lane.kind) }));
+  const activeRows = laneRows.filter((r) => r.laneItems.length > 0);
+  const emptyLanes = laneRows.filter((r) => r.laneItems.length === 0).map((r) => r.lane);
+
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-white/5 bg-[#0e0f12]">
       <div className="flex items-center justify-between border-b border-white/5 px-3 py-1.5 text-xs text-white/50">
@@ -270,10 +279,14 @@ export function Timeline() {
 
       <SelectedItemInspector />
 
-      <div ref={scrollRef} className="min-w-0 overflow-x-auto" onWheel={handleWheel}>
+      {/* Vertical cap as well as horizontal: even a project that genuinely uses
+          every lane can now only take 42vh before the lanes scroll, so the
+          preview always keeps the majority of the window. The ruler is sticky
+          so it stays put while the lanes scroll under it. */}
+      <div ref={scrollRef} className="min-w-0 max-h-[42vh] overflow-auto" onWheel={handleWheel}>
         <div style={{ width: LANE_LABEL_W + trackWidth + TRACK_END_PAD }}>
           {/* time ruler */}
-          <div className="relative h-6 border-b border-white/5" style={{ paddingLeft: LANE_LABEL_W }}>
+          <div className="sticky top-0 z-30 h-6 border-b border-white/5 bg-[#0a0b0e]" style={{ paddingLeft: LANE_LABEL_W }}>
             <div
               ref={trackRef}
               className="relative h-full cursor-pointer touch-none select-none"
@@ -297,8 +310,7 @@ export function Timeline() {
 
           {/* lanes */}
           <div className="relative">
-            {LANES.map((lane) => {
-              const laneItems = items.filter((it) => it.kind === lane.kind);
+            {activeRows.map(({ lane, laneItems }) => {
               return (
                 <div key={lane.kind} className="flex h-12 items-stretch border-b border-white/5">
                   <div
@@ -374,6 +386,37 @@ export function Timeline() {
           </div>
         </div>
       </div>
+
+      {emptyLanes.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-white/5 px-2 py-1.5">
+          <span className="mr-0.5 text-[10px] uppercase tracking-wider text-white/30">{t('tl.addLane')}</span>
+          {emptyLanes.map((lane) => (
+            <span key={lane.kind} className="flex items-center">
+              <button
+                onClick={() => addItem(lane.kind, currentMs)}
+                className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] text-white/60 transition hover:border-white/25 hover:bg-white/10 hover:text-white"
+                title={`${t('tl.add', { label: t('tl.' + lane.kind) })} (${lane.key})`}
+              >
+                <lane.icon size={11} />
+                {t('tl.' + lane.kind)}
+                <span className="text-[9px] text-white/30">{lane.key}</span>
+              </button>
+              {lane.kind === 'zoom' ? (
+                <button
+                  data-testid="suggest-zooms"
+                  onClick={() => suggestZooms()}
+                  disabled={!hasActivity}
+                  className="ml-1 flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-30"
+                  title={hasActivity ? t('tl.suggestZooms') : t('tl.noCursorData')}
+                  aria-label={t('tl.suggestZooms')}
+                >
+                  <Sparkles size={11} />
+                </button>
+              ) : null}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

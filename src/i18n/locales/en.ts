@@ -304,6 +304,7 @@ export default {
   'tl.magnify': 'Magnify',
   'tl.spotlight': 'Spotlight',
   'tl.blur': 'Blur',
+  'tl.addLane': 'Add',
   'tl.add': 'Add {label}',
   'tl.suggestZooms': 'Auto-zoom on clicks & movement',
   'tl.noCursorData': 'No cursor data for this recording',
