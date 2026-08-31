@@ -75,6 +75,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.2.2" date="2026-08-31">
+      <description>
+        <p>The timeline now only shows lanes you are actually using, so the video preview keeps the space instead of being squeezed by empty rows. 3D rotation presets can each be held still or animated, your choice. The update window has a close button.</p>
+      </description>
+    </release>
     <release version="0.2.1" date="2026-08-30">
       <description>
         <p>Recording a single window with the cursor hidden now records just that window on Linux, macOS and Windows instead of the whole screen. The synthetic cursor follows the real one — an I-beam over text, a pointing hand over links — presses on click, and blurs with motion; zooms move on a spring and the webcam bubble shrinks as you zoom in. Keyboard shortcuts keep working after touching a slider.</p>
