@@ -1397,7 +1397,27 @@ function Rotation3DPanel({ item }: { item: LaneItem }) {
   // Any slider edit makes the region custom.
   const set = (axis: 'tiltX' | 'tiltY' | 'spinZ', v: number) =>
     updateItem(item.id, { rotPreset: undefined, ...(kf === 'start' || !animate ? { [axis]: v } : { [`${axis}End`]: v }) });
+  const presetOf = (key?: string) => [...ROT_MOTIONS, ...ROT_POSES].find((p) => p.key === key);
+  // Cinematic vs static is the USER'S choice, not a property of which grid the
+  // preset came from. A Motion held still is a perfectly good angle, and a Pose
+  // is worth easing into. So the switch re-derives the region from whichever
+  // preset is active instead of dropping it and going custom:
+  //   on  — a Motion animates Start -> End as authored; a Pose (which has no
+  //         End of its own) eases from flat INTO the pose, i.e. a reveal.
+  //   off — hold the preset's own pose, its Start, for the whole region.
   const setAnimate = (on: boolean) => {
+    const p = presetOf(item.rotPreset);
+    if (p) {
+      const start = on ? (p.e ? p.s : ([0, 0, 0] as const)) : p.s;
+      const end = on ? (p.e ?? p.s) : undefined;
+      updateItem(item.id, {
+        rotPreset: p.key,
+        tiltX: start[0], tiltY: start[1], spinZ: start[2],
+        tiltXEnd: end?.[0], tiltYEnd: end?.[1], spinZEnd: end?.[2]
+      });
+      if (on) playThrough(); else seekKf('start');
+      return;
+    }
     if (on) {
       // End starts as a copy of Start, so turning this on changes nothing until
       // the End keyframe is actually edited.
@@ -1445,6 +1465,10 @@ function Rotation3DPanel({ item }: { item: LaneItem }) {
         <ChipBtn active={mode === 'custom'} onClick={() => setMode('custom')}>{t('side.rotModeCustom')}</ChipBtn>
       </div>
 
+      {/* Cinematic vs static applies to presets and custom keyframes alike. */}
+      <ToggleRow label={t('side.rotAnimate')} checked={animate} onChange={setAnimate} />
+      <p className="text-[11px] text-white/40">{animate ? t('side.rotAnimateOnTip') : t('side.rotAnimateOffTip')}</p>
+
       {mode === 'preset' ? (
         <>
           <p className="text-[11px] text-white/40">{t('side.rotPresetTip')}</p>
@@ -1476,9 +1500,6 @@ function Rotation3DPanel({ item }: { item: LaneItem }) {
         </>
       ) : (
         <>
-          {/* Static pose vs. animated Start → End. */}
-          <ToggleRow label={t('side.rotAnimate')} checked={animate} onChange={setAnimate} />
-          <p className="text-[11px] text-white/40">{animate ? t('side.rotAnimateOnTip') : t('side.rotAnimateOffTip')}</p>
           {animate ? (
             <div>
               <Label>{t('side.rotationKeyframe')}</Label>
