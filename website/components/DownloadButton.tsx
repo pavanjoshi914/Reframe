@@ -26,15 +26,29 @@ type Choice =
 
 const NEUTRAL: Choice = { kind: 'page', label: 'Download for free', mac: false };
 
-/** macOS lies about its arch in userAgent; the WebGL renderer string doesn't. */
+/** macOS lies about its arch in userAgent (Apple Silicon Macs report "Intel"),
+ *  so we have to infer it. Returns null when we genuinely cannot tell, which
+ *  sends the visitor to /download to pick for themselves — always better than
+ *  handing an Intel Mac an arm64 build it physically cannot execute.
+ *
+ *  Verified on an Intel Mac running Sonoma: Safari reports the WebGL renderer
+ *  as exactly "Apple GPU". It says that on Apple Silicon too, so that string
+ *  proves NOTHING about the architecture. Treating it as Apple Silicon — which
+ *  this function used to do — served arm64 to every Intel Safari user, and the
+ *  app then refuses to launch with "not supported on this Mac".
+ */
 function macIsAppleSilicon(): boolean | null {
   try {
     const gl = document.createElement('canvas').getContext('webgl');
     const dbg = gl?.getExtension('WEBGL_debug_renderer_info');
     const renderer = dbg ? String(gl?.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
     if (!renderer) return null; // masked (e.g. hardened Safari) — can't tell
-    if (/apple\s+m\d/i.test(renderer) || /apple gpu/i.test(renderer)) return true;
-    return false; // a real (Intel/AMD) renderer → Intel Mac
+    // Chrome names the chip: "Apple M1", "Apple M2 Pro", …
+    if (/apple\s+m\d/i.test(renderer)) return true;
+    // A discrete/integrated PC GPU only ever appears on an Intel Mac.
+    if (/intel|amd|radeon|nvidia|geforce/i.test(renderer)) return false;
+    // Anything else, "Apple GPU" included, is ambiguous.
+    return null;
   } catch {
     return null;
   }
