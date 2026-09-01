@@ -312,6 +312,7 @@ export function Preview() {
         webcam: st.webcam,
         layoutPreset: st.layoutPreset,
         cropRegion: st.cropRegion,
+        fullBleed: st.fullBleed,
         bgImage: bgImageRef.current,
         cursorSamples: st.cursorSamples,
         cursorSamplesSmooth: st.cursorSamplesSmooth,

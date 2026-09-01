@@ -121,6 +121,8 @@ export default {
   'side.square': '正方形',
   'side.circle': '圆形',
   'side.background': '背景',
+  'side.fullScreen': '全屏',
+  'side.fullScreenHint': '录制内容铺满画面 — 无背景、内边距、圆角或阴影。',
   'side.image': '图片',
   'side.color': '颜色',
   'side.gradient': '渐变',

@@ -112,6 +112,8 @@ export default {
   'side.square': 'สี่เหลี่ยมจัตุรัส',
   'side.circle': 'วงกลม',
   'side.background': 'พื้นหลัง',
+  'side.fullScreen': 'เต็มจอ',
+  'side.fullScreenHint': 'การบันทึกเต็มเฟรม — ไม่มีพื้นหลัง ระยะขอบ มุมโค้ง หรือเงา',
   'side.image': 'รูปภาพ',
   'side.color': 'สี',
   'side.gradient': 'ไล่ระดับสี',

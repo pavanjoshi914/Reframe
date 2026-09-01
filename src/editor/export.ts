@@ -481,7 +481,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   const ctx = canvas.getContext('2d', { willReadFrequently: isGif });
   if (!ctx) throw new Error('2D canvas unavailable');
 
-  const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorKinds: state.cursorKinds, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle };
+  const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, fullBleed: state.fullBleed, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorKinds: state.cursorKinds, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle };
 
   // Motion blur: composite each frame onto a scratch canvas, then blend it onto
   // the output at alpha (1-k) so the output is an exponential frame average
@@ -863,6 +863,7 @@ export type DrawCtx = {
   webcam: ReturnType<typeof useEditor.getState>['webcam'];
   layoutPreset: ReturnType<typeof useEditor.getState>['layoutPreset'];
   cropRegion: CropRegion;
+  fullBleed?: boolean;
   bgImage: HTMLImageElement | null;
   cursorSamples?: CursorSample[];
   cursorSamplesSmooth?: CursorSample[];
@@ -1006,7 +1007,15 @@ export function drawFrame(
   ms: number,
   d: DrawCtx
 ) {
-  const { items, background, effects, webcam, layoutPreset, cropRegion, bgImage } = d;
+  const { items, background, webcam, layoutPreset, cropRegion, bgImage } = d;
+
+  // Full screen: the recording covers the frame edge to edge, so the framing
+  // that would sit around it — padding, rounded corners, shadow — has nothing
+  // to sit in. Zeroed here rather than in the store so the user's own values
+  // survive turning the toggle back off.
+  const effects = d.fullBleed
+    ? { ...d.effects, paddingPct: 0, roundnessPx: 0, shadowPct: 0, blurBg: false }
+    : d.effects;
 
   ctx.save();
   ctx.fillStyle = '#0a0b0e';
@@ -1014,22 +1023,25 @@ export function drawFrame(
 
   // Background. When blurBg is on, soften it to match the preview's CSS
   // `filter: blur(20px) scale(1.05)` — draw through a blur filter and overscan
-  // ~5% so the blurred edges don't reveal the base fill underneath.
-  ctx.save();
-  if (effects.blurBg) ctx.filter = `blur(${Math.round(20 * (outH / 1080))}px)`;
-  const ov = effects.blurBg ? 0.05 : 0;
-  const bx = -outW * ov, by = -outH * ov, bw = outW * (1 + 2 * ov), bh = outH * (1 + 2 * ov);
-  if (background.mode === 'color') {
-    ctx.fillStyle = background.value;
-    ctx.fillRect(bx, by, bw, bh);
-  } else if (background.mode === 'gradient') {
-    const grad = parseLinearGradient(ctx, background.value, outW, outH);
-    ctx.fillStyle = grad ?? '#1a1d23';
-    ctx.fillRect(bx, by, bw, bh);
-  } else if (background.mode === 'image' && bgImage && bgImage.complete) {
-    drawCover(ctx, bgImage, bx, by, bw, bh);
+  // ~5% so the blurred edges don't reveal the base fill underneath. Skipped
+  // entirely at full screen, where the card would cover every pixel of it.
+  if (!d.fullBleed) {
+    ctx.save();
+    if (effects.blurBg) ctx.filter = `blur(${Math.round(20 * (outH / 1080))}px)`;
+    const ov = effects.blurBg ? 0.05 : 0;
+    const bx = -outW * ov, by = -outH * ov, bw = outW * (1 + 2 * ov), bh = outH * (1 + 2 * ov);
+    if (background.mode === 'color') {
+      ctx.fillStyle = background.value;
+      ctx.fillRect(bx, by, bw, bh);
+    } else if (background.mode === 'gradient') {
+      const grad = parseLinearGradient(ctx, background.value, outW, outH);
+      ctx.fillStyle = grad ?? '#1a1d23';
+      ctx.fillRect(bx, by, bw, bh);
+    } else if (background.mode === 'image' && bgImage && bgImage.complete) {
+      drawCover(ctx, bgImage, bx, by, bw, bh);
+    }
+    ctx.restore();
   }
-  ctx.restore();
 
   const padding = effects.paddingPct / 100;
   const innerScale = 1 - padding * 0.5;

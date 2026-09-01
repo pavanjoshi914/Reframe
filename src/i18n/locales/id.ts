@@ -112,6 +112,8 @@ export default {
   'side.square': 'Persegi',
   'side.circle': 'Lingkaran',
   'side.background': 'Latar belakang',
+  'side.fullScreen': 'Layar penuh',
+  'side.fullScreenHint': 'Rekaman memenuhi bingkai — tanpa latar, padding, sudut, atau bayangan.',
   'side.image': 'Gambar',
   'side.color': 'Warna',
   'side.gradient': 'Gradien',

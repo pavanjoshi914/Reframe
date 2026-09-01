@@ -112,6 +112,8 @@ export default {
   'side.square': 'Vierkant',
   'side.circle': 'Cirkel',
   'side.background': 'Achtergrond',
+  'side.fullScreen': 'Volledig scherm',
+  'side.fullScreenHint': 'De opname vult het beeld — geen achtergrond, marge, hoeken of schaduw.',
   'side.image': 'Afbeelding',
   'side.color': 'Kleur',
   'side.gradient': 'Verloop',

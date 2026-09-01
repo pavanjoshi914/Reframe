@@ -121,6 +121,8 @@ export default {
   'side.square': 'مربع',
   'side.circle': 'دائرة',
   'side.background': 'الخلفية',
+  'side.fullScreen': 'ملء الشاشة',
+  'side.fullScreenHint': 'التسجيل يملأ الإطار — بلا خلفية أو حشو أو زوايا أو ظل.',
   'side.image': 'صورة',
   'side.color': 'لون',
   'side.gradient': 'تدرج',

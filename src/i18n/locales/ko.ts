@@ -112,6 +112,8 @@ export default {
   'side.square': '정사각형',
   'side.circle': '원형',
   'side.background': '배경',
+  'side.fullScreen': '전체 화면',
+  'side.fullScreenHint': '녹화가 화면을 가득 채웁니다 — 배경·여백·모서리·그림자 없음.',
   'side.image': '이미지',
   'side.color': '색상',
   'side.gradient': '그라데이션',

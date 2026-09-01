@@ -112,6 +112,8 @@ export default {
   'side.square': 'مربع',
   'side.circle': 'دایره',
   'side.background': 'پس‌زمینه',
+  'side.fullScreen': 'تمام\u200cصفحه',
+  'side.fullScreenHint': 'ضبط تمام قاب را پر می\u200cکند — بدون پس\u200cزمینه، حاشیه، گوشه یا سایه.',
   'side.image': 'تصویر',
   'side.color': 'رنگ',
   'side.gradient': 'گرادیان',

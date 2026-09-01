@@ -112,6 +112,8 @@ export default {
   'side.square': 'Квадрат',
   'side.circle': 'Коло',
   'side.background': 'Фон',
+  'side.fullScreen': 'На весь екран',
+  'side.fullScreenHint': 'Запис заповнює кадр — без фону, відступів, заокруглень і тіні.',
   'side.image': 'Зображення',
   'side.color': 'Колір',
   'side.gradient': 'Градієнт',

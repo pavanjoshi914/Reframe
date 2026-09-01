@@ -112,6 +112,8 @@ export default {
   'side.square': 'Quadrat',
   'side.circle': 'Kreis',
   'side.background': 'Hintergrund',
+  'side.fullScreen': 'Vollbild',
+  'side.fullScreenHint': 'Die Aufnahme füllt das Bild — ohne Hintergrund, Rand, Ecken oder Schatten.',
   'side.image': 'Bild',
   'side.color': 'Farbe',
   'side.gradient': 'Verlauf',

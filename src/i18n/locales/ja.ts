@@ -112,6 +112,8 @@ export default {
   'side.square': '正方形',
   'side.circle': '円形',
   'side.background': '背景',
+  'side.fullScreen': '全画面',
+  'side.fullScreenHint': '録画がフレーム全体を覆います — 背景・余白・角丸・影なし。',
   'side.image': '画像',
   'side.color': '色',
   'side.gradient': 'グラデーション',

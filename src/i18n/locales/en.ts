@@ -86,6 +86,8 @@ export default {
   'side.square': 'Square',
   'side.circle': 'Circle',
   'side.background': 'Background',
+  'side.fullScreen': 'Full screen',
+  'side.fullScreenHint': 'Recording fills the frame — no background, padding, corners or shadow.',
   'side.image': 'Image',
   'side.color': 'Color',
   'side.gradient': 'Gradient',

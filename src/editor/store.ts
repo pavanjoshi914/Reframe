@@ -157,6 +157,12 @@ export type EditorState = {
   showAdvanced: boolean;
   effects: { roundnessPx: number; paddingPct: number; shadowPct: number; motionBlur: number; blurBg: boolean; cursorSpotlight: number; cursorMagnifier: number };
 
+  // "Full screen": the recording fills the output edge to edge, so no
+  // background, padding, rounded corners or shadow are visible. Kept as its own
+  // flag rather than zeroing the sliders, so turning it off restores whatever
+  // framing the user had set up rather than leaving them at zero.
+  fullBleed: boolean;
+
   // How zoom transitions move. Kept OUT of `effects` on purpose: setPolish
   // swaps that whole object, and the zoom's feel shouldn't reset when someone
   // changes the look preset.
@@ -251,6 +257,7 @@ export type EditorState = {
   setPolish: (p: PolishPreset) => void;
   setShowAdvanced: (v: boolean) => void;
   setEffect: <K extends keyof EditorState['effects']>(key: K, value: EditorState['effects'][K]) => void;
+  setFullBleed: (v: boolean) => void;
   setZoomStyle: (z: ZoomStyle) => void;
   setExportFormat: (f: 'mp4' | 'webm' | 'gif') => void;
   setExportQuality: (q: 'low' | 'medium' | 'high') => void;
@@ -292,6 +299,9 @@ export type SerializedProject = {
   polish: PolishPreset;
   showAdvanced: boolean;
   effects: EditorState['effects'];
+  // Optional: projects saved before full-screen existed load framed, as they
+  // were made.
+  fullBleed?: boolean;
   // Optional: projects saved before zoom styles existed load with the default.
   zoomStyle?: ZoomStyle;
   exportFormat: EditorState['exportFormat'];
@@ -381,6 +391,7 @@ function docOf(s: EditorState): SerializedProject {
     polish: s.polish,
     showAdvanced: s.showAdvanced,
     effects: s.effects,
+    fullBleed: s.fullBleed,
     zoomStyle: s.zoomStyle,
     exportFormat: s.exportFormat,
     exportQuality: s.exportQuality,
@@ -409,9 +420,15 @@ function aspectToRatio(a: AspectRatio, fallback: number): number {
   return fallback;
 }
 
+// Padding is the share of the frame given over to background: paddingPct/100
+// halved is how much the recording shrinks (50% => the card is 75% of the
+// frame). Soft is the default preset, and 22% is the framing that reads best
+// on a screen recording — enough background to see the card as a card, not so
+// much that text shrinks. Subtle sits below it so the three presets still
+// climb.
 const presetEffects: Record<PolishPreset, EditorState['effects']> = {
-  subtle: { roundnessPx: 6, paddingPct: 25, shadowPct: 6, motionBlur: 0, blurBg: false, cursorSpotlight: 0, cursorMagnifier: 0 },
-  soft: { roundnessPx: 14, paddingPct: 50, shadowPct: 16, motionBlur: 0, blurBg: false, cursorSpotlight: 0, cursorMagnifier: 0 },
+  subtle: { roundnessPx: 6, paddingPct: 12, shadowPct: 6, motionBlur: 0, blurBg: false, cursorSpotlight: 0, cursorMagnifier: 0 },
+  soft: { roundnessPx: 14, paddingPct: 22, shadowPct: 16, motionBlur: 0, blurBg: false, cursorSpotlight: 0, cursorMagnifier: 0 },
   dramatic: { roundnessPx: 22, paddingPct: 70, shadowPct: 32, motionBlur: 0.5, blurBg: true, cursorSpotlight: 0, cursorMagnifier: 0 }
 };
 
@@ -451,13 +468,18 @@ export const useEditor = create<EditorState>((set, get) => ({
   polish: 'soft',
   showAdvanced: false,
   effects: presetEffects.soft,
+  fullBleed: false,
   // Cinematic by default: the slow-settling ease-out is what makes a zoom read
   // as a camera move rather than a cut. Existing projects load their own saved
   // value, so nothing already made changes feel.
   zoomStyle: 'cinematic',
 
   exportFormat: 'mp4',
-  exportQuality: 'medium',
+  // High by default. The ladder tops out at 2160p / 28 Mbps but never exceeds
+  // the source resolution, so on a 1080p recording "high" costs no extra pixels
+  // — only bits the encoder is free to leave unspent, and measured exports land
+  // around 8 Mbps. Defaulting lower just made zooms look soft for no saving.
+  exportQuality: 'high',
 
   videoVolume: 1,
   videoMuted: false,
@@ -586,6 +608,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setPolish: (p) => set({ polish: p, effects: presetEffects[p] }),
   setShowAdvanced: (v) => set({ showAdvanced: v }),
   setEffect: (key, value) => set((s) => ({ effects: { ...s.effects, [key]: value } })),
+  setFullBleed: (v) => set({ fullBleed: v }),
   setZoomStyle: (z) => set({ zoomStyle: z }),
   setExportFormat: (f) => set({ exportFormat: f }),
   setExportQuality: (q) => set({ exportQuality: q }),
@@ -707,6 +730,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       polish: data.polish,
       showAdvanced: data.showAdvanced,
       effects: data.effects,
+      fullBleed: data.fullBleed ?? false,
       // A project saved before zoom styles existed keeps the feel it was made
       // with, rather than silently becoming cinematic.
       zoomStyle: data.zoomStyle ?? 'snappy',
@@ -733,6 +757,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       polish: snap.polish,
       showAdvanced: snap.showAdvanced,
       effects: snap.effects,
+      fullBleed: snap.fullBleed ?? false,
       zoomStyle: snap.zoomStyle ?? s.zoomStyle,
       exportFormat: snap.exportFormat,
       exportQuality: snap.exportQuality,

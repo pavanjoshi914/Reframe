@@ -560,6 +560,8 @@ function CompositionSection() {
   const setWebcam = useEditor((s) => s.setWebcam);
   const background = useEditor((s) => s.background);
   const setBackground = useEditor((s) => s.setBackground);
+  const fullBleed = useEditor((s) => s.fullBleed);
+  const setFullBleed = useEditor((s) => s.setFullBleed);
 
   async function handleUploadImage() {
     const res = await window.api.pickImageFile();
@@ -605,6 +607,12 @@ function CompositionSection() {
 
       <div>
         <Label>{t('side.background')}</Label>
+        {/* Full screen turns the whole section off rather than hiding it: the
+            controls stay visible (dimmed) so it is obvious what the toggle is
+            suppressing, and what comes back when it is switched off. */}
+        <ToggleRow label={t('side.fullScreen')} checked={fullBleed} onChange={setFullBleed} />
+        <p className="mb-2 text-[11px] leading-snug text-white/40">{t('side.fullScreenHint')}</p>
+        <div className={fullBleed ? 'pointer-events-none opacity-40' : undefined} aria-hidden={fullBleed}>
         <div className="mb-2 flex gap-1">
           <BgTab active={background.mode === 'image'} onClick={() => setBackground({ mode: 'image', value: background.mode === 'image' ? background.value : '' })}>{t('side.image')}</BgTab>
           <BgTab active={background.mode === 'color'} onClick={() => setBackground({ mode: 'color', value: background.mode === 'color' ? background.value : '#1a1d23' })}>{t('side.color')}</BgTab>
@@ -721,6 +729,7 @@ function CompositionSection() {
             )}
           </div>
         )}
+        </div>
       </div>
     </div>
   );
@@ -764,18 +773,32 @@ function VideoEffectsSection() {
   const cropRegion = useEditor((s) => s.cropRegion);
   const setCropRegion = useEditor((s) => s.setCropRegion);
   const fileUrl = useEditor((s) => s.fileUrl);
+  const fullBleed = useEditor((s) => s.fullBleed);
   const [cropOpen, setCropOpen] = useState(false);
+
+  // At full screen the recording covers the frame, so the controls that only
+  // shape the space around it do nothing. Dimmed rather than hidden, and their
+  // values are left alone so they come back intact when full screen is off.
+  const framed = fullBleed ? 'pointer-events-none opacity-40' : undefined;
 
   const cropActive =
     cropRegion.x !== 0 || cropRegion.y !== 0 || cropRegion.width !== 1 || cropRegion.height !== 1;
 
   return (
     <div className="space-y-3">
-      <ToggleRow label={t('side.blurBg')} checked={effects.blurBg} onChange={(v) => setEffect('blurBg', v)} />
+      <div className={framed}>
+        <ToggleRow label={t('side.blurBg')} checked={effects.blurBg} onChange={(v) => setEffect('blurBg', v)} />
+      </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-        <RangeRow label={t('side.shadow')} value={effects.shadowPct} min={0} max={100} step={1} onChange={(v) => setEffect('shadowPct', v)} fmt={(v) => `${v}%`} />
-        <RangeRow label={t('side.roundness')} value={effects.roundnessPx} min={0} max={40} step={1} onChange={(v) => setEffect('roundnessPx', v)} fmt={(v) => `${v}px`} />
-        <RangeRow label={t('side.padding')} value={effects.paddingPct} min={0} max={100} step={1} onChange={(v) => setEffect('paddingPct', v)} fmt={(v) => `${v}%`} />
+        <div className={framed}>
+          <RangeRow label={t('side.shadow')} value={effects.shadowPct} min={0} max={100} step={1} onChange={(v) => setEffect('shadowPct', v)} fmt={(v) => `${v}%`} />
+        </div>
+        <div className={framed}>
+          <RangeRow label={t('side.roundness')} value={effects.roundnessPx} min={0} max={40} step={1} onChange={(v) => setEffect('roundnessPx', v)} fmt={(v) => `${v}px`} />
+        </div>
+        <div className={framed}>
+          <RangeRow label={t('side.padding')} value={effects.paddingPct} min={0} max={100} step={1} onChange={(v) => setEffect('paddingPct', v)} fmt={(v) => `${v}%`} />
+        </div>
         <RangeRow label={t('side.motionBlur')} value={Math.round(effects.motionBlur * 100)} min={0} max={80} step={1} onChange={(v) => setEffect('motionBlur', v / 100)} fmt={(v) => `${v}%`} />
         <RangeRow label={t('side.spotlight')} value={Math.round((effects.cursorSpotlight ?? 0) * 100)} min={0} max={100} step={1} onChange={(v) => setEffect('cursorSpotlight', v / 100)} fmt={(v) => `${v}%`} />
         <RangeRow label={t('side.magnifier')} value={Math.round((effects.cursorMagnifier ?? 0) * 100)} min={0} max={100} step={1} onChange={(v) => setEffect('cursorMagnifier', v / 100)} fmt={(v) => `${v}%`} />

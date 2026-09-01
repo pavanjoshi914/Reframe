@@ -121,6 +121,8 @@ export default {
   'side.square': 'वर्ग',
   'side.circle': 'वृत्त',
   'side.background': 'पृष्ठभूमि',
+  'side.fullScreen': 'फ़ुल स्क्रीन',
+  'side.fullScreenHint': 'रिकॉर्डिंग पूरा फ़्रेम भरती है — कोई बैकग्राउंड, पैडिंग, कोने या छाया नहीं।',
   'side.image': 'छवि',
   'side.color': 'रंग',
   'side.gradient': 'ग्रेडिएंट',

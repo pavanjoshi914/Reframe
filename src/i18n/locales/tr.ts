@@ -112,6 +112,8 @@ export default {
   'side.square': 'Kare',
   'side.circle': 'Daire',
   'side.background': 'Arka plan',
+  'side.fullScreen': 'Tam ekran',
+  'side.fullScreenHint': 'Kayıt kareyi doldurur — arka plan, boşluk, köşe veya gölge yok.',
   'side.image': 'Görsel',
   'side.color': 'Renk',
   'side.gradient': 'Gradyan',

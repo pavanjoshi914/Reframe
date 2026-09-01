@@ -121,6 +121,8 @@ export default {
   'side.square': 'Cuadrado',
   'side.circle': 'Círculo',
   'side.background': 'Fondo',
+  'side.fullScreen': 'Pantalla completa',
+  'side.fullScreenHint': 'La grabación llena el marco: sin fondo, márgenes, esquinas ni sombra.',
   'side.image': 'Imagen',
   'side.color': 'Color',
   'side.gradient': 'Degradado',

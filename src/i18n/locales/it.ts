@@ -112,6 +112,8 @@ export default {
   'side.square': 'Quadrato',
   'side.circle': 'Cerchio',
   'side.background': 'Sfondo',
+  'side.fullScreen': 'Schermo intero',
+  'side.fullScreenHint': 'La registrazione riempie il fotogramma: niente sfondo, spaziatura, angoli o ombra.',
   'side.image': 'Immagine',
   'side.color': 'Colore',
   'side.gradient': 'Gradiente',

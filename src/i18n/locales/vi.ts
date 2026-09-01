@@ -112,6 +112,8 @@ export default {
   'side.square': 'Vuông',
   'side.circle': 'Tròn',
   'side.background': 'Nền',
+  'side.fullScreen': 'Toàn màn hình',
+  'side.fullScreenHint': 'Bản ghi lấp đầy khung hình — không nền, đệm, bo góc hay đổ bóng.',
   'side.image': 'Hình ảnh',
   'side.color': 'Màu',
   'side.gradient': 'Chuyển sắc',

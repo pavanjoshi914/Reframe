@@ -121,6 +121,8 @@ export default {
   'side.square': 'Quadrado',
   'side.circle': 'Círculo',
   'side.background': 'Fundo',
+  'side.fullScreen': 'Tela cheia',
+  'side.fullScreenHint': 'A gravação preenche o quadro — sem fundo, margem, cantos ou sombra.',
   'side.image': 'Imagem',
   'side.color': 'Cor',
   'side.gradient': 'Gradiente',

@@ -112,6 +112,8 @@ export default {
   'side.square': 'Carré',
   'side.circle': 'Cercle',
   'side.background': 'Arrière-plan',
+  'side.fullScreen': 'Plein écran',
+  'side.fullScreenHint': "L'enregistrement remplit le cadre — sans fond, marge, coins ni ombre.",
   'side.image': 'Image',
   'side.color': 'Couleur',
   'side.gradient': 'Dégradé',

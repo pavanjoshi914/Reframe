@@ -112,6 +112,8 @@ export default {
   'side.square': 'Kwadrat',
   'side.circle': 'Koło',
   'side.background': 'Tło',
+  'side.fullScreen': 'Pełny ekran',
+  'side.fullScreenHint': 'Nagranie wypełnia kadr — bez tła, marginesu, zaokrągleń i cienia.',
   'side.image': 'Obraz',
   'side.color': 'Kolor',
   'side.gradient': 'Gradient',
