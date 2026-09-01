@@ -2023,6 +2023,25 @@ app.whenReady().then(async () => {
   // driven headlessly). Reuses the exact same park-then-hydrate path the picker
   // uses, so the editor restores state, video, webcam and cursor sidecar
   // identically. Only active when the env var is set.
+  // Dev/automation escape hatch, matching REFRAME_OPEN_PROJECT and
+  // REFRAME_EXPORT_PATH: open a recording as if it had just been captured —
+  // lastRecording set, no parked project — so the editor takes the
+  // fresh-recording path. There is otherwise no way to reach that path without
+  // actually recording, which leaves the auto-trim and cursor defaults that only
+  // run for a new capture untestable.
+  const openRecording = process.env.REFRAME_OPEN_RECORDING;
+  if (openRecording) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(openRecording, 'utf-8'));
+      if (meta?.recording) {
+        lastRecording = meta.recording;
+        createEditor(meta.recording);
+      }
+    } catch (err) {
+      console.warn('[main] REFRAME_OPEN_RECORDING failed', err);
+    }
+  }
+
   const openProject = process.env.REFRAME_OPEN_PROJECT;
   if (openProject) {
     try {

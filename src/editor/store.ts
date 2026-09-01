@@ -163,6 +163,12 @@ export type EditorState = {
   // framing the user had set up rather than leaving them at zero.
   fullBleed: boolean;
 
+  // Set when a NEW recording arrives with no chosen region: the editor should
+  // look at a frame and trim any transparent-margin black border off it (see
+  // autoTrim.ts). Cleared once that check has run, so it happens exactly once
+  // per recording and never on a saved project, whose crop is the user's.
+  autoTrimPending: boolean;
+
   // How zoom transitions move. Kept OUT of `effects` on purpose: setPolish
   // swaps that whole object, and the zoom's feel shouldn't reset when someone
   // changes the look preset.
@@ -258,6 +264,7 @@ export type EditorState = {
   setShowAdvanced: (v: boolean) => void;
   setEffect: <K extends keyof EditorState['effects']>(key: K, value: EditorState['effects'][K]) => void;
   setFullBleed: (v: boolean) => void;
+  clearAutoTrimPending: () => void;
   setZoomStyle: (z: ZoomStyle) => void;
   setExportFormat: (f: 'mp4' | 'webm' | 'gif') => void;
   setExportQuality: (q: 'low' | 'medium' | 'high') => void;
@@ -469,6 +476,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   showAdvanced: false,
   effects: presetEffects.soft,
   fullBleed: false,
+  autoTrimPending: false,
   // Cinematic by default: the slow-settling ease-out is what makes a zoom read
   // as a camera move rather than a cut. Existing projects load their own saved
   // value, so nothing already made changes feel.
@@ -516,6 +524,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       // Auto-enable webcam in editor if a webcam file came with the recording
       // and the user hasn't explicitly turned it on/off in this session.
       webcam: webcamFileUrl ? { ...s.webcam, enabled: true } : s.webcam,
+      // A region the user drew is their choice — only auto-trim when they made
+      // no such choice.
+      autoTrimPending: !r.region,
       // If the recording was captured with a region selection, pre-fill the
       // editor's crop to match. The region is already stored as normalized
       // 0..1 fractions, which is exactly the cropRegion shape.
@@ -609,6 +620,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setShowAdvanced: (v) => set({ showAdvanced: v }),
   setEffect: (key, value) => set((s) => ({ effects: { ...s.effects, [key]: value } })),
   setFullBleed: (v) => set({ fullBleed: v }),
+  clearAutoTrimPending: () => set({ autoTrimPending: false }),
   setZoomStyle: (z) => set({ zoomStyle: z }),
   setExportFormat: (f) => set({ exportFormat: f }),
   setExportQuality: (q) => set({ exportQuality: q }),
@@ -731,6 +743,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       showAdvanced: data.showAdvanced,
       effects: data.effects,
       fullBleed: data.fullBleed ?? false,
+      autoTrimPending: false,
       // A project saved before zoom styles existed keeps the feel it was made
       // with, rather than silently becoming cinematic.
       zoomStyle: data.zoomStyle ?? 'snappy',

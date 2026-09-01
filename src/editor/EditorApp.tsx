@@ -98,6 +98,11 @@ export function EditorApp() {
       const webcamUrl = p.recording.webcamFilePath ? await window.api.getRecordingFileUrl(p.recording.webcamFilePath) : null;
       if (cancelled) return;
       setRecording(p.recording, url, webcamUrl);
+      // setRecording arms the black-border auto-trim, but this is a SAVED
+      // project whose crop is the user's decision — and hydrate() already ran
+      // above, so its own disarm happened too early to help. Disarm again here,
+      // synchronously, before the video can finish loading and act on it.
+      useEditor.getState().clearAutoTrimPending();
       // A hide-cursor clip has no cursor of its own and its Smooth-cursor toggle
       // is removed, so ensure the synthetic cursor is on even for older projects
       // saved before that rule (safe: there's no meaningful "off" for them).
@@ -278,6 +283,10 @@ export function EditorApp() {
       const url = await window.api.getRecordingFileUrl(rec.filePath);
       const webcamUrl = rec.webcamFilePath ? await window.api.getRecordingFileUrl(rec.webcamFilePath) : null;
       useEditor.getState().setRecording(rec, url, webcamUrl);
+      // Same ordering trap as hydrateForProject: hydrate() ran first, so the
+      // auto-trim it disarmed gets re-armed by setRecording. This project's crop
+      // is already whatever the user saved.
+      useEditor.getState().clearAutoTrimPending();
     }
     // Auto-save now continues to write into the file the user just opened.
     useEditor.getState().setCurrentProjectPath(result._path);

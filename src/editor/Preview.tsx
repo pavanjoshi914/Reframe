@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useEditor, ANNOTATION_DEFAULTS, type LaneItem, WEBCAM_EDGE_MARGIN } from './store';
 import { primeVideo } from './videoPrime';
+import { detectBlackBorderFromVideo } from './autoTrim';
 import { drawFrame } from './export';
 import { useT } from '../i18n';
 
@@ -247,6 +248,32 @@ export function Preview() {
       }
       if (v.duration && isFinite(v.duration) && recording) {
         setRecording({ ...recording, durationMs: v.duration * 1000 }, fileUrl ?? '', webcamFileUrl ?? null);
+      }
+      // A window recording arrives inside a black picture frame: the grab reads
+      // the window's own drawable, which includes the invisible margin the
+      // toolkit reserves for its drop shadow, and that transparent margin has
+      // nowhere to go in a video with no alpha channel. Trim it once, here,
+      // where a decoded frame is finally available to look at.
+      if (useEditor.getState().autoTrimPending) {
+        useEditor.getState().clearAutoTrimPending();
+        // Read a frame from a little way in: the first frames of a capture can
+        // still be warming up, and a blank one tells us nothing.
+        const at = Math.min(1, (v.duration || 1) / 4);
+        const was = v.currentTime;
+        try {
+          if (Math.abs(was - at) > 0.05) {
+            v.currentTime = at;
+            await new Promise<void>((res) => {
+              const done = () => { v.removeEventListener('seeked', done); res(); };
+              v.addEventListener('seeked', done);
+              setTimeout(done, 1500);
+            });
+          }
+          const crop = detectBlackBorderFromVideo(v);
+          if (crop) useEditor.getState().setCropRegion(crop);
+        } finally {
+          v.currentTime = was;
+        }
       }
     };
     v.addEventListener('timeupdate', onTime);
