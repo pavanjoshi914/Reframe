@@ -70,10 +70,20 @@ function snapshotPreview(src: HTMLCanvasElement): string {
 // image, or — in the live preview — a <video> element.
 export type FrameSource = HTMLCanvasElement | OffscreenCanvas | HTMLImageElement | HTMLVideoElement;
 
+// Bitrate matters more than resolution for this content. A zoom is continuous
+// full-frame motion — the hardest thing for an encoder — so a starved bitrate
+// smears exactly during the zoom in/out and sharpens once the shot settles.
+// The old middle tier was 5 Mbps and it is the DEFAULT, so most exports were
+// quietly getting the softest zooms of the three.
+//
+// The ladder is shifted up a step: the default now encodes at what used to be
+// the top tier, and the top tier is a genuinely transparent one for people who
+// want a master. Resolution is only ever a CAP — `outH = min(source, maxHeight)`
+// — so on a 1080p recording these differ by bitrate alone.
 const QUALITY_PRESETS = {
-  low: { maxHeight: 720, bitrate: 2_000_000 },
-  medium: { maxHeight: 1080, bitrate: 5_000_000 },
-  high: { maxHeight: 2160, bitrate: 12_000_000 }
+  low: { maxHeight: 720, bitrate: 3_000_000 },
+  medium: { maxHeight: 1440, bitrate: 12_000_000 },
+  high: { maxHeight: 2160, bitrate: 28_000_000 }
 };
 
 const ASPECT_RATIOS: Record<string, number | null> = {
