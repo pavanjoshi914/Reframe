@@ -936,6 +936,32 @@ function cursorAtSpline(samples: CursorSample[] | undefined, ms: number): { x: n
   return lerp(B1, B2, (tt - t1) / (t2 - t1));
 }
 
+// Fit the recording inside a box WITHOUT cropping it, centred, keeping its own
+// shape. The frame stays exactly the size and aspect the user chose; whatever
+// the recording does not cover is background.
+//
+// This replaces cover-fitting the card. Cover fills the box and pushes the
+// overflow outside the frame, which is invisible when the recording and the
+// output share an aspect but destructive when they don't: a 730x956 browser
+// window in a 16:9 frame was scaled 2.07x to fill the width, putting 545 of its
+// 956 rows off-frame — 57% of the window silently gone. When the aspects DO
+// match (the common 16:9-in-16:9 case) this returns the box unchanged, so
+// nothing about an ordinary full-screen recording moves.
+function fitInside(
+  srcW: number, srcH: number, crop: CropRegion,
+  x: number, y: number, w: number, h: number
+): { x: number; y: number; w: number; h: number } {
+  const cw = crop.width * srcW;
+  const ch = crop.height * srcH;
+  // No dimensions yet (video still loading) — leave the box alone rather than
+  // collapsing the card to nothing for a frame.
+  if (!(cw > 0) || !(ch > 0)) return { x, y, w, h };
+  const s = Math.min(w / cw, h / ch);
+  const fw = cw * s;
+  const fh = ch * s;
+  return { x: x + (w - fw) / 2, y: y + (h - fh) / 2, w: fw, h: fh };
+}
+
 // Map a cursor (normalized source coords) to output-canvas pixels, mirroring
 // drawCoverWithCrop's crop+cover fit and then drawVideoBox's zoom transform, so
 // the spotlight/magnifier track exactly where the cursor appears on screen.
@@ -1068,7 +1094,9 @@ export function drawFrame(
     const innerY = (outH - innerH) / 2;
     const wcW = innerW * 0.4;
     const vidW = innerW - wcW - 12;
-    drawVideoBox(ctx, srcCanvas, innerX, innerY, vidW, innerH, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH);
+    const sd = srcDims(srcCanvas);
+    const vb = fitInside(sd.w, sd.h, cropRegion, innerX, innerY, vidW, innerH);
+    drawVideoBox(ctx, srcCanvas, vb.x, vb.y, vb.w, vb.h, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH);
     if (webcamCanvas) {
       drawWebcamVideo(ctx, webcamCanvas, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx, false);
     } else {
@@ -1079,7 +1107,11 @@ export function drawFrame(
     const innerH = outH * innerScale;
     const innerX = (outW - innerW) / 2;
     const innerY = (outH - innerH) / 2;
-    drawVideoBox(ctx, srcCanvas, innerX, innerY, innerW, innerH, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH);
+    // The card is the recording's own shape fitted inside the padded box, so a
+    // window that isn't the output's aspect keeps all of itself.
+    const sd = srcDims(srcCanvas);
+    const card = fitInside(sd.w, sd.h, cropRegion, innerX, innerY, innerW, innerH);
+    drawVideoBox(ctx, srcCanvas, card.x, card.y, card.w, card.h, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH);
     if (webcam.enabled) {
       // Shrink the bubble as the camera zooms in. Driven by the SAME eased zoom
       // level the video card uses, so the two move in lockstep instead of the
@@ -1141,7 +1173,7 @@ export function drawFrame(
         const cur = cursorAt(d.cursorSamples, ms);
         if (cur) {
           const { w: sw, h: sh } = srcDims(srcCanvas);
-          cursorPos = cursorToOutput(cur, sw, sh, cropRegion, innerX, innerY, innerW, innerH, activeZoom ?? undefined, outW, outH);
+          cursorPos = cursorToOutput(cur, sw, sh, cropRegion, card.x, card.y, card.w, card.h, activeZoom ?? undefined, outW, outH);
         }
       }
       const manualPos = (it: { posX?: number; posY?: number }) => ({ x: (it.posX ?? 0.5) * outW, y: (it.posY ?? 0.5) * outH });
@@ -1172,7 +1204,7 @@ export function drawFrame(
     if (cfx?.enabled && !scene && (d.cursorSamples?.length || d.cursorClicks?.length)) {
       const { w: sw, h: sh } = srcDims(srcCanvas);
       const toOut = (nx: number, ny: number) =>
-        cursorToOutput({ x: nx, y: ny }, sw, sh, cropRegion, innerX, innerY, innerW, innerH, activeZoom ?? undefined, outW, outH);
+        cursorToOutput({ x: nx, y: ny }, sw, sh, cropRegion, card.x, card.y, card.w, card.h, activeZoom ?? undefined, outW, outH);
       if (cfx.clicks && d.cursorClicks) {
         for (const c of d.cursorClicks) {
           const age = ms - c.t;
