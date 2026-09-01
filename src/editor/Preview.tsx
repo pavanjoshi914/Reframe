@@ -298,6 +298,9 @@ export function Preview() {
       const bh = Math.max(2, Math.round(rect.height * dpr));
       if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
       if (work.width !== bw || work.height !== bh) { work.width = bw; work.height = bh; }
+      // Resizing a canvas resets its context, so this is re-asserted each frame.
+      // It matches what the export does, so a zoom looks the same in both.
+      wctx.imageSmoothingQuality = 'high';
       if (!st.fileUrl || !v) { ctx.clearRect(0, 0, bw, bh); return; }
       const ms = v.currentTime * 1000;
       const itemsNoAnno = st.items.filter((it) => it.kind !== 'annotation');
