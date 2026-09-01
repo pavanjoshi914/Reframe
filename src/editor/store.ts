@@ -3,7 +3,7 @@ import type { RecordingMeta, CursorSample, ClickSample, CursorKindSample } from 
 import { suggestZoomsFromActivity } from './autoZoom';
 import type { CursorStyleId } from './cursorGlyphs';
 import type { ZoomStyle } from './export';
-import wallpaper01Url from '../../assets/wallpapers/wallpaper-01.jpg';
+import defaultWallpaperUrl from '../../assets/wallpapers/wallpaper-00.jpg';
 
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
 export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed' | 'magnify' | 'spotlight' | 'blur' | 'rotation' | 'scene';
@@ -428,9 +428,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   aspect: '16:9',
 
   cropRegion: DEFAULT_CROP_REGION,
-  // Default look: the first bundled wallpaper (not a gradient) and a
-  // rectangular webcam — the combination that reads best out of the box.
-  background: { mode: 'image', value: wallpaper01Url },
+  // Default look: the warm orange wallpaper that sorts first in the picker
+  // (wallpaper-00, not a gradient) and a rectangular webcam — the combination
+  // that reads best out of the box. Its dark navy corners keep the recording
+  // card's drop shadow readable, which the lighter wallpapers wash out.
+  background: { mode: 'image', value: defaultWallpaperUrl },
   // x,y are top-left position normalized to the stage (0..1).
   // size is the webcam's diameter as a fraction of stage HEIGHT — guarantees
   // it stays square AND fits inside any landscape aspect.
