@@ -358,6 +358,23 @@ function srcDims(s: CanvasImageSource): { w: number; h: number } {
  * dialog. The caller uses that to decide whether the moment is worth
  * celebrating (and worth asking anything of the user).
  */
+
+// True when every sample is (near) zero — a track that carries no information.
+// Threshold rather than == 0 because a decode round-trip leaves tiny non-zero
+// values; -80 dBFS is far below anything audible.
+function isSilent(buf: AudioBuffer): boolean {
+  const FLOOR = 1e-4;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const data = buf.getChannelData(c);
+    // Stride through: a track with real content will trip this almost at once,
+    // and a genuinely silent one costs a fraction of a full scan.
+    for (let i = 0; i < data.length; i += 32) {
+      if (Math.abs(data[i]) > FLOOR) return false;
+    }
+  }
+  return true;
+}
+
 export async function runExport({ onProgress }: { onProgress: ProgressFn }): Promise<boolean> {
   cancelRequested = false;
   const state = useEditor.getState();
@@ -620,16 +637,35 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
       const audioTrack = await screenInput.getPrimaryAudioTrack();
       if (audioTrack) {
         outAudioBuffer = await buildTimelineAudio(screenBuf, items, videoVolume);
+        // A recording with system audio armed but nothing playing yields a
+        // buffer of digital silence. Muxing that in costs bytes, gains nothing,
+        // and — on MP4 — used to be the difference between a file a site would
+        // accept and one it would not. Skip it.
+        if (outAudioBuffer && isSilent(outAudioBuffer)) {
+          outAudioBuffer = null;
+        }
         if (outAudioBuffer && outAudioBuffer.length > 0) {
+          // MP4 gets AAC or it gets NOTHING. Chromium (so Electron) cannot
+          // encode AAC — isConfigSupported says false for mp4a.40.2 and
+          // mp4a.40.5 — and the old list fell through to Opus, which is legal
+          // in MP4 by a later ISO spec and rejected almost everywhere in
+          // practice. Twitter refuses the upload outright: "Incompatible audio
+          // codecs". A silent MP4 that plays everywhere beats a file with audio
+          // that nothing accepts; WebM is the format to pick when the audio
+          // matters, and Opus is native there.
           const audioCodec = await getFirstEncodableAudioCodec(
-            isMp4 ? ['aac', 'opus'] : ['opus', 'vorbis'],
+            isMp4 ? ['aac'] : ['opus', 'vorbis'],
             { numberOfChannels: outAudioBuffer.numberOfChannels, sampleRate: outAudioBuffer.sampleRate }
           );
           if (audioCodec) {
             audioSource = new AudioBufferSource({ codec: audioCodec, bitrate: 192_000 });
             output.addAudioTrack(audioSource);
           } else {
-            console.warn('[export] no encodable audio codec; exporting without audio');
+            console.warn(
+              isMp4
+                ? '[export] this build cannot encode AAC, and Opus in MP4 is rejected by most sites — exporting MP4 without audio. Export WebM to keep the audio.'
+                : '[export] no encodable audio codec; exporting without audio'
+            );
             outAudioBuffer = null;
           }
         }
