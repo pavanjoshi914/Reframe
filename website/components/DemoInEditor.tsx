@@ -26,6 +26,18 @@ const PREVIEW = { x: 0.095, y: 0.0762, w: 0.6079, h: 0.6494 };
 // The screenshot's own aspect, so the stage matches it exactly at every width.
 const FRAME_ASPECT = 1920 / 1011;
 
+// The clip is laid out at its FINAL size, so the un-scrolled state is a
+// transform. Deriving it here means the server-rendered markup already shows
+// the full-bleed frame: without it the first paint is a small window floating
+// on the page background — the clip at its settled size with the editor still
+// at opacity 0 — which is what a refresh used to flash.
+// Percentages in a CSS transform resolve against the element's OWN box, hence
+// dividing by the preview's size rather than the stage's.
+const SCALE_0 = 1 / PREVIEW.w;
+const DX_0 = ((0.5 - (PREVIEW.x + PREVIEW.w / 2)) / PREVIEW.w) * 100;
+const DY_0 = ((0.5 - (PREVIEW.y + PREVIEW.h / 2)) / PREVIEW.h) * 100;
+const REST_TRANSFORM = `translate(${DX_0.toFixed(3)}%, ${DY_0.toFixed(3)}%) scale(${SCALE_0.toFixed(4)})`;
+
 export function DemoInEditor() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -77,9 +89,7 @@ export function DemoInEditor() {
       const sh = stage.clientHeight;
       if (!sw || !sh) return;
 
-      // Where it starts: filling the stage. The clip is laid out at the
-      // editor's preview size, so this is how much bigger the stage is.
-      const scale0 = sw / (PREVIEW.w * sw);
+      const scale0 = SCALE_0;
       const cx = (PREVIEW.x + PREVIEW.w / 2) * sw;
       const cy = (PREVIEW.y + PREVIEW.h / 2) * sh;
       const dx = (sw / 2 - cx) * (1 - e);
@@ -99,10 +109,17 @@ export function DemoInEditor() {
       if (!raf) raf = requestAnimationFrame(apply);
     };
     apply();
+    // Scroll restoration on refresh lands after mount, so one pass is not
+    // enough — re-read for a few frames and once more on load.
+    requestAnimationFrame(apply);
+    const t1 = setTimeout(apply, 120);
+    window.addEventListener('load', apply);
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll);
     return () => {
       io.disconnect();
+      clearTimeout(t1);
+      window.removeEventListener('load', apply);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onScroll);
       if (raf) cancelAnimationFrame(raf);
@@ -113,12 +130,17 @@ export function DemoInEditor() {
     // Tall enough to give the transition room; the inner stage sticks while it
     // plays out. 220vh => roughly one viewport of scrolling to complete.
     <div ref={sectionRef} className="relative h-[220vh]">
-      <div className="sticky top-0 flex h-screen items-center justify-center px-4">
+      <div className="sticky top-0 flex h-screen flex-col items-center justify-center gap-4 px-4">
         <div
           ref={stageRef}
           className="relative w-full max-w-6xl"
           style={{ aspectRatio: String(FRAME_ASPECT) }}
         >
+          {/* Brand glow behind the whole stage, carried over from the hero. */}
+          <div
+            aria-hidden="true"
+            className="absolute -inset-x-8 -bottom-8 -top-4 -z-10 rounded-[2rem] bg-gradient-to-b from-brand-500/20 to-transparent blur-2xl"
+          />
           {/* The editor, behind. Fades in as the clip shrinks into it. */}
           {/* eslint-disable-next-line @next/next/no-img-element -- static asset, fixed size */}
           <img
@@ -127,6 +149,7 @@ export function DemoInEditor() {
             alt=""
             width={1920}
             height={1011}
+            loading="eager"
             className="absolute inset-0 h-full w-full rounded-xl opacity-0 shadow-2xl"
           />
 
@@ -138,7 +161,9 @@ export function DemoInEditor() {
               left: `${PREVIEW.x * 100}%`,
               top: `${PREVIEW.y * 100}%`,
               width: `${PREVIEW.w * 100}%`,
-              height: `${PREVIEW.h * 100}%`
+              height: `${PREVIEW.h * 100}%`,
+              transform: REST_TRANSFORM,
+              borderRadius: '6px'
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- poster, already sized */}
@@ -167,6 +192,9 @@ export function DemoInEditor() {
             </video>
           </div>
         </div>
+        <p className="text-center text-sm text-ink-500 dark:text-ink-400">
+          Recorded and edited entirely in Reframe — no other tools.
+        </p>
       </div>
     </div>
   );

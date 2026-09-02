@@ -1,22 +1,8 @@
 import Link from 'next/link';
-import { DemoVideo } from './DemoVideo';
 import { DownloadButton } from './DownloadButton';
 import { GitHubIcon } from './Icons';
 import { getLatestRelease } from '@/lib/github';
 import { site } from '@/lib/site';
-
-/** Four corner brackets, drawn just outside the video frame. */
-function Brackets() {
-  const corner = 'absolute h-8 w-8 border-brand-500/60 dark:border-brand-400/55 sm:h-12 sm:w-12';
-  return (
-    <div aria-hidden="true" className="pointer-events-none absolute -inset-3 sm:-inset-5">
-      <span className={`${corner} left-0 top-0 rounded-tl-xl border-l-2 border-t-2`} />
-      <span className={`${corner} right-0 top-0 rounded-tr-xl border-r-2 border-t-2`} />
-      <span className={`${corner} bottom-0 left-0 rounded-bl-xl border-b-2 border-l-2`} />
-      <span className={`${corner} bottom-0 right-0 rounded-br-xl border-b-2 border-r-2`} />
-    </div>
-  );
-}
 
 export async function Hero() {
   const release = await getLatestRelease();
@@ -99,23 +85,6 @@ export async function Hero() {
           </p>
         </div>
 
-        {/* Product preview */}
-        <div className="group/video relative mx-auto mt-14 max-w-5xl animate-fade-up">
-          <div
-            aria-hidden="true"
-            className="absolute -inset-x-8 -bottom-8 -top-4 rounded-[2rem] bg-gradient-to-b from-brand-500/20 to-transparent blur-2xl"
-          />
-          {/* Viewfinder brackets — a nod to what the app does, and they give the
-              clip a frame that reads at any width. Sized off the container so
-              they stay glued to the corners. */}
-          <Brackets />
-          <div className="relative rounded-2xl border border-ink-200/80 bg-white p-2 shadow-2xl shadow-brand-950/10 dark:border-white/10 dark:bg-white/5 dark:shadow-black/40">
-            <DemoVideo />
-          </div>
-          <p className="mt-4 text-center text-sm text-ink-500 dark:text-ink-400">
-            Recorded and edited entirely in Reframe — no other tools.
-          </p>
-        </div>
       </div>
     </section>
   );

@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Hero demo clip — a real Reframe export (screen capture + wallpaper, padding,
- * shadow, auto zoom and an annotation).
+ * Hero demo clip — a real Reframe export (window capture + wallpaper, padding,
+ * shadow, auto zoom and a webcam bubble).
  *
  * Loading strategy, same shape as the reference site but lazier:
  *  - A lightweight WebP poster is the only thing fetched with the page, so it
@@ -83,7 +83,7 @@ export function DemoVideo() {
       {/* eslint-disable-next-line @next/next/no-img-element -- static asset, already sized */}
       <img
         src="/videos/demo-poster.webp"
-        alt="A screen recording of the Spotify desktop app, re-framed in Reframe on a gradient background with rounded corners and a drop shadow."
+        alt="A spreadsheet screen recording re-framed in Reframe: a warm background, rounded corners, a drop shadow and a presenter in a webcam bubble."
         width={1440}
         height={810}
         className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${
@@ -99,7 +99,7 @@ export function DemoVideo() {
         muted
         loop
         playsInline
-        aria-label="Reframe demo: a Spotify screen recording with auto zoom, a gradient background and an annotation"
+        aria-label="Reframe demo: a spreadsheet screen recording with auto zoom, a background and a webcam bubble"
       >
         <source src="/videos/demo.webm" type="video/webm" />
         <source src="/videos/demo.mp4" type="video/mp4" />
