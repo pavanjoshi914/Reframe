@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "Ocultar cursor (usa Cursor suave en el editor)",
+  'hud.cursorFallback': 'No se pudo ocultar el cursor en esta grabación, así que el puntero real está en el vídeo. El cursor suave queda desactivado: activarlo dibujaría un segundo puntero al lado.',
   'side.cursor': "Cursor",
   'side.smoothCursor': "Cursor suave",
   'side.cursorSize': "Tamaño del cursor",

@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "隐藏光标（在编辑器中使用平滑光标）",
+  'hud.cursorFallback': '本次录制无法隐藏光标，视频中保留了真实指针。已关闭平滑光标——开启会在旁边多画一个指针。',
   'side.cursor': "光标",
   'side.smoothCursor': "平滑光标",
   'side.cursorSize': "光标大小",

@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "Ẩn con trỏ (dùng Con trỏ mượt trong trình chỉnh sửa)",
+  'hud.cursorFallback': 'Không thể ẩn con trỏ cho bản ghi này, nên con trỏ thật nằm trong video. Con trỏ mượt được tắt — bật lên sẽ vẽ thêm con trỏ thứ hai bên cạnh.',
   'side.cursor': "Con trỏ",
   'side.smoothCursor': "Con trỏ mượt",
   'side.cursorSize': "Kích thước con trỏ",

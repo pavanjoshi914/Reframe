@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "İmleci gizle (düzenleyicide Yumuşak imleci kullanın)",
+  'hud.cursorFallback': 'Bu kayıtta imleç gizleme kullanılamadı, bu yüzden gerçek işaretçi videoda. Yumuşak imleç kapalı bırakıldı — açmak yanına ikinci bir işaretçi çizerdi.',
   'side.cursor': "İmleç",
   'side.smoothCursor': "Yumuşak imleç",
   'side.cursorSize': "İmleç boyutu",

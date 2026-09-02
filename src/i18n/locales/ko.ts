@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "커서 숨기기 (편집기에서 부드러운 커서 사용)",
+  'hud.cursorFallback': '이 녹화에서는 커서 숨기기를 쓸 수 없어 실제 포인터가 영상에 담겼습니다. 부드러운 커서는 꺼둔 상태입니다 — 켜면 포인터가 둘로 보입니다.',
   'side.cursor': "커서",
   'side.smoothCursor': "부드러운 커서",
   'side.cursorSize': "커서 크기",

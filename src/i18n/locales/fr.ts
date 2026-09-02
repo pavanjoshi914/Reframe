@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "Masquer le curseur (utilisez le Curseur fluide dans l’éditeur)",
+  'hud.cursorFallback': "Le masquage du curseur n'était pas disponible pour cet enregistrement : le vrai pointeur est dans la vidéo. Le curseur lissé reste désactivé — l'activer dessinerait un second pointeur à côté.",
   'side.cursor': "Curseur",
   'side.smoothCursor': "Curseur fluide",
   'side.cursorSize': "Taille du curseur",

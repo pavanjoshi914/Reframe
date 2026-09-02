@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "Ukryj kursor (użyj Płynnego kursora w edytorze)",
+  'hud.cursorFallback': 'Ukrycie kursora nie było dostępne dla tego nagrania, więc prawdziwy wskaźnik jest w wideo. Płynny kursor pozostaje wyłączony — włączenie narysowałoby obok drugi wskaźnik.',
   'side.cursor': "Kursor",
   'side.smoothCursor': "Płynny kursor",
   'side.cursorSize': "Rozmiar kursora",

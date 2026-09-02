@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "Cursor verbergen (gebruik Vloeiende cursor in de editor)",
+  'hud.cursorFallback': 'Cursor verbergen was niet beschikbaar voor deze opname, dus de echte aanwijzer staat in de video. De vloeiende cursor blijft uit — inschakelen zou er een tweede naast tekenen.',
   'side.cursor': "Cursor",
   'side.smoothCursor': "Vloeiende cursor",
   'side.cursorSize': "Cursorgrootte",

@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "Sembunyikan kursor (gunakan Kursor halus di editor)",
+  'hud.cursorFallback': 'Menyembunyikan kursor tidak tersedia untuk rekaman ini, jadi penunjuk asli ada di video. Kursor halus dibiarkan mati — menyalakannya akan menggambar penunjuk kedua di sebelahnya.',
   'side.cursor': "Kursor",
   'side.smoothCursor': "Kursor halus",
   'side.cursorSize': "Ukuran kursor",

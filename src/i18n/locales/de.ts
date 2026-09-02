@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "Cursor ausblenden (im Editor Sanften Cursor verwenden)",
+  'hud.cursorFallback': 'Das Ausblenden des Zeigers war für diese Aufnahme nicht verfügbar, der echte Zeiger ist also im Video. Der weiche Zeiger bleibt aus — ihn zu aktivieren würde einen zweiten Zeiger daneben zeichnen.',
   'side.cursor': "Cursor",
   'side.smoothCursor': "Sanfter Cursor",
   'side.cursorSize': "Cursorgröße",

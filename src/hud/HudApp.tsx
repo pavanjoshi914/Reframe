@@ -43,6 +43,9 @@ export function HudApp() {
   const [mic, setMic] = useState(false);
   const [cam, setCam] = useState(false);
   const [hideCursor, setHideCursor] = useState(false);
+  // What was asked for when THIS recording started — the toggle itself can be
+  // flipped while recording, so it can't be trusted at stop time.
+  const requestedHideCursorRef = useRef(false);
   // Device selection — `undefined` means "system default". Persisted to
   // localStorage so the user doesn't have to re-pick each session. The values
   // are deviceIds reported by `navigator.mediaDevices.enumerateDevices()`.
@@ -280,6 +283,7 @@ export function HudApp() {
         camStream: camStreamRef.current
       });
       recorderRef.current = handle;
+      requestedHideCursorRef.current = hideCursor;
       startTsRef.current = Date.now();
       setPhase('recording');
       // Tell main: hide the HUD on Linux + setContentProtection elsewhere.
@@ -311,6 +315,14 @@ export function HudApp() {
     // drop it. Claiming otherwise makes the editor auto-enable the synthetic
     // Smooth cursor ON TOP of a real one, so the export gets two cursors.
     const cursorHidden = !!result.screenFilePath;
+    // Asked for a hidden cursor and didn't get one: the helper couldn't start
+    // (on Linux, a whole-screen grab needs PipeWire, which some sessions refuse
+    // — a single window uses ximagesrc and is unaffected). The recording is
+    // fine, but the pointer is baked into it, so the editor deliberately leaves
+    // the synthetic Smooth cursor OFF — enabling it would draw a second pointer
+    // beside the real one. Say so, rather than letting it read as the toggle
+    // having been ignored.
+    if (requestedHideCursorRef.current && !cursorHidden) alert(t('hud.cursorFallback'));
     const saveMeta = {
       durationMs: result.durationMs,
       width: result.width,

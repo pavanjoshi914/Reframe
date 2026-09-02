@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "カーソルを非表示（エディターでスムーズカーソルを使用）",
+  'hud.cursorFallback': 'この録画ではカーソルを隠せなかったため、実際のポインターが映っています。スムーズカーソルはオフのままです — オンにするとポインターが二重に描かれます。',
   'side.cursor': "カーソル",
   'side.smoothCursor': "スムーズカーソル",
   'side.cursorSize': "カーソルサイズ",

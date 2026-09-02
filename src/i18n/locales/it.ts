@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "Nascondi cursore (usa il Cursore fluido nell’editor)",
+  'hud.cursorFallback': 'Nascondere il cursore non era disponibile per questa registrazione, quindi il puntatore reale è nel video. Il cursore morbido resta disattivato: attivarlo disegnerebbe un secondo puntatore accanto.',
   'side.cursor': "Cursore",
   'side.smoothCursor': "Cursore fluido",
   'side.cursorSize': "Dimensione cursore",

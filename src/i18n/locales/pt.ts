@@ -1,5 +1,6 @@
 export default {
   'hud.hideCursor': "Ocultar cursor (use Cursor suave no editor)",
+  'hud.cursorFallback': 'Não foi possível ocultar o cursor nesta gravação, então o ponteiro real está no vídeo. O cursor suave fica desligado — ativá-lo desenharia um segundo ponteiro ao lado.',
   'side.cursor': "Cursor",
   'side.smoothCursor': "Cursor suave",
   'side.cursorSize': "Tamanho do cursor",

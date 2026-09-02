@@ -15,6 +15,7 @@ export default {
   'hud.area': 'Area',
   'hud.systemAudio': 'System audio',
   'hud.hideCursor': 'Hide cursor (use Smooth cursor in the editor)',
+  'hud.cursorFallback': "Cursor hiding wasn't available for this recording, so the real pointer is in the video. Smooth cursor is left off — turning it on would draw a second pointer beside it.",
   'hud.microphone': 'Microphone',
   'hud.webcam': 'Webcam',
   'hud.camera': 'Camera',
