@@ -1913,8 +1913,9 @@ ipcMain.handle('external:open', (_evt, url: string) => {
 // giving up the audio. The video stream is COPIED, so this costs no quality and
 // only the time to re-encode a few seconds of sound.
 //
-// Returns a buffer to write: converted when it needed converting, the original
-// otherwise. Never throws — a failure here must not lose someone's export.
+// Every MP4 leaves here with an AAC track and its moov atom up front, whatever
+// the renderer managed to mux. Returns the original buffer on any failure — a
+// problem in this step must never cost someone their export.
 async function mp4AudioToAac(data: Buffer): Promise<Buffer> {
   const tmpIn = path.join(app.getPath('temp'), `reframe-aac-in-${Date.now()}.mp4`);
   const tmpOut = path.join(app.getPath('temp'), `reframe-aac-out-${Date.now()}.mp4`);
@@ -1927,18 +1928,28 @@ async function mp4AudioToAac(data: Buffer): Promise<Buffer> {
       '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', tmpIn
     ], { encoding: 'utf-8' });
     const codec = (probe.stdout || '').trim();
-    if (!codec || codec === 'aac') return data;
+    if (codec === 'aac') return data;
 
-    const r = spawnSync(ffmpegBin(), [
-      '-v', 'error', '-y', '-i', tmpIn,
-      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-      '-movflags', '+faststart', tmpOut
-    ], { maxBuffer: 1 << 24 });
+    // No audio track at all is its own upload problem — Instagram is the
+    // notorious one — so a silent AAC track is added rather than shipping a
+    // file with no audio stream. It costs a few KB and removes a whole class
+    // of "why won't this upload" that has nothing to do with the picture.
+    const args = codec
+      ? ['-v', 'error', '-y', '-i', tmpIn,
+         '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+         '-movflags', '+faststart', tmpOut]
+      : ['-v', 'error', '-y', '-i', tmpIn,
+         '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono',
+         '-shortest', '-map', '0:v:0', '-map', '1:a:0',
+         '-c:v', 'copy', '-c:a', 'aac', '-b:a', '64k',
+         '-movflags', '+faststart', tmpOut];
+    const r = spawnSync(ffmpegBin(), args, { maxBuffer: 1 << 24 });
     if (r.status !== 0 || !fs.existsSync(tmpOut)) {
-      console.warn('[export] AAC conversion failed; keeping', codec, 'audio', r.stderr?.toString().slice(0, 200));
+      console.warn('[export] audio normalisation failed; keeping the file as muxed',
+        r.stderr?.toString().slice(0, 200));
       return data;
     }
-    console.log(`[export] MP4 audio ${codec} -> aac`);
+    console.log(`[export] MP4 audio ${codec || '(none)'} -> aac`);
     return fs.readFileSync(tmpOut);
   } catch (err) {
     console.warn('[export] AAC conversion errored; keeping original', err);
