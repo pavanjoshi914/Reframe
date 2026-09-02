@@ -193,6 +193,12 @@ export type EditorState = {
   // Export
   exportFormat: 'mp4' | 'webm' | 'gif';
   exportQuality: 'low' | 'medium' | 'high';
+  // Which encoder writes the video. 'builtin' is Chromium's WebCodecs (what
+  // every export has used so far); 'ffmpeg' streams the composited frames to
+  // the bundled ffmpeg and encodes with x264, which resolves noticeably more
+  // fine detail on text at a fraction of the bitrate. Opt-in while it is
+  // being compared against the old path.
+  exportEncoder: 'builtin' | 'ffmpeg';
 
   // Timeline
   items: LaneItem[];
@@ -268,6 +274,7 @@ export type EditorState = {
   setZoomStyle: (z: ZoomStyle) => void;
   setExportFormat: (f: 'mp4' | 'webm' | 'gif') => void;
   setExportQuality: (q: 'low' | 'medium' | 'high') => void;
+  setExportEncoder: (e: 'builtin' | 'ffmpeg') => void;
   setVideoVolume: (v: number) => void;
   setVideoMuted: (m: boolean) => void;
   addItem: (kind: LaneKind, atMs: number) => void;
@@ -313,6 +320,7 @@ export type SerializedProject = {
   zoomStyle?: ZoomStyle;
   exportFormat: EditorState['exportFormat'];
   exportQuality: EditorState['exportQuality'];
+  exportEncoder?: EditorState['exportEncoder'];
   items: LaneItem[];
   cursorFx?: EditorState['cursorFx'];
 };
@@ -402,6 +410,7 @@ function docOf(s: EditorState): SerializedProject {
     zoomStyle: s.zoomStyle,
     exportFormat: s.exportFormat,
     exportQuality: s.exportQuality,
+    exportEncoder: s.exportEncoder,
     items: s.items,
     cursorFx: s.cursorFx
   };
@@ -488,6 +497,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   // — only bits the encoder is free to leave unspent, and measured exports land
   // around 8 Mbps. Defaulting lower just made zooms look soft for no saving.
   exportQuality: 'high',
+  exportEncoder: 'builtin',
 
   videoVolume: 1,
   videoMuted: false,
@@ -624,6 +634,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setZoomStyle: (z) => set({ zoomStyle: z }),
   setExportFormat: (f) => set({ exportFormat: f }),
   setExportQuality: (q) => set({ exportQuality: q }),
+  setExportEncoder: (e) => set({ exportEncoder: e }),
   setVideoVolume: (v) => set({ videoVolume: Math.max(0, Math.min(1, v)) }),
   setVideoMuted: (m) => set({ videoMuted: m }),
   addItem: (kind, atMs) => {
@@ -749,6 +760,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       zoomStyle: data.zoomStyle ?? 'snappy',
       exportFormat: data.exportFormat,
       exportQuality: data.exportQuality,
+      exportEncoder: data.exportEncoder ?? 'builtin',
       items: data.items,
       cursorFx: { ...DEFAULT_CURSOR_FX, ...(data.cursorFx ?? {}) },
       selectedItemId: null,
@@ -774,6 +786,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       zoomStyle: snap.zoomStyle ?? s.zoomStyle,
       exportFormat: snap.exportFormat,
       exportQuality: snap.exportQuality,
+      exportEncoder: snap.exportEncoder ?? 'builtin',
       items: snap.items,
       cursorFx: snap.cursorFx ?? s.cursorFx,
       selectedItemId: snap.items.some((it) => it.id === s.selectedItemId) ? s.selectedItemId : null

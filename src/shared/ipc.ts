@@ -159,6 +159,11 @@ export type Api = {
   pickImageFile: () => Promise<{ dataUrl: string; name: string } | null>;
   openExternal: (url: string) => Promise<void>;
   saveExport: (req: ExportRequest) => Promise<{ saved: boolean; path?: string }>;
+  // Alternate export encoder: composited frames are streamed to the bundled
+  // ffmpeg (x264) instead of Chromium's WebCodecs. See the handlers in main.
+  rawEncodeBegin: (req: { width: number; height: number; fps: number; bitrate: number }) => Promise<{ id: string }>;
+  rawEncodeFrame: (id: string, data: ArrayBuffer) => Promise<{ ok: boolean }>;
+  rawEncodeEnd: (id: string, wav?: ArrayBuffer) => Promise<{ ok: boolean; data?: ArrayBuffer }>;
   setRecordingState: (recording: boolean) => Promise<void>;
   // Tell main which desktopCapturer source the next getDisplayMedia call (used
   // for cursor-hidden capture) should resolve to.

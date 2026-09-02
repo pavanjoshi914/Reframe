@@ -1134,6 +1134,8 @@ function ExportSection() {
   const setFmt = useEditor((s) => s.setExportFormat);
   const q = useEditor((s) => s.exportQuality);
   const setQ = useEditor((s) => s.setExportQuality);
+  const enc = useEditor((s) => s.exportEncoder);
+  const setEnc = useEditor((s) => s.setExportEncoder);
   const fileUrl = useEditor((s) => s.fileUrl);
   const [busy, setBusy] = useState<null | BusyState>(null);
   const [askSupport, setAskSupport] = useState(false);
@@ -1183,6 +1185,14 @@ function ExportSection() {
         <ChipBtn active={q === 'medium'} onClick={() => setQ('medium')}>{t('side.medium')}</ChipBtn>
         <ChipBtn active={q === 'high'} onClick={() => setQ('high')}>{t('side.high')}</ChipBtn>
       </div>
+      {/* Encoder A/B. MP4 only — WebM and GIF always use the built-in path. */}
+      <Label>{t('side.encoder')}</Label>
+      <div className="mb-1 grid grid-cols-2 gap-1.5">
+        <ChipBtn active={enc === 'builtin'} onClick={() => setEnc('builtin')}>{t('side.encBuiltin')}</ChipBtn>
+        <ChipBtn active={enc === 'ffmpeg'} onClick={() => setEnc('ffmpeg')}>{t('side.encFfmpeg')}</ChipBtn>
+      </div>
+      <p className="mb-4 text-[11px] leading-snug text-white/40">{t('side.encoderHint')}</p>
+
       <button
         onClick={handleExport}
         disabled={!!busy || !fileUrl}

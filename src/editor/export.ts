@@ -375,6 +375,35 @@ function isSilent(buf: AudioBuffer): boolean {
   return true;
 }
 
+
+// Minimal 16-bit PCM WAV, so the ffmpeg encoder path can hand the rebuilt
+// timeline audio over as a plain file. mediabunny handles this itself on the
+// built-in path; ffmpeg wants something it can open as an input.
+function audioBufferToWav(buf: AudioBuffer): ArrayBuffer {
+  const chans = buf.numberOfChannels;
+  const frames = buf.length;
+  const bytes = frames * chans * 2;
+  const out = new ArrayBuffer(44 + bytes);
+  const view = new DataView(out);
+  const str = (off: number, t: string) => { for (let i = 0; i < t.length; i++) view.setUint8(off + i, t.charCodeAt(i)); };
+  str(0, 'RIFF'); view.setUint32(4, 36 + bytes, true); str(8, 'WAVE');
+  str(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, chans, true); view.setUint32(24, buf.sampleRate, true);
+  view.setUint32(28, buf.sampleRate * chans * 2, true);
+  view.setUint16(32, chans * 2, true); view.setUint16(34, 16, true);
+  str(36, 'data'); view.setUint32(40, bytes, true);
+  const data = Array.from({ length: chans }, (_, c) => buf.getChannelData(c));
+  let off = 44;
+  for (let i = 0; i < frames; i++) {
+    for (let c = 0; c < chans; c++) {
+      const v = Math.max(-1, Math.min(1, data[c][i]));
+      view.setInt16(off, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+      off += 2;
+    }
+  }
+  return out;
+}
+
 export async function runExport({ onProgress }: { onProgress: ProgressFn }): Promise<boolean> {
   cancelRequested = false;
   const state = useEditor.getState();
@@ -382,7 +411,8 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
 
   const {
     fileUrl, webcamFileUrl, items, background, effects, webcam,
-    layoutPreset, aspect, exportQuality, exportFormat, cropRegion, videoMuted, videoVolume
+    layoutPreset, aspect, exportQuality, exportFormat, cropRegion, videoMuted, videoVolume,
+    exportEncoder
   } = state;
 
   onProgress('Preparing', 0);
@@ -633,6 +663,10 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     format: isMp4 ? new Mp4OutputFormat() : new WebMOutputFormat(),
     target: new BufferTarget()
   });
+  // The ffmpeg path does its own encoding and muxing, so it takes no video
+  // track here. MP4 only — WebM stays on the built-in encoder, where Opus/VP9
+  // are native and there is nothing to gain.
+  const useFfmpeg = exportEncoder === 'ffmpeg' && isMp4 && !isGif;
   const videoSource = new CanvasSource(canvas, {
     codec: codec as VideoCodec,
     bitrate: preset.bitrate,
@@ -644,7 +678,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     // instead of failing the whole export when no hardware encoder exists.
     latencyMode: 'realtime'
   });
-  output.addVideoTrack(videoSource);
+  if (!useFfmpeg) output.addVideoTrack(videoSource);
 
   // ── Audio track ─────────────────────────────────────────────────────────
   // Earlier versions added NO audio track, so every export was silent. We now
@@ -655,6 +689,8 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   // be added BEFORE output.start(), so we prepare the buffer up front.
   let audioSource: AudioBufferSource | null = null;
   let outAudioBuffer: AudioBuffer | null = null;
+  // On the ffmpeg path the audio is muxed by ffmpeg from a WAV, so no
+  // mediabunny audio track is added — but the timeline audio is still rebuilt.
   if (!videoMuted) {
     try {
       const audioTrack = await screenInput.getPrimaryAudioTrack();
@@ -679,9 +715,11 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
             isMp4 ? ['aac', 'opus'] : ['opus', 'vorbis'],
             { numberOfChannels: outAudioBuffer.numberOfChannels, sampleRate: outAudioBuffer.sampleRate }
           );
-          if (audioCodec) {
+          if (audioCodec && !useFfmpeg) {
             audioSource = new AudioBufferSource({ codec: audioCodec, bitrate: 192_000 });
             output.addAudioTrack(audioSource);
+          } else if (useFfmpeg) {
+            /* kept in outAudioBuffer; ffmpeg muxes it at the end */
           } else {
             console.warn('[export] no encodable audio codec; exporting without audio');
             outAudioBuffer = null;
@@ -695,7 +733,22 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     }
   }
 
-  await output.start();
+  // Start the ffmpeg encoder (if selected) before the first frame is drawn.
+  let rawId: string | null = null;
+  // rawvideo has no timestamps, so ffmpeg needs the rate up front. The output
+  // keeps the source's frame rate (speed regions skip/duplicate frames rather
+  // than changing it), so derive it from the source instead of assuming 30.
+  const outFps = Math.max(1, Math.min(120, Math.round(
+    totalSrcFrames > 0 && sourceDurationSec > 0 ? totalSrcFrames / sourceDurationSec : 30
+  )));
+  if (useFfmpeg) {
+    const started = await window.api.rawEncodeBegin({
+      width: outW, height: outH, fps: outFps, bitrate: preset.bitrate
+    });
+    rawId = started?.id ?? null;
+    if (!rawId) throw new Error('Could not start the ffmpeg encoder.');
+  }
+  if (!useFfmpeg) await output.start();
 
   // ── Composite every source frame ────────────────────────────────────────
   // outTs accumulates the OUTPUT timeline position (seconds). For untouched
@@ -766,7 +819,14 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     composite(srcCanvas, webcamCanvas, ms);
 
     for (let i = 0; i < emitCount; i++) {
-      await videoSource.add(outTs, frameDuration);
+      if (rawId) {
+        // Awaited, so a slow encoder pushes back on the loop rather than
+        // letting hundreds of 6MB frames queue up in memory.
+        const px = ctx.getImageData(0, 0, outW, outH);
+        await window.api.rawEncodeFrame(rawId, px.data.buffer as ArrayBuffer);
+      } else {
+        await videoSource.add(outTs, frameDuration);
+      }
       outTs += frameDuration;
     }
 
@@ -807,8 +867,18 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   }
 
   onProgress('Saving', 99);
-  await output.finalize();
-  const buffer = output.target.buffer;
+  let buffer: ArrayBuffer | null;
+  if (rawId) {
+    // ffmpeg owns the muxing on this path: hand it the rebuilt timeline audio
+    // as a WAV and let it write the finished MP4.
+    const wav = outAudioBuffer ? audioBufferToWav(outAudioBuffer) : undefined;
+    const done = await window.api.rawEncodeEnd(rawId, wav);
+    if (!done?.ok || !done.data) throw new Error('The ffmpeg encoder produced no data.');
+    buffer = done.data;
+  } else {
+    await output.finalize();
+    buffer = output.target.buffer;
+  }
   if (!buffer) throw new Error('Export produced no data.');
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
