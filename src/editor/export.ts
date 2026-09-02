@@ -475,7 +475,30 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   // GIFs balloon at high resolutions (palette-indexed, one frame per delay),
   // so cap their height well below the video presets.
   const maxH = isGif ? Math.min(preset.maxHeight, 600) : preset.maxHeight;
-  let outH = Math.min(intrinsic.h, maxH);
+
+  // Size the frame so the RECORDING lands at 1:1, instead of capping the frame
+  // at the source height and then letting padding shrink the picture inside it.
+  //
+  // The old rule (outH = min(source.h, maxH)) looked conservative but quietly
+  // cost detail on every padded export: the card is drawn at innerScale of the
+  // frame, so a 946x948 window in a 1684x948 frame at 22% padding rendered at
+  // 842x844 — every captured pixel squeezed to 0.89 before H.264 even saw it,
+  // and roughly half the fine detail gone by the time it was encoded. It only
+  // looked acceptable in the preview because the preview shows it small; a
+  // player stretching 842px of real content over a 1920px screen does not.
+  //
+  // So work backwards from the picture instead: whatever the frame's aspect and
+  // padding, make it big enough that the cropped source is never scaled DOWN.
+  // The quality preset still caps it, so "low" stays low.
+  const cropW = Math.max(1, cropRegion.width * intrinsic.w);
+  const cropH = Math.max(1, cropRegion.height * intrinsic.h);
+  // fullBleed drops the padding, so it needs no compensation at all.
+  const innerScale = state.fullBleed ? 1 : 1 - (effects.paddingPct / 100) * 0.5;
+  // The card is contain-fitted, so BOTH axes have to clear 1:1: height needs
+  // cropH/innerScale, width needs cropW/(ratio*innerScale) once converted back
+  // to a height.
+  const needH = Math.max(cropH / innerScale, cropW / (ratio * innerScale));
+  let outH = Math.min(Math.max(intrinsic.h, needH), maxH);
   outH = Math.max(2, Math.floor(outH / 2) * 2);
   let outW = Math.floor(outH * ratio);
   outW = Math.max(2, Math.floor(outW / 2) * 2);
