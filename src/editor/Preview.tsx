@@ -65,6 +65,11 @@ export function Preview() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const workRef = useRef<HTMLCanvasElement | null>(null);
   const bgImageRef = useRef<HTMLImageElement | null>(null);
+  // Set by anything that changes what the frame should look like. The render
+  // loop repaints only when this is set (or while playing), so an editor left
+  // sitting there costs nothing — which matters now that several can be open at
+  // once, each with its own loop.
+  const dirtyRef = useRef(true);
 
   // Play / pause for the main video. Webcam play/pause + drift correction is
   // handled by the dedicated webcam-sync effect below — one effect owns the
@@ -290,12 +295,13 @@ export function Preview() {
   useEffect(() => {
     if (background.mode === 'image' && background.value) {
       const img = new Image();
-      img.onload = () => { bgImageRef.current = img; };
-      img.onerror = () => { bgImageRef.current = null; };
+      img.onload = () => { bgImageRef.current = img; dirtyRef.current = true; };
+      img.onerror = () => { bgImageRef.current = null; dirtyRef.current = true; };
       img.src = background.value;
     } else {
       bgImageRef.current = null;
     }
+    dirtyRef.current = true;
   }, [background.mode, background.value]);
 
   // Canvas render loop — composite the current frame with the shared drawFrame
@@ -315,16 +321,37 @@ export function Preview() {
     const wctx = work.getContext('2d');
     if (!wctx) return;
     let raf = 0;
+    let lastT = -1;
+    // Frames still owed after the last change. A seek moves currentTime
+    // immediately but the decoder delivers the picture a moment later, so one
+    // repaint would show the PREVIOUS frame; keep painting briefly instead.
+    let settle = 0;
+    // Any store change means the frame may look different.
+    const unsubscribeDirty = useEditor.subscribe(() => { dirtyRef.current = true; });
     const render = () => {
       raf = requestAnimationFrame(render);
       const st = useEditor.getState();
       const v = videoRef.current;
+      // Repaint only when there is a reason to. While playing every frame
+      // differs, so it always repaints; paused and untouched, it does nothing.
+      // Compositing a full frame 60 times a second to redraw pixels that did
+      // not change is what made two open editors stutter the whole desktop on
+      // software GL.
+      const t = v ? v.currentTime : -1;
+      if (t !== lastT || dirtyRef.current) settle = 8;
+      const changed = st.playing || settle > 0;
+      if (!changed) return;
+      if (settle > 0) settle--;
       const rect = stage.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       const bw = Math.max(2, Math.round(rect.width * dpr));
       const bh = Math.max(2, Math.round(rect.height * dpr));
-      if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
+      // A resize is also a reason to repaint, so check it before clearing the
+      // flag — otherwise the first frame at a new size could be skipped.
+      if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; dirtyRef.current = true; }
       if (work.width !== bw || work.height !== bh) { work.width = bw; work.height = bh; }
+      dirtyRef.current = false;
+      lastT = t;
       // Resizing a canvas resets its context, so this is re-asserted each frame.
       // It matches what the export does, so a zoom looks the same in both.
       wctx.imageSmoothingQuality = 'high';
@@ -354,7 +381,7 @@ export function Preview() {
       ctx.globalAlpha = 1;
     };
     raf = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); unsubscribeDirty(); };
   }, []);
 
   // The annotation is the one overlay still drawn in the DOM (so it stays

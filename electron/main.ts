@@ -31,13 +31,35 @@ const APP_ICON = path.join(__dirname, '..', 'assets', 'logo-transparent.png');
 
 let hudWindow: BrowserWindow | null = null;
 let pickerWindow: BrowserWindow | null = null;
-let editorWindow: BrowserWindow | null = null;
+// Every open editor. Each recording gets its OWN window rather than taking
+// over the one already on screen: after a second recording you want the first
+// project still there to compare against, not replaced. Windows are
+// independent — one project each, so their auto-saves can never contend.
+const editorWindows = new Set<BrowserWindow>();
+// Which recording each editor is showing, so re-opening one that is already up
+// focuses it instead of putting a second window on the same project (two
+// auto-savers on one file would race and drop edits).
+const editorRecordings = new WeakMap<BrowserWindow, string>();
+// Most recently focused editor — the sensible parent for a dialog and the
+// fallback when an IPC message has no sender window.
+let lastFocusedEditor: BrowserWindow | null = null;
+function liveEditor(): BrowserWindow | null {
+  if (lastFocusedEditor && !lastFocusedEditor.isDestroyed()) return lastFocusedEditor;
+  for (const w of editorWindows) if (!w.isDestroyed()) return w;
+  return null;
+}
+function editorShowing(recordingPath: string): BrowserWindow | null {
+  for (const w of editorWindows) {
+    if (!w.isDestroyed() && editorRecordings.get(w) === recordingPath) return w;
+  }
+  return null;
+}
 let regionSelectorWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 // Best parent window for a modal dialog (e.g. the updater's prompts): whatever's
 // focused, else the HUD, else the editor.
 const currentWindow = (): BrowserWindow | null =>
-  BrowserWindow.getFocusedWindow() ?? hudWindow ?? editorWindow;
+  BrowserWindow.getFocusedWindow() ?? hudWindow ?? liveEditor();
 // Source associated with the display the user is currently selecting a region
 // from. Captured when the overlay opens so the resulting region IPC payload
 // can carry the matching desktopCapturer source id back to the HUD.
@@ -183,7 +205,7 @@ function createHud() {
     hudContentWidth = HUD_DEFAULT_WIDTH;
     hudContentHeight = HUD_DEFAULT_HEIGHT;
     hudExpanded = false;
-    if (!editorWindow) app.quit();
+    if (editorWindows.size === 0) app.quit();
   });
 }
 
@@ -235,19 +257,31 @@ function createPicker() {
 
 function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
   lastRecording = recording;
-  if (editorWindow) {
-    editorWindow.focus();
-    editorWindow.webContents.send('recording:opened', recording);
+  // Already on screen? Focus it. A second window on the same project would put
+  // two auto-savers on one file, and the later write would quietly undo the
+  // earlier one.
+  const already = editorShowing(recording.filePath);
+  if (already) {
+    already.focus();
+    already.webContents.send('recording:opened', recording);
     return;
   }
-  editorWindow = new BrowserWindow({
+  // Cascade each new editor off the last so a stack of them stays separable
+  // instead of landing exactly on top of one another.
+  const offset = editorWindows.size * 28;
+  const win = new BrowserWindow({
     width: 1280,
     height: 820,
+    x: offset ? 60 + offset : undefined,
+    y: offset ? 60 + offset : undefined,
     minWidth: 960,
     minHeight: 600,
     backgroundColor: '#0e0f12',
     show: false,
     icon: APP_ICON,
+    // The recording's own name, so a taskbar or alt-tab full of editors can be
+    // told apart — Electron would otherwise give every one the same <title>.
+    title: `${path.basename(recording.filePath).replace(/\.[^.]+$/, '')} — Reframe`,
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -256,17 +290,24 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
       webSecurity: true
     }
   });
-  // Open maximized so the user lands in a full editor view straight after
-  // recording instead of a cramped 1280×820 window. `show: false` + maximize
-  // on ready-to-show avoids the visible resize jump from default size to
-  // maximized that you get with `.maximize()` right after construction.
-  editorWindow.once('ready-to-show', () => {
-    editorWindow?.maximize();
-    editorWindow?.show();
+  editorWindows.add(win);
+  editorRecordings.set(win, recording.filePath);
+  lastFocusedEditor = win;
+  win.on('focus', () => { lastFocusedEditor = win; });
+  // Keep the per-window title: loading the page would otherwise let the HTML
+  // <title> (identical in every editor) overwrite it.
+  win.on('page-title-updated', (e) => e.preventDefault());
+  // Only the FIRST editor maximizes. Later ones open at their cascaded size,
+  // because the point of a second window is putting it beside the first.
+  const isFirst = editorWindows.size === 1;
+  win.once('ready-to-show', () => {
+    if (isFirst) win.maximize();
+    win.show();
   });
-  loadHtml(editorWindow, 'editor.html');
-  editorWindow.on('closed', () => {
-    editorWindow = null;
+  loadHtml(win, 'editor.html');
+  win.on('closed', () => {
+    editorWindows.delete(win);
+    if (lastFocusedEditor === win) lastFocusedEditor = null;
     // No cleanup needed on close — the editor auto-saves a project file the
     // moment a recording is loaded, so every recording is already "kept" via
     // its .reframe.json. Orphan temp recordings (e.g. from a crash or from a
@@ -1724,7 +1765,7 @@ ipcMain.handle('project:autoSave', async (_evt, filePath: string, project) => {
 });
 
 ipcMain.handle('project:save', async (evt, project) => {
-  const win = BrowserWindow.fromWebContents(evt.sender) ?? editorWindow ?? undefined;
+  const win = BrowserWindow.fromWebContents(evt.sender) ?? liveEditor() ?? undefined;
   const res = await dialog.showSaveDialog(win!, {
     title: 'Save Project As',
     defaultPath: path.join(projectsDir, 'Untitled.reframe.json'),
@@ -1750,7 +1791,7 @@ ipcMain.handle('project:loadAt', async (_evt, filePath: string) => {
 });
 
 ipcMain.handle('project:load', async (evt) => {
-  const win = BrowserWindow.fromWebContents(evt.sender) ?? editorWindow ?? undefined;
+  const win = BrowserWindow.fromWebContents(evt.sender) ?? liveEditor() ?? undefined;
   const res = await dialog.showOpenDialog(win!, {
     title: 'Open Project',
     defaultPath: projectsDir,
@@ -1787,9 +1828,14 @@ ipcMain.handle('project:openFromPicker', async (evt) => {
     if (!project?.recording) return { opened: false };
     lastRecording = project.recording;
     lastLoadedProject = { state: project.state, path: filePath, recording: project.recording };
-    if (editorWindow && !editorWindow.isDestroyed()) {
-      editorWindow.focus();
-      editorWindow.webContents.send('project:opened', lastLoadedProject);
+    // Already open somewhere? Focus that window and re-hydrate it in place —
+    // opening a second window on the same project would have two auto-savers
+    // writing one file. Otherwise this project gets its own window, alongside
+    // whatever else is already open.
+    const already = editorShowing(project.recording.filePath);
+    if (already) {
+      already.focus();
+      already.webContents.send('project:opened', lastLoadedProject);
       // Consumed by the live editor — clear so a subsequent mount doesn't re-hydrate.
       lastLoadedProject = null;
     } else {
@@ -1831,7 +1877,7 @@ ipcMain.handle('project:rename', async (_evt, oldPath: string, newName: string) 
 ipcMain.handle('exports:openFolder', () => shell.openPath(exportsDir));
 
 ipcMain.handle('image:pick', async (evt) => {
-  const win = BrowserWindow.fromWebContents(evt.sender) ?? editorWindow ?? undefined;
+  const win = BrowserWindow.fromWebContents(evt.sender) ?? liveEditor() ?? undefined;
   const res = await dialog.showOpenDialog(win!, {
     title: 'Choose Background Image',
     filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
@@ -1857,7 +1903,7 @@ ipcMain.handle('external:open', (_evt, url: string) => {
 });
 
 ipcMain.handle('export:save', async (evt, req: { defaultName: string; data: ArrayBuffer; format: 'mp4' | 'gif' | 'webm' }) => {
-  const win = BrowserWindow.fromWebContents(evt.sender) ?? editorWindow ?? undefined;
+  const win = BrowserWindow.fromWebContents(evt.sender) ?? liveEditor() ?? undefined;
   const ext = req.format;
   const safeName = req.defaultName.replace(/[^a-z0-9._-]+/gi, '-') + '.' + ext;
   // Dev/automation escape hatch: write straight to a given path instead of
