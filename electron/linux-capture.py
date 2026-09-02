@@ -58,6 +58,8 @@ Stdout protocol:
 import os
 import sys
 import signal
+import socket
+import subprocess
 import time
 import gi
 gi.require_version("Gio", "2.0")
@@ -339,8 +341,91 @@ def negotiate_ximage():
 
 
 # ── route 1: GNOME Mutter (no dialog, exact region) ─────────────────────────
+# ── PipeWire liveness ───────────────────────────────────────────────────────
+# Both ScreenCast routes below (Mutter and the portal) only negotiate the
+# session over D-Bus; the FRAMES come over PipeWire, so neither works without
+# pipewire.service. When it is missing, Mutter fails with
+# "Failed to start screen cast: Couldn't connect pipewire context", the portal
+# fails the same way a moment later, and the recorder falls back to a capture
+# with the pointer baked in.
+#
+# Which happened on a stock Ubuntu GNOME box: pipewire.service lost a race at
+# login, systemd's restart limiter latched after 5 rapid attempts ("Start
+# request repeated too quickly", exit 234) and it stayed dead for the entire
+# session. Audio was unaffected because PulseAudio was serving it, so there was
+# no symptom anywhere a user would look — only screen recordings quietly losing
+# cursor hiding, hours later.
+#
+# Nothing about that is the user's to diagnose, and the recovery is two
+# commands. So try them, once, rather than degrading silently.
+
+
+def _pipewire_ready():
+    """True when a client could actually connect.
+
+    Testing for the socket FILE is not enough: it outlives the service. Stopping
+    pipewire.service leaves /run/user/<uid>/pipewire-0 sitting on disk with
+    nothing listening, so its presence proves nothing — checking for it made
+    this function claim everything was fine on a box where PipeWire was dead.
+    Connect instead, which is what a real client does; if the socket unit is
+    alive it will even socket-activate the service for us.
+    """
+    rt = os.environ.get("XDG_RUNTIME_DIR")
+    if not rt:
+        return False
+    path = os.path.join(rt, "pipewire-0")
+    if not os.path.exists(path):
+        return False
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(0.5)
+    try:
+        sock.connect(path)
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+_pw_attempted = False
+
+
+def ensure_pipewire(timeout=5.0):
+    """Best-effort revival of a dead pipewire.service. -> True if usable.
+
+    reset-failed is the part that matters: without it systemd refuses to start a
+    unit that has tripped its restart limiter, so `start` alone does nothing.
+    Tried at most once per run, and every failure is ignored — this is a nicety
+    on the way to recording, never a reason not to record.
+    """
+    global _pw_attempted
+    if _pipewire_ready():
+        return True
+    if _pw_attempted:
+        return False
+    _pw_attempted = True
+    for args in (["reset-failed", "pipewire.socket", "pipewire"],
+                 ["start", "pipewire.socket", "pipewire"]):
+        try:
+            subprocess.run(["systemctl", "--user"] + args,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=5, check=False)
+        except Exception:  # noqa: BLE001
+            return False
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _pipewire_ready():
+            # Visible in the parent's log, so this leaves a trace instead of
+            # looking like it spontaneously started working.
+            say("PIPEWIRE revived")
+            return True
+        time.sleep(0.2)
+    return False
+
+
 def negotiate_mutter():
     """-> (node_id, fd|None, size|None). Raises if unavailable."""
+    ensure_pipewire()
     SC = "org.gnome.Mutter.ScreenCast"
 
     def call(path, iface, method, args, reply_type):
@@ -398,6 +483,7 @@ PORTAL_SC = "org.freedesktop.portal.ScreenCast"
 
 def negotiate_portal():
     """-> (node_id, fd, size). Raises if unavailable/denied."""
+    ensure_pipewire()
     # Requests reply on a path derived from our bus name + a token we choose;
     # subscribing to the PREDICTED path before calling avoids missing a fast reply.
     sender = conn.get_unique_name()[1:].replace(".", "_")
