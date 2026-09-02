@@ -645,27 +645,22 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
           outAudioBuffer = null;
         }
         if (outAudioBuffer && outAudioBuffer.length > 0) {
-          // MP4 gets AAC or it gets NOTHING. Chromium (so Electron) cannot
-          // encode AAC — isConfigSupported says false for mp4a.40.2 and
-          // mp4a.40.5 — and the old list fell through to Opus, which is legal
-          // in MP4 by a later ISO spec and rejected almost everywhere in
-          // practice. Twitter refuses the upload outright: "Incompatible audio
-          // codecs". A silent MP4 that plays everywhere beats a file with audio
-          // that nothing accepts; WebM is the format to pick when the audio
-          // matters, and Opus is native there.
+          // Chromium cannot ENCODE AAC (isConfigSupported is false for both
+          // mp4a.40.2 and mp4a.40.5), so an MP4 written here can only carry
+          // Opus — which is legal by a later ISO spec and rejected almost
+          // everywhere in practice. Rather than lose the audio, main converts
+          // the finished MP4's audio to AAC with the bundled ffmpeg, copying
+          // the video stream (see mp4AudioToAac). So asking for Opus here is
+          // correct: it is an intermediate, not what lands on disk.
           const audioCodec = await getFirstEncodableAudioCodec(
-            isMp4 ? ['aac'] : ['opus', 'vorbis'],
+            isMp4 ? ['aac', 'opus'] : ['opus', 'vorbis'],
             { numberOfChannels: outAudioBuffer.numberOfChannels, sampleRate: outAudioBuffer.sampleRate }
           );
           if (audioCodec) {
             audioSource = new AudioBufferSource({ codec: audioCodec, bitrate: 192_000 });
             output.addAudioTrack(audioSource);
           } else {
-            console.warn(
-              isMp4
-                ? '[export] this build cannot encode AAC, and Opus in MP4 is rejected by most sites — exporting MP4 without audio. Export WebM to keep the audio.'
-                : '[export] no encodable audio codec; exporting without audio'
-            );
+            console.warn('[export] no encodable audio codec; exporting without audio');
             outAudioBuffer = null;
           }
         }

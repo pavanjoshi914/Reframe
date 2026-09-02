@@ -2,7 +2,7 @@ import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, desktopCapturer, 
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
-import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, execFileSync, type ChildProcess } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkForUpdates } from './updater';
 
@@ -1902,6 +1902,54 @@ ipcMain.handle('external:open', (_evt, url: string) => {
   return shell.openExternal(url);
 });
 
+// MP4 is the format people hand to other software, and other software expects
+// AAC in it. Chromium — so Electron, so our renderer — cannot ENCODE AAC at
+// all (AudioEncoder.isConfigSupported says false for mp4a.40.2 and mp4a.40.5),
+// so the renderer's only option is Opus. Opus in MP4 is legal by a later ISO
+// spec and rejected almost everywhere in practice: Twitter refuses the upload
+// outright with "Incompatible audio codecs".
+//
+// The bundled ffmpeg CAN encode AAC, so the fix is one pass here rather than
+// giving up the audio. The video stream is COPIED, so this costs no quality and
+// only the time to re-encode a few seconds of sound.
+//
+// Returns a buffer to write: converted when it needed converting, the original
+// otherwise. Never throws — a failure here must not lose someone's export.
+async function mp4AudioToAac(data: Buffer): Promise<Buffer> {
+  const tmpIn = path.join(app.getPath('temp'), `reframe-aac-in-${Date.now()}.mp4`);
+  const tmpOut = path.join(app.getPath('temp'), `reframe-aac-out-${Date.now()}.mp4`);
+  try {
+    fs.writeFileSync(tmpIn, data);
+    // Only touch files that actually carry non-AAC audio. No audio track (the
+    // common case for a screen recording) means nothing to do.
+    const probe = spawnSync(ffprobeBin(), [
+      '-v', 'error', '-select_streams', 'a:0',
+      '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', tmpIn
+    ], { encoding: 'utf-8' });
+    const codec = (probe.stdout || '').trim();
+    if (!codec || codec === 'aac') return data;
+
+    const r = spawnSync(ffmpegBin(), [
+      '-v', 'error', '-y', '-i', tmpIn,
+      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+      '-movflags', '+faststart', tmpOut
+    ], { maxBuffer: 1 << 24 });
+    if (r.status !== 0 || !fs.existsSync(tmpOut)) {
+      console.warn('[export] AAC conversion failed; keeping', codec, 'audio', r.stderr?.toString().slice(0, 200));
+      return data;
+    }
+    console.log(`[export] MP4 audio ${codec} -> aac`);
+    return fs.readFileSync(tmpOut);
+  } catch (err) {
+    console.warn('[export] AAC conversion errored; keeping original', err);
+    return data;
+  } finally {
+    for (const f of [tmpIn, tmpOut]) {
+      try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* best effort */ }
+    }
+  }
+}
+
 ipcMain.handle('export:save', async (evt, req: { defaultName: string; data: ArrayBuffer; format: 'mp4' | 'gif' | 'webm' }) => {
   const win = BrowserWindow.fromWebContents(evt.sender) ?? liveEditor() ?? undefined;
   const ext = req.format;
@@ -1909,10 +1957,12 @@ ipcMain.handle('export:save', async (evt, req: { defaultName: string; data: Arra
   // Dev/automation escape hatch: write straight to a given path instead of
   // opening the native Save dialog (which can't be driven headlessly). Only
   // active when the env var is set, so real users always get the dialog.
+  const payload =
+    req.format === 'mp4' ? await mp4AudioToAac(Buffer.from(req.data)) : Buffer.from(req.data);
   const forcedPath = process.env.REFRAME_EXPORT_PATH;
   if (forcedPath) {
     fs.mkdirSync(path.dirname(forcedPath), { recursive: true });
-    fs.writeFileSync(forcedPath, Buffer.from(req.data));
+    fs.writeFileSync(forcedPath, payload);
     return { saved: true, path: forcedPath };
   }
   const res = await dialog.showSaveDialog(win!, {
@@ -1921,7 +1971,7 @@ ipcMain.handle('export:save', async (evt, req: { defaultName: string; data: Arra
     filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
   });
   if (res.canceled || !res.filePath) return { saved: false };
-  fs.writeFileSync(res.filePath, Buffer.from(req.data));
+  fs.writeFileSync(res.filePath, payload);
   return { saved: true, path: res.filePath };
 });
 
