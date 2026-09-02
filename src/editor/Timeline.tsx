@@ -133,16 +133,24 @@ export function Timeline() {
   const totalSec = Math.max(1, durationMs / 1000);
 
   // When in fit mode, recompute pps to fill the available track area whenever
-  // the container resizes or the duration changes. We round to avoid thrashing
-  // the store on sub-pixel layout shifts.
+  // the container resizes or the duration changes.
+  //
+  // The threshold is on the resulting WIDTH, not on pps. Guarding pps instead
+  // let an error of up to 0.5 px/sec stand, and the rendered track is
+  // pps * duration — so on an 18s clip that was a track ~17px wider than its
+  // container. Which is enough to raise a horizontal scrollbar, and the
+  // scrollbar is ~10px tall, and the preview above it is aspect-ratio locked,
+  // so it lost 10px of height and ~18px of width, which resized this container,
+  // which changed the fit... a feedback loop that flipped the whole layout back
+  // and forth every frame during playback. Comparing the quantity that actually
+  // has to fit keeps the track inside its container and the loop cannot start.
   useEffect(() => {
     if (!fitToWidth) return;
     if (containerWidth <= 0 || totalSec <= 0) return;
     const trackArea = Math.max(0, containerWidth - LANE_LABEL_W - TRACK_END_PAD);
     if (trackArea <= 0) return;
-    const target = Math.round((trackArea / totalSec) * 100) / 100;
-    if (Math.abs(target - pixelsPerSecond) > 0.5) {
-      setPixelsPerSecond(target);
+    if (Math.abs(totalSec * pixelsPerSecond - trackArea) > 0.5) {
+      setPixelsPerSecond(trackArea / totalSec);
     }
   }, [fitToWidth, containerWidth, totalSec, pixelsPerSecond, setPixelsPerSecond]);
 
@@ -289,7 +297,14 @@ export function Timeline() {
           <div className="sticky top-0 z-30 h-6 border-b border-white/5 bg-[#0a0b0e]" style={{ paddingLeft: LANE_LABEL_W }}>
             <div
               ref={trackRef}
-              className="relative h-full cursor-pointer touch-none select-none"
+              // overflow-hidden matters for layout, not looks: each tick is an
+              // absolutely-positioned label, so the LAST one hangs ~17px past
+              // the end of the track. Left visible, that overflow reaches the
+              // scroll container, which raises a horizontal scrollbar, which is
+              // ~10px tall, which shortens the aspect-ratio-locked preview above
+              // it, which resizes this container — and the whole layout flips
+              // back and forth every frame while the video plays.
+              className="relative h-full cursor-pointer touch-none select-none overflow-hidden"
               onPointerDown={onScrubDown}
               onPointerMove={onScrubMove}
               onPointerUp={onScrubUp}
