@@ -339,6 +339,56 @@ def negotiate_ximage():
 
 
 # ── route 1: GNOME Mutter (no dialog, exact region) ─────────────────────────
+def negotiate_ximage_screen():
+    """Cursor-hidden capture of a SCREEN REGION on X11. -> ('ximage-screen', None, size).
+
+    The same ximagesrc that already serves single-window capture, pointed at the
+    root window and cropped to the region the parent asked for. It needs no
+    PipeWire, no portal and no dialog.
+
+    That matters because the ScreenCast routes below do need PipeWire, and when
+    pipewire.service is not running they both fail -- so recording silently fell
+    back to Chromium's capture with the pointer baked in. Observed on a plain
+    Ubuntu GNOME box whose pipewire.service had hit systemd's restart limit at
+    login and stayed dead all session: every whole-screen recording lost cursor
+    hiding, while window recordings kept working, because only they had an
+    ximagesrc route. A user has no way to guess that, so the common case should
+    not depend on a service that can be absent.
+
+    X11 ONLY. Under Wayland a root-window grab sees just the XWayland subset --
+    native Wayland windows are simply absent -- so this is skipped there and the
+    portal remains the correct route.
+    """
+    if os.environ.get("XDG_SESSION_TYPE") != "x11":
+        raise RuntimeError("not-x11")
+    if not os.environ.get("DISPLAY"):
+        raise RuntimeError("no-x-display")
+    if Gst.ElementFactory.find("ximagesrc") is None:
+        raise RuntimeError("no-ximagesrc")
+    install_x_error_guard()
+    # H.264 4:2:0 needs even dimensions; a display can be an odd size.
+    w, h = W - W % 2, H - H % 2
+    if w < 2 or h < 2:
+        raise RuntimeError("region-%dx%d-too-small" % (W, H))
+    # Prove the grab works before committing, exactly as the window route does:
+    # a region off the edge of the X screen fails HERE rather than after the
+    # user thinks recording has started.
+    probe = Gst.parse_launch(
+        "ximagesrc startx=%d starty=%d endx=%d endy=%d ! fakesink name=fs"
+        % (X, Y, X + w - 1, Y + h - 1)
+    )
+    try:
+        if probe.set_state(Gst.State.PAUSED) == Gst.StateChangeReturn.FAILURE:
+            raise RuntimeError("region-unavailable")
+        probe.get_state(3 * Gst.SECOND)
+        caps = probe.get_by_name("fs").get_static_pad("sink").get_current_caps()
+        if caps is None or caps.get_size() == 0:
+            raise RuntimeError("region-no-caps")
+    finally:
+        probe.set_state(Gst.State.NULL)
+    return "ximage-screen", None, (w, h)
+
+
 def negotiate_mutter():
     """-> (node_id, fd|None, size|None). Raises if unavailable."""
     SC = "org.gnome.Mutter.ScreenCast"
@@ -560,6 +610,12 @@ def video_source(node, fd, size):
         # any size at all.
         return ("ximagesrc name=vsrc xid=%d show-pointer=false use-damage=false "
                 "endx=%d endy=%d" % (fd, size[0] - 1, size[1] - 1))
+    if node == "ximage-screen":
+        # Same reasoning as above; startx/starty/endx/endy are ROOT-relative
+        # here because no xid is set, and endx/endy are inclusive.
+        return ("ximagesrc name=vsrc show-pointer=false use-damage=false "
+                "startx=%d starty=%d endx=%d endy=%d"
+                % (X, Y, X + size[0] - 1, Y + size[1] - 1))
     return ("pipewiresrc name=vsrc path=%d %s do-timestamp=true"
             % (node, ("fd=%d" % fd) if fd is not None else ""))
 
@@ -667,7 +723,14 @@ backend = None
 ROUTES = (
     (("ximage", negotiate_ximage), ("portal", negotiate_portal))
     if WINDOW_XID is not None
-    else (("mutter", negotiate_mutter), ("portal", negotiate_portal))
+    else (
+        # ximagesrc first on X11: no PipeWire, no portal, nothing to be running.
+        # The ScreenCast routes stay behind it for Wayland and for anything
+        # ximagesrc refuses.
+        ("ximage-screen", negotiate_ximage_screen),
+        ("mutter", negotiate_mutter),
+        ("portal", negotiate_portal),
+    )
 )
 for name, fn in ROUTES:
     if _forced_backend() not in (None, name):
