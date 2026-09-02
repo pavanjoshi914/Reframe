@@ -1,4 +1,5 @@
 import { Hero } from '@/components/Hero';
+import { DemoInEditor } from '@/components/DemoInEditor';
 import { Showcase } from '@/components/Showcase';
 import { Features } from '@/components/Features';
 import { HowItWorks } from '@/components/HowItWorks';
@@ -44,6 +45,7 @@ export default function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
       <Hero />
+      <DemoInEditor />
       <Showcase />
       <Features />
       <HowItWorks />
