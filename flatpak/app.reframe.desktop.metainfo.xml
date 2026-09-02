@@ -75,6 +75,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.3.1" date="2026-09-02">
+      <description>
+        <p>MP4 exports now always carry AAC audio, so they upload to Twitter, Instagram, LinkedIn and YouTube without complaint — the previous builds wrote Opus, which most sites refuse. A new optional ffmpeg encoder produces the same picture in about a quarter of the file size. Each recording opens in its own editor window, an idle editor no longer redraws constantly, and the timeline no longer makes the whole layout flicker while a video plays. Cursor hiding recovers on its own when the system screen-cast service is not running.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-09-01">
       <description>
         <p>Exports are noticeably sharper: every frame was being resampled with the softest filter available, and zoomed frames now get sharpening sized to how far they are magnified, so a zoom no longer looks blurrier than the rest of the video. Exports default to high quality, padding to a tighter 22%, and there is a new warm orange background as the default. A full-screen toggle drops the background, padding, corners and shadow so the recording fills the frame edge to edge.</p>

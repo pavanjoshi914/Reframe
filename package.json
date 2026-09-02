@@ -1,7 +1,7 @@
 {
   "name": "reframe",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Reframe \u2014 cross-platform screen recorder + post-recording editor (Linux/Windows/macOS).",
   "author": {
     "name": "Pavan Joshi",
