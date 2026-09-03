@@ -2039,7 +2039,11 @@ ipcMain.handle('export:rawEnd', async (_evt, id: string, wav?: ArrayBuffer) => {
       fs.writeFileSync(wavPath, Buffer.from(wav));
       const r = spawnSync(ffmpegBin(), [
         '-v', 'error', '-y', '-i', enc.outPath, '-i', wavPath,
-        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest',
+        // NOT -shortest: a screen recording's audio track routinely ends before
+        // its video (this one was 16.089s against 17.100s), and -shortest would
+        // truncate the PICTURE to match, silently losing the last second of the
+        // export. The video defines the length; audio simply stops when it ends.
+        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
         '-movflags', '+faststart', muxed
       ], { maxBuffer: 1 << 24 });
       try { fs.unlinkSync(wavPath); } catch { /* best effort */ }
