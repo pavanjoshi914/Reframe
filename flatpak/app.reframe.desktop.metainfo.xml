@@ -75,6 +75,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.3.2" date="2026-09-03">
+      <description>
+        <p>New entrance motion: a recording can now travel into frame — rising up from below, dropping in, or flying in from either side — instead of only tilting on the spot. Fixes an export bug where a video was cut short if its audio track ended before its picture, which happens routinely with screen recordings.</p>
+      </description>
+    </release>
     <release version="0.3.1" date="2026-09-02">
       <description>
         <p>MP4 exports now always carry AAC audio, so they upload to Twitter, Instagram, LinkedIn and YouTube without complaint — the previous builds wrote Opus, which most sites refuse. A new optional ffmpeg encoder produces the same picture in about a quarter of the file size. Each recording opens in its own editor window, an idle editor no longer redraws constantly, and the timeline no longer makes the whole layout flicker while a video plays. Cursor hiding recovers on its own when the system screen-cast service is not running.</p>
