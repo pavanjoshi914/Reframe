@@ -55,6 +55,13 @@ export type LaneItem = {
   tiltXEnd?: number;
   tiltYEnd?: number;
   spinZEnd?: number;
+  // Travel for an ENTRANCE, as a fraction of the output frame: the card starts
+  // this far from its resting place and arrives. An absent End means "to zero",
+  // because an entrance by definition finishes at rest.
+  slideX?: number;
+  slideY?: number;
+  slideXEnd?: number;
+  slideYEnd?: number;
   // Which rotation preset this region was set from, if any. Cleared the moment
   // a slider is touched: a region is either "a preset" or "custom keyframes",
   // never a blend, and the panel shows whichever it is.

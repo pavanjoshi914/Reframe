@@ -1327,8 +1327,17 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
 // reveals and drifts first, held poses second. `s` is the Start keyframe
 // [tiltX, tiltY, spinZ]; presets with an `e` animate Start→End across the
 // region, the rest hold one pose (End overrides cleared).
-type RotPreset = { key: string; s: [number, number, number]; e?: [number, number, number] };
+// `d` is the Start TRAVEL [slideX, slideY] as a fraction of the frame — the
+// card begins that far off its resting place and arrives. Without it a preset
+// can only tilt where it already stands, which reads as the card straightening
+// up rather than entering.
+type RotPreset = { key: string; s: [number, number, number]; e?: [number, number, number]; d?: [number, number] };
 const ROT_MOTIONS: RotPreset[] = [
+  // True entrances — the card TRAVELS in from off frame and lands flat.
+  { key: 'riseIn', s: [34, 0, 0], e: [0, 0, 0], d: [0, 0.62] },
+  { key: 'dropIn', s: [-26, 0, 0], e: [0, 0, 0], d: [0, -0.62] },
+  { key: 'flyInL', s: [10, -34, 4], e: [0, 0, 0], d: [-0.6, 0.12] },
+  { key: 'flyInR', s: [10, 34, -4], e: [0, 0, 0], d: [0.6, 0.12] },
   // Entrances — land flat, so they read as the card arriving.
   { key: 'swingInL', s: [0, -45, 0], e: [0, 0, 0] },
   { key: 'swingInR', s: [0, 45, 0], e: [0, 0, 0] },
@@ -1446,7 +1455,10 @@ function Rotation3DPanel({ item }: { item: LaneItem }) {
       updateItem(item.id, {
         rotPreset: p.key,
         tiltX: start[0], tiltY: start[1], spinZ: start[2],
-        tiltXEnd: end?.[0], tiltYEnd: end?.[1], spinZEnd: end?.[2]
+        tiltXEnd: end?.[0], tiltYEnd: end?.[1], spinZEnd: end?.[2],
+        // Travel only makes sense while animating: held still, a card that
+        // starts off frame would simply sit off frame.
+        slideX: on ? p.d?.[0] : undefined, slideY: on ? p.d?.[1] : undefined
       });
       if (on) playThrough(); else seekKf('start');
       return;
@@ -1468,7 +1480,8 @@ function Rotation3DPanel({ item }: { item: LaneItem }) {
     updateItem(item.id, {
       rotPreset: p.key,
       tiltX: p.s[0], tiltY: p.s[1], spinZ: p.s[2],
-      tiltXEnd: p.e?.[0], tiltYEnd: p.e?.[1], spinZEnd: p.e?.[2]
+      tiltXEnd: p.e?.[0], tiltYEnd: p.e?.[1], spinZEnd: p.e?.[2],
+      slideX: p.d?.[0], slideY: p.d?.[1]
     });
     // A motion is only legible in motion: play it through from the region
     // start so the preset previews itself the moment it's clicked.

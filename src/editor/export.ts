@@ -149,10 +149,16 @@ const zoomTransitionMs = (style?: ZoomStyle) => (style === 'snappy' ? 450 : 1100
 const zoomEase = (style?: ZoomStyle) => (style === 'snappy' ? easeInOutCubic : easeOutSpring);
 
 // 3D rotation of the video card (degrees). All-zero = flat = the legacy 2D path.
-export type Rotation = { tiltX: number; tiltY: number; spinZ: number };
-export const NO_ROTATION: Rotation = { tiltX: 0, tiltY: 0, spinZ: 0 };
+// slideX/slideY are the card's offset from its resting place, as a fraction of
+// the OUTPUT frame (0.5 = half a frame). They exist so a card can travel into
+// position rather than only tilt on the spot: tilting alone reads as the card
+// standing up where it already was, never as it arriving. Fractions rather
+// than pixels so a motion looks identical at every export resolution.
+export type Rotation = { tiltX: number; tiltY: number; spinZ: number; slideX?: number; slideY?: number };
+export const NO_ROTATION: Rotation = { tiltX: 0, tiltY: 0, spinZ: 0, slideX: 0, slideY: 0 };
 export const hasRotation = (r?: Rotation | null): r is Rotation =>
-  !!r && (Math.abs(r.tiltX) > 1e-6 || Math.abs(r.tiltY) > 1e-6 || Math.abs(r.spinZ) > 1e-6);
+  !!r && (Math.abs(r.tiltX) > 1e-6 || Math.abs(r.tiltY) > 1e-6 || Math.abs(r.spinZ) > 1e-6 ||
+          Math.abs(r.slideX ?? 0) > 1e-6 || Math.abs(r.slideY ?? 0) > 1e-6);
 
 type ZoomItem = {
   startMs: number; endMs: number; zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number;
@@ -185,10 +191,17 @@ const clamp01n = (n: number) => Math.max(0, Math.min(1, n));
 // after its end (so it never snaps), and interpolating Start→End keyframes
 // across the region. It composes with whatever zoom is active at that moment.
 const ROT_TRANSITION_MS = 500;
-type RotItem = { startMs: number; endMs: number; scene?: string; scenePosX?: number; scenePosY?: number; sceneSpeed?: number; sceneZoom?: number; sceneTiltX?: number; sceneTiltY?: number; sceneDepth?: number; sceneSpacing?: number; sceneRadius?: number; sceneShape?: SceneSettings['shape']; tiltX?: number; tiltY?: number; spinZ?: number; tiltXEnd?: number; tiltYEnd?: number; spinZEnd?: number };
+type RotItem = { startMs: number; endMs: number; scene?: string; scenePosX?: number; scenePosY?: number; sceneSpeed?: number; sceneZoom?: number; sceneTiltX?: number; sceneTiltY?: number; sceneDepth?: number; sceneSpacing?: number; sceneRadius?: number; sceneShape?: SceneSettings['shape']; tiltX?: number; tiltY?: number; spinZ?: number; tiltXEnd?: number; tiltYEnd?: number; spinZEnd?: number; slideX?: number; slideY?: number; slideXEnd?: number; slideYEnd?: number };
 const rotOf = (it: RotItem, p: number): Rotation => {
   const sx = it.tiltX ?? 0, sy = it.tiltY ?? 0, sz = it.spinZ ?? 0;
-  return { tiltX: lerp(sx, it.tiltXEnd ?? sx, p), tiltY: lerp(sy, it.tiltYEnd ?? sy, p), spinZ: lerp(sz, it.spinZEnd ?? sz, p) };
+  const dx = it.slideX ?? 0, dy = it.slideY ?? 0;
+  return {
+    tiltX: lerp(sx, it.tiltXEnd ?? sx, p), tiltY: lerp(sy, it.tiltYEnd ?? sy, p), spinZ: lerp(sz, it.spinZEnd ?? sz, p),
+    // An entrance ends at rest, so an unset End means "travel to zero" —
+    // the opposite default to the tilts, which hold their value when no end
+    // keyframe is given.
+    slideX: lerp(dx, it.slideXEnd ?? 0, p), slideY: lerp(dy, it.slideYEnd ?? 0, p)
+  };
 };
 // Effective rotation at `ms`, or null when no rotation region is active. If
 // regions overlap, the later-starting one wins (it's the user's most recent
@@ -238,7 +251,8 @@ function computeRotation(items: ReturnType<typeof useEditor.getState>['items'], 
   // keyframe progress across the region (clamped once we're in the ease-out tail)
   const p = easeInOutCubic(clamp01n((ms - it.startMs) / Math.max(1, it.endMs - it.startMs)));
   const r = rotOf(it, p);
-  const out = { tiltX: r.tiltX * env, tiltY: r.tiltY * env, spinZ: r.spinZ * env };
+  const out = { tiltX: r.tiltX * env, tiltY: r.tiltY * env, spinZ: r.spinZ * env,
+                slideX: (r.slideX ?? 0) * env, slideY: (r.slideY ?? 0) * env };
   return hasRotation(out) ? out : null;
 }
 
@@ -1131,9 +1145,15 @@ function cursorToOutput(
       return projectCardPoint(xf, u, v, cards[heroIndex(cards)]);
     }
   }
+  // The card is translated by drawVideoBox before anything is drawn, so the
+  // pointer has to move with it — otherwise it hangs in mid air while the card
+  // slides in underneath.
+  const sx = (rot?.slideX ?? 0) * outWForCursor;
+  const sy = (rot?.slideY ?? 0) * outHForCursor;
   if (hasRotation(rot) && outWForCursor > 0) {
     const xf: CardXform = { outW: outWForCursor, outH: outHForCursor, bx, by, bw, bh, zoom: z, zoomTx: tx, zoomTy: ty, rot };
-    return projectCardPoint(xf, u, v);
+    const pt = projectCardPoint(xf, u, v);
+    return pt ? { x: pt.x + sx, y: pt.y + sy } : pt;
   }
   let px = bx + u * bw;
   let py = by + v * bh;
@@ -1142,7 +1162,7 @@ function cursorToOutput(
     px = z * px + cx0 * (1 - z) + z * tx;
     py = z * py + cy0 * (1 - z) + z * ty;
   }
-  return { x: px, y: py };
+  return { x: px + sx, y: py + sy };
 }
 
 // Composite one fully-rendered frame onto `ctx`. Shared by the export encoder
@@ -1520,6 +1540,13 @@ function drawVideoBox(
   const z = activeZoom?.zoomLevel ?? 1;
   const tx = (0.5 - (activeZoom?.zoomTargetX ?? 0.5)) * (z - 1) * w;
   const ty = (0.5 - (activeZoom?.zoomTargetY ?? 0.5)) * (z - 1) * h;
+
+  // Travel: shift the whole card before anything else, so it arrives from off
+  // frame. Measured against the OUTPUT frame rather than the card, so
+  // slideY = 1 always means "one screen below" whatever size the card is.
+  const slideX = (activeZoom?.rotation?.slideX ?? 0) * ctx.canvas.width;
+  const slideY = (activeZoom?.rotation?.slideY ?? 0) * ctx.canvas.height;
+  if (slideX || slideY) ctx.translate(slideX, slideY);
 
   // ── 3D rotation (tilt / spin) ─────────────────────────────────────────
   // A 2D canvas can't do perspective, so when the zoom carries a rotation we
