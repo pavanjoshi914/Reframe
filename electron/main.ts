@@ -99,6 +99,7 @@ let lastRecording: import('../src/shared/ipc.js').RecordingMeta | null = null;
 let recordingsTempDir = '';
 let projectsDir = '';
 let exportsDir = '';
+let stillsDir = '';
 
 // Is `target` inside `dir`? Used to fence the media:// handler and the cursor
 // sidecar loader to the recordings dir. Windows compares paths
@@ -1875,6 +1876,25 @@ ipcMain.handle('project:rename', async (_evt, oldPath: string, newName: string) 
 });
 
 ipcMain.handle('exports:openFolder', () => shell.openPath(exportsDir));
+ipcMain.handle('stills:openFolder', () => shell.openPath(stillsDir));
+
+// Save one composited frame as a PNG. No Save dialog: the point of the button
+// is that it happens instantly, and a modal on every press turns a quick grab
+// into a chore. The file lands in the OS pictures folder and the renderer shows
+// where it went.
+ipcMain.handle('still:save', async (_evt, req: { name: string; data: ArrayBuffer }) => {
+  try {
+    const safe = (req.name || 'frame').replace(/[^a-z0-9._-]+/gi, '-').slice(0, 80);
+    const forced = process.env.REFRAME_STILL_PATH;
+    const target = forced || path.join(stillsDir, `${safe}.png`);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, Buffer.from(req.data));
+    return { saved: true, path: target };
+  } catch (err) {
+    console.warn('[main] still:save failed', err);
+    return { saved: false, error: String(err) };
+  }
+});
 
 ipcMain.handle('image:pick', async (evt) => {
   const win = BrowserWindow.fromWebContents(evt.sender) ?? liveEditor() ?? undefined;
@@ -2094,10 +2114,17 @@ app.whenReady().then(async () => {
   const reframeUserDir = path.join(app.getPath('videos'), 'Reframe');
   projectsDir = path.join(reframeUserDir, 'Projects');
   exportsDir = path.join(reframeUserDir, 'Recordings');
+  // Stills go to the OS PICTURES folder, resolved the same way recordings
+  // resolve theirs — app.getPath maps to Pictures on Windows and Linux and to
+  // ~/Pictures on macOS, so nothing is hardcoded per platform. Videos and
+  // images living in the same folder is the thing users trip over, and a PNG
+  // in a Videos directory never gets found again.
+  stillsDir = path.join(app.getPath('pictures'), 'Reframe');
   fs.mkdirSync(recordingsTempDir, { recursive: true });
   fs.mkdirSync(projectsDir, { recursive: true });
   fs.mkdirSync(exportsDir, { recursive: true });
-  console.log('[main] paths:', { recordingsTempDir, projectsDir, exportsDir });
+  fs.mkdirSync(stillsDir, { recursive: true });
+  console.log('[main] paths:', { recordingsTempDir, projectsDir, exportsDir, stillsDir });
 
   // Drop the default OS menubar (File/Edit/View/Window/Help). The editor's
   // top toolbar already exposes File/Edit/View — keeping both produced a

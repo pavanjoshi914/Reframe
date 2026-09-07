@@ -159,6 +159,9 @@ export type Api = {
   pickImageFile: () => Promise<{ dataUrl: string; name: string } | null>;
   openExternal: (url: string) => Promise<void>;
   saveExport: (req: ExportRequest) => Promise<{ saved: boolean; path?: string }>;
+  /** One composited frame as PNG, written straight to the OS pictures folder. */
+  saveStill: (req: { name: string; data: ArrayBuffer }) => Promise<{ saved: boolean; path?: string; error?: string }>;
+  openStillsFolder: () => Promise<string>;
   // Alternate export encoder: composited frames are streamed to the bundled
   // ffmpeg (x264) instead of Chromium's WebCodecs. See the handlers in main.
   rawEncodeBegin: (req: { width: number; height: number; fps: number; bitrate: number }) => Promise<{ id: string }>;
