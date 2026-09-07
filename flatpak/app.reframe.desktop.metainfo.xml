@@ -75,6 +75,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.4.0" date="2026-09-07">
+      <description>
+        <p>Border presets for the recording card: two glass rims, retro, stack
+        and an emissive glow, each with its own thickness, opacity and colour.
+        Blur regions can feather instead of ending in a hard rectangle. Light
+        mode, and a sidebar that no longer scrolls. Capture the frame at the
+        playhead as a PNG. Rotated cards are no longer rendered soft.</p>
+      </description>
+    </release>
     <release version="0.3.2" date="2026-09-03">
       <description>
         <p>New entrance motion: a recording can now travel into frame — rising up from below, dropping in, or flying in from either side — instead of only tilting on the spot. Fixes an export bug where a video was cut short if its audio track ended before its picture, which happens routinely with screen recordings.</p>
