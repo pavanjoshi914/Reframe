@@ -14,7 +14,8 @@ import {
   type VideoCodec
 } from 'mediabunny';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
-import { useEditor, type CropRegion, ANNOTATION_DEFAULTS } from './store';
+import { paintBorderUnder, paintBorderOver, borderOutset, normalizeBorder, DEFAULT_BORDER_STYLE, type BorderId, type BorderStyle } from './borders';
+import { useEditor, type CropRegion, type EditorState, ANNOTATION_DEFAULTS } from './store';
 import type { CursorSample, ClickSample, CursorKindSample } from '@shared/ipc';
 import { renderCard3D, renderScene3D, projectCardPoint, type CardXform } from './card3d';
 import { sceneInstances, heroIndex, DEFAULT_SCENE_SETTINGS, SCENE_SHAPE_RATIO, type SceneSettings } from './scenes';
@@ -565,7 +566,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   const ctx = canvas.getContext('2d', { willReadFrequently: isGif });
   if (!ctx) throw new Error('2D canvas unavailable');
 
-  const drawCtx: DrawCtx = { items, background, effects, webcam, layoutPreset, cropRegion, fullBleed: state.fullBleed, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorKinds: state.cursorKinds, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle };
+  const drawCtx: DrawCtx = { items, background, effects, border: state.border, borderStyle: state.borderStyle, webcam, layoutPreset, cropRegion, fullBleed: state.fullBleed, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorKinds: state.cursorKinds, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle };
 
   // Motion blur: composite each frame onto a scratch canvas, then blend it onto
   // the output at alpha (1-k) so the output is an exponential frame average
@@ -998,6 +999,8 @@ export type DrawCtx = {
   items: ReturnType<typeof useEditor.getState>['items'];
   background: ReturnType<typeof useEditor.getState>['background'];
   effects: ReturnType<typeof useEditor.getState>['effects'];
+  border?: BorderId;
+  borderStyle?: BorderStyle;
   webcam: ReturnType<typeof useEditor.getState>['webcam'];
   layoutPreset: ReturnType<typeof useEditor.getState>['layoutPreset'];
   cropRegion: CropRegion;
@@ -1168,6 +1171,85 @@ function cursorToOutput(
 // Composite one fully-rendered frame onto `ctx`. Shared by the export encoder
 // (one call per output frame) and the live editor preview (one call per rAF,
 // with <video> elements as the frame sources) so the two render identically.
+/**
+ * Render the frame at the playhead, at full export resolution, as a PNG.
+ *
+ * Deliberately not a canvas grab of the preview: that canvas is sized to the
+ * on-screen stage, which is typically half the export height or less, so a
+ * screenshot taken from it would be an upscale of something already downscaled.
+ * This re-renders through the same drawFrame the exporter uses, at the same
+ * dimensions the exporter would pick, so a still matches the video frame for
+ * frame — and PNG rather than JPEG because a screenshot of text should not
+ * carry block artefacts.
+ */
+export async function captureStill(state: EditorState): Promise<{ data: ArrayBuffer; width: number; height: number } | null> {
+  const v = state.mainVideoEl;
+  if (!v) return null;
+  const wc = (state as unknown as { webcamVideoEl?: HTMLVideoElement | null }).webcamVideoEl ?? null;
+
+  const intrinsic = { w: v.videoWidth || 1920, h: v.videoHeight || 1080 };
+  const ratio =
+    state.aspect === 'auto' ? intrinsic.w / intrinsic.h : ASPECT_RATIOS[state.aspect] ?? intrinsic.w / intrinsic.h;
+  const crop = state.cropRegion;
+  const cropW = Math.max(1, crop.width * intrinsic.w);
+  const cropH = Math.max(1, crop.height * intrinsic.h);
+  const innerScale = state.fullBleed ? 1 : 1 - (state.effects.paddingPct / 100) * 0.5;
+  // Same rule the exporter uses: size the frame so the recording never has to
+  // scale DOWN, then cap it. A still is the one output where there is no
+  // bitrate to protect, so the cap is the highest preset rather than the
+  // project's export quality.
+  const needH = Math.max(cropH / innerScale, cropW / (ratio * innerScale));
+  const maxH = Math.max(...Object.values(QUALITY_PRESETS).map((q) => q.maxHeight));
+  let outH = Math.min(Math.max(intrinsic.h, needH), maxH);
+  outH = Math.max(2, Math.floor(outH / 2) * 2);
+  let outW = Math.max(2, Math.floor(Math.floor(outH * ratio) / 2) * 2);
+
+  let bgImage: HTMLImageElement | null = null;
+  if (state.background.mode === 'image' && state.background.value) {
+    bgImage = new Image();
+    bgImage.src = state.background.value;
+    await new Promise((res) => { bgImage!.onload = res; bgImage!.onerror = res; });
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = outW; canvas.height = outH;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.imageSmoothingQuality = 'high';
+
+  drawFrame(ctx, outW, outH, v, wc, state.currentMs, {
+    items: state.items,
+    background: state.background,
+    effects: state.effects,
+    webcam: state.webcam,
+    layoutPreset: state.layoutPreset,
+    cropRegion: state.cropRegion,
+    fullBleed: state.fullBleed,
+    bgImage,
+    zoomStyle: state.zoomStyle,
+    border: state.border,
+    borderStyle: state.borderStyle,
+    cursorSamples: state.cursorSamples,
+    cursorSamplesSmooth: state.cursorSamplesSmooth,
+    cursorClicks: state.cursorClicks,
+    cursorKinds: state.cursorKinds,
+    cursorFx: state.cursorFx
+  });
+
+  const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+  if (!blob) return null;
+  return { data: await blob.arrayBuffer(), width: outW, height: outH };
+}
+
+/** Capture the frame at the playhead and write it to the OS pictures folder. */
+export async function saveStillNow(): Promise<string | null> {
+  const shot = await captureStill(useEditor.getState());
+  if (!shot) return null;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const res = await window.api.saveStill({ name: `reframe-${stamp}`, data: shot.data });
+  return res?.saved && res.path ? res.path : null;
+}
+
 export function drawFrame(
   ctx: CanvasRenderingContext2D,
   outW: number,
@@ -1187,6 +1269,12 @@ export function drawFrame(
     ? { ...d.effects, paddingPct: 0, roundnessPx: 0, shadowPct: 0, blurBg: false }
     : d.effects;
 
+  // Full screen leaves no edge to decorate — the card covers every pixel — so
+  // the border goes with the padding and rounded corners rather than drawing a
+  // rim across the middle of the picture.
+  const border: BorderId = d.fullBleed ? 'default' : normalizeBorder(d.border);
+  const borderStyle: BorderStyle = { ...DEFAULT_BORDER_STYLE, ...(d.borderStyle ?? {}) };
+
   ctx.save();
   ctx.fillStyle = '#0a0b0e';
   ctx.fillRect(0, 0, outW, outH);
@@ -1195,22 +1283,34 @@ export function drawFrame(
   // `filter: blur(20px) scale(1.05)` — draw through a blur filter and overscan
   // ~5% so the blurred edges don't reveal the base fill underneath. Skipped
   // entirely at full screen, where the card would cover every pixel of it.
-  if (!d.fullBleed) {
-    ctx.save();
-    if (effects.blurBg) ctx.filter = `blur(${Math.round(20 * (outH / 1080))}px)`;
-    const ov = effects.blurBg ? 0.05 : 0;
+  // Paints the background into any 2D context at a given blur. Factored out
+  // because progressive blur needs the SAME background twice — once sharp,
+  // once blurred — and the two must agree pixel for pixel or the fade between
+  // them shows a seam.
+  const paintBackground = (c: CanvasRenderingContext2D, blurPx: number) => {
+    c.save();
+    if (blurPx > 0) c.filter = `blur(${Math.round(blurPx)}px)`;
+    // Overscan when blurring: a blurred fill's own soft edge would otherwise
+    // reveal the base colour in a band around the frame.
+    const ov = blurPx > 0 ? 0.05 : 0;
     const bx = -outW * ov, by = -outH * ov, bw = outW * (1 + 2 * ov), bh = outH * (1 + 2 * ov);
     if (background.mode === 'color') {
-      ctx.fillStyle = background.value;
-      ctx.fillRect(bx, by, bw, bh);
+      c.fillStyle = background.value;
+      c.fillRect(bx, by, bw, bh);
     } else if (background.mode === 'gradient') {
-      const grad = parseLinearGradient(ctx, background.value, outW, outH);
-      ctx.fillStyle = grad ?? '#1a1d23';
-      ctx.fillRect(bx, by, bw, bh);
+      const grad = parseLinearGradient(c, background.value, outW, outH);
+      c.fillStyle = grad ?? '#1a1d23';
+      c.fillRect(bx, by, bw, bh);
     } else if (background.mode === 'image' && bgImage && bgImage.complete) {
-      drawCover(ctx, bgImage, bx, by, bw, bh);
+      drawCover(c, bgImage, bx, by, bw, bh);
     }
-    ctx.restore();
+    c.restore();
+  };
+
+  if (!d.fullBleed) {
+    const sc0 = outH / 1080;
+    paintBackground(ctx, effects.blurBg ? 20 * sc0 : 0);
+
   }
 
   const padding = effects.paddingPct / 100;
@@ -1240,7 +1340,7 @@ export function drawFrame(
     const vidW = innerW - wcW - 12;
     const sd = srcDims(srcCanvas);
     const vb = fitInside(sd.w, sd.h, cropRegion, innerX, innerY, vidW, innerH);
-    drawVideoBox(ctx, srcCanvas, vb.x, vb.y, vb.w, vb.h, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH);
+    drawVideoBox(ctx, srcCanvas, vb.x, vb.y, vb.w, vb.h, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH, border, borderStyle);
     if (webcamCanvas) {
       drawWebcamVideo(ctx, webcamCanvas, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx, false);
     } else {
@@ -1255,7 +1355,7 @@ export function drawFrame(
     // window that isn't the output's aspect keeps all of itself.
     const sd = srcDims(srcCanvas);
     const card = fitInside(sd.w, sd.h, cropRegion, innerX, innerY, innerW, innerH);
-    drawVideoBox(ctx, srcCanvas, card.x, card.y, card.w, card.h, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH);
+    drawVideoBox(ctx, srcCanvas, card.x, card.y, card.w, card.h, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH, border, borderStyle);
     if (webcam.enabled) {
       // Shrink the bubble as the camera zooms in. Driven by the SAME eased zoom
       // level the video card uses, so the two move in lockstep instead of the
@@ -1448,43 +1548,105 @@ function drawBlurRegions(
     if (rw <= 1 || rh <= 1) continue;
     const strength = Math.max(0, Math.min(1, it.blurStrength ?? 0.5));
     const sc = outH / 1080;
+
+    // Progressive is opt-in per region. A plain blur is a redaction: it must be
+    // total right up to its edge, because a feathered password is a readable
+    // password. Progressive is the depth-of-field look, where the point is that
+    // you cannot see where it starts.
+    const progressive = it.progressive === true;
+    const f = progressive
+      ? Math.min(Math.max(0, Math.min(1, it.blurFeather ?? 0.5)) * Math.min(rw, rh) * 0.6,
+                 Math.min(rw, rh) / 2 - 1)
+      : 0;
+
+    const px = Math.max(2, Math.round((6 + strength * 34) * sc));
+    const m = Math.round(px * 2 + f);
+    const sx = Math.max(0, rx - m);
+    const sy = Math.max(0, ry - m);
+    const sw = Math.min(outW, rx + rw + m) - sx;
+    const sh = Math.min(outH, ry + rh + m) - sy;
+    if (sw <= 1 || sh <= 1) continue;
+
+    const layer = scratchCanvas(sw, sh);
+    const lctx = layer.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    lctx.filter = 'none';
+    lctx.globalCompositeOperation = 'source-over';
+    lctx.imageSmoothingEnabled = true;
+    lctx.clearRect(0, 0, sw, sh);
+
     if ((it.blurStyle ?? 'blur') === 'pixelate') {
       const block = Math.max(4, Math.round((6 + strength * 30) * sc));
-      const dw = Math.max(1, Math.round(rw / block));
-      const dh = Math.max(1, Math.round(rh / block));
-      const tmp = scratchCanvas(dw, dh);
-      const tctx = tmp.getContext('2d') as OffscreenCanvasRenderingContext2D;
-      tctx.imageSmoothingEnabled = false;
-      tctx.clearRect(0, 0, dw, dh);
-      tctx.drawImage(ctx.canvas, rx, ry, rw, rh, 0, 0, dw, dh);
-      ctx.save();
-      ctx.imageSmoothingEnabled = false;
-      ctx.beginPath();
-      ctx.rect(rx, ry, rw, rh);
-      ctx.clip();
-      ctx.drawImage(tmp, 0, 0, dw, dh, rx, ry, rw, rh);
-      ctx.restore();
+      const dw = Math.max(1, Math.round(sw / block));
+      const dh = Math.max(1, Math.round(sh / block));
+      const small = scratchCanvasB(dw, dh);
+      const smctx = small.getContext('2d') as OffscreenCanvasRenderingContext2D;
+      smctx.imageSmoothingEnabled = false;
+      smctx.clearRect(0, 0, dw, dh);
+      smctx.drawImage(ctx.canvas, sx, sy, sw, sh, 0, 0, dw, dh);
+      lctx.imageSmoothingEnabled = false;
+      lctx.drawImage(small, 0, 0, dw, dh, 0, 0, sw, sh);
+      lctx.imageSmoothingEnabled = true;
     } else {
-      const px = Math.max(2, Math.round((6 + strength * 34) * sc));
-      const m = px * 2;
-      const sx = Math.max(0, rx - m);
-      const sy = Math.max(0, ry - m);
-      const sw = Math.min(outW, rx + rw + m) - sx;
-      const sh = Math.min(outH, ry + rh + m) - sy;
-      const tmp = scratchCanvas(sw, sh);
-      const tctx = tmp.getContext('2d') as OffscreenCanvasRenderingContext2D;
-      tctx.clearRect(0, 0, sw, sh);
-      tctx.drawImage(ctx.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(rx, ry, rw, rh);
-      ctx.clip();
-      ctx.filter = `blur(${px}px)`;
-      ctx.drawImage(tmp, 0, 0, sw, sh, sx, sy, sw, sh);
-      ctx.filter = 'none';
-      ctx.restore();
+      const raw = scratchCanvasB(sw, sh);
+      const rctx = raw.getContext('2d') as OffscreenCanvasRenderingContext2D;
+      rctx.clearRect(0, 0, sw, sh);
+      rctx.drawImage(ctx.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+      lctx.filter = `blur(${px}px)`;
+      lctx.drawImage(raw, 0, 0);
+      lctx.filter = 'none';
     }
+
+    // Mask the treated layer down to the region.
+    const mx = rx - sx, my = ry - sy;
+    lctx.globalCompositeOperation = 'destination-in';
+    lctx.fillStyle = '#fff';
+    lctx.fillRect(mx, my, rw, rh);
+
+    if (f > 0.5) {
+      // Feather with one linear ramp PER SIDE rather than a blurred rectangle.
+      // Blurring the mask rounds its corners — which is the blur's corner you
+      // could see at high strength — and it softens every side by the same
+      // amount regardless of where the region sits.
+      //
+      // A side flush with the frame is left hard: if you park the region in a
+      // corner you want that corner blurred to the very edge, and only the two
+      // sides facing into the picture should fall away. Feathering all four
+      // leaves a soft island floating in the middle, which is what made the
+      // effect look like it was only blurring the centre.
+      const tol = Math.max(2, 4 * sc);
+      const ramp = (
+        x0: number, y0: number, x1: number, y1: number
+      ) => {
+        const g = lctx.createLinearGradient(x0, y0, x1, y1);
+        g.addColorStop(0, 'rgba(255,255,255,0)');
+        g.addColorStop(1, 'rgba(255,255,255,1)');
+        lctx.fillStyle = g;
+        lctx.fillRect(0, 0, sw, sh);
+      };
+      if (rx > tol) ramp(mx, 0, mx + f, 0);                       // left
+      if (ry > tol) ramp(0, my, 0, my + f);                       // top
+      if (rx + rw < outW - tol) ramp(mx + rw, 0, mx + rw - f, 0); // right
+      if (ry + rh < outH - tol) ramp(0, my + rh, 0, my + rh - f); // bottom
+    }
+
+    lctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(layer, sx, sy);
   }
+}
+
+// A second scratch, because masking needs the treated copy and its source to be
+// different bitmaps — reading and writing one canvas in the same pass is what
+// produces the smeared, doubled edges.
+let _scratchB: HTMLCanvasElement | OffscreenCanvas | null = null;
+function scratchCanvasB(w: number, h: number) {
+  if (!_scratchB) {
+    _scratchB = typeof OffscreenCanvas !== 'undefined'
+      ? new OffscreenCanvas(w, h)
+      : Object.assign(document.createElement('canvas'), { width: w, height: h });
+  } else if (_scratchB.width !== w || _scratchB.height !== h) {
+    _scratchB.width = w; _scratchB.height = h;
+  }
+  return _scratchB;
 }
 
 // Scratch canvas the 3D path renders the flat card into before texturing it.
@@ -1523,7 +1685,9 @@ function drawVideoBox(
   crop: CropRegion,
   activeZoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number; rotation?: Rotation; scene?: { id: string; p: number; tSec: number; settings: SceneSettings } },
   shadowPct = 0,
-  outH = 1080
+  outH = 1080,
+  border: BorderId = 'default',
+  borderStyle: BorderStyle = DEFAULT_BORDER_STYLE
 ) {
   ctx.save();
 
@@ -1564,13 +1728,50 @@ function drawVideoBox(
     // card the instances are laid out around is then that smaller box.
     const [cx0, cy0, cw, ch] = scene ? sceneCardBox(x, y, w, h, scene.settings, outW, outH) : [x, y, w, h];
     const xf: CardXform = { outW, outH, bx: cx0, by: cy0, bw: cw, bh: ch, zoom: z, zoomTx: tx, zoomTy: ty, rot: rot ?? NO_ROTATION };
-    const card = cardCanvas(Math.max(2, Math.round(cw)), Math.max(2, Math.round(ch)));
+
+    // Supersample the texture by the zoom.
+    //
+    // The flat path applies the zoom to the context and THEN samples the video,
+    // so a 1.5x zoom reads 1.5x more of the source. This path rasterises the
+    // card first and magnifies the bitmap in the projection, so at the same
+    // zoom every texel is stretched over 1.5 screen pixels and the text goes
+    // soft — a rotation was quietly costing resolution that a straight card
+    // kept. Rendering the texture `ss` times larger gives the projection at
+    // least one texel per pixel again.
+    //
+    // Capped at 2.5x and ~12M pixels: this canvas is rebuilt every frame, and
+    // past that the memory traffic costs more than the sharpness returns.
+    const ssWant = Math.max(1, Math.min(z, 2.5));
+    const ssArea = Math.sqrt(12e6 / Math.max(1, cw * ch));
+    const ss = Math.max(1, Math.min(ssWant, ssArea));
+    const card = cardCanvas(Math.max(2, Math.round(cw * ss)), Math.max(2, Math.round(ch * ss)));
     const cctx = card.getContext('2d') as OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
     cctx.clearRect(0, 0, card.width, card.height);
+    // Everything below is quoted against the card box, so it has to scale with
+    // the texture or the corners and rim shrink relative to the picture.
+    (cctx as CanvasRenderingContext2D).imageSmoothingQuality = 'high';
+    // The texture is a fixed box — a quad's size is baked into the projection —
+    // so here the rim takes its room from the picture instead of growing the
+    // card. It must be the SAME thickness the flat path uses, and the picture's
+    // corner must be pulled in by exactly that much: clipping the picture at the
+    // card's own radius while the rim's inner edge sits at radius−T leaves two
+    // corners of different curvature nested inside each other.
+    const bi3 = borderOutset(border, card.width, card.height, borderStyle.widthPct);
+    const outerR3 = Math.min(roundness * ss, Math.min(card.width, card.height) / 2);
     cctx.save();
-    roundedRectPath(cctx as CanvasRenderingContext2D, 0, 0, card.width, card.height, Math.min(roundness, Math.min(cw, ch) / 2));
+    roundedRectPath(cctx as CanvasRenderingContext2D, bi3, bi3, card.width - bi3 * 2, card.height - bi3 * 2, Math.max(0, outerR3 - bi3));
     cctx.clip();
-    drawCoverWithCrop(cctx as CanvasRenderingContext2D, src, crop, 0, 0, card.width, card.height);
+    drawCoverWithCrop(cctx as CanvasRenderingContext2D, src, crop, bi3, bi3, card.width - bi3 * 2, card.height - bi3 * 2);
+    cctx.restore();
+    cctx.save();
+    // Painted INTO the card texture, so the rim follows the perspective and the
+    // rotation for free. Only the `over` half: this canvas is exactly the card,
+    // so a stack or a glow drawn outside it would be cropped away.
+    paintBorderOver(
+      cctx as CanvasRenderingContext2D, border,
+      0, 0, card.width, card.height,
+      outerR3, borderStyle, { thickness: bi3 }
+    );
     cctx.restore();
     const gl = sceneCards ? renderScene3D(card, xf, sceneCards) : renderCard3D(card, xf);
     if (gl) {
@@ -1604,28 +1805,70 @@ function drawVideoBox(
     ctx.translate(-cx + tx, -cy + ty);
   }
 
+  // The rim lives OUTSIDE the picture: the card grows by the border's thickness
+  // and the recording keeps every pixel it had. Insetting the picture instead
+  // meant thickening the border ate into the frame, and at low opacity the
+  // half-painted ring showed raw background as a dark line around the picture.
+  const bo = borderOutset(border, w, h, borderStyle.widthPct);
+  const picR = Math.min(roundness, Math.min(w, h) / 2);
+  const ox = x - bo, oy = y - bo, ow = w + bo * 2, oh = h + bo * 2;
+  const outerR = picR + bo;
+
+  // Anything the border shows OUTSIDE the card — the stack's back pages, the
+  // retro block, the glow — goes down before the card's own shadow, so the
+  // shadow falls across it the way it would on real stacked paper.
+  paintBorderUnder(ctx, border, ox, oy, ow, oh, outerR, borderStyle, { thickness: bo });
+
   // Drop shadow behind the framed box — matches the preview's CSS
   // `box-shadow: 0 (4+s/2)px (20+s)px rgba(0,0,0,s/100)` (Preview.tsx). Cast by
-  // filling the rounded rect (opaque) with a shadow set; the clipped image then
-  // paints over the fill, leaving only the shadow that spilled outside. Drawn
-  // inside the zoom transform so it scales with the box, like the preview.
+  // filling a rounded rect (opaque) with a shadow set; the picture then paints
+  // over the fill, leaving only the shadow that spilled outside. Drawn inside
+  // the zoom transform so it scales with the box, like the preview.
+  //
+  // The caster is inset, never the card's own rect. Two reasons, and both show
+  // up as a dark line around the picture:
+  //
+  //   - With a border, the picture no longer covers the ring, so a full-card
+  //     fill leaves opaque black under the rim, and a translucent glass rim
+  //     over solid black is a black edge.
+  //   - With NO border, the fill and the picture share an edge, and both are
+  //     antialiased. Along that shared edge the picture covers the black only
+  //     partially, so the caster grins through as a hairline — a pre-existing
+  //     artifact that a bright photo on a saturated background makes obvious.
+  //
+  // A pixel and a half of inset puts the picture's soft edge over the
+  // background instead of over the fill. The shadow's silhouette shrinks by
+  // that much, under a blur of tens of pixels.
+  const sc = outH / 1080;
+  // In DEVICE pixels, not scaled by resolution. Antialiasing is a per-pixel
+  // effect: at preview size `1.5 * sc` is under a pixel, so the caster's black
+  // grinned through the picture's soft edge on a small canvas and not on a
+  // large one — which is exactly the "black lines only on the small screen".
+  const casterInset = 1.5;
   const shadowAlpha = Math.max(0, shadowPct) / 100;
   if (shadowAlpha > 0) {
-    const sc = outH / 1080;
     ctx.save();
     ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
     ctx.shadowBlur = (20 + shadowPct) * sc;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = (4 + shadowPct / 2) * sc;
-    roundedRectPath(ctx, x, y, w, h, Math.min(roundness, Math.min(w, h) / 2));
+    roundedRectPath(
+      ctx,
+      x + casterInset, y + casterInset,
+      w - casterInset * 2, h - casterInset * 2,
+      Math.max(0, picR - casterInset)
+    );
     ctx.fillStyle = '#000';
     ctx.fill();
     ctx.restore();
   }
 
-  roundedRectPath(ctx, x, y, w, h, Math.min(roundness, Math.min(w, h) / 2));
+  ctx.save();
+  roundedRectPath(ctx, x, y, w, h, picR);
   ctx.clip();
   drawCoverWithCrop(ctx, src, crop, x, y, w, h);
+  ctx.restore();
+  paintBorderOver(ctx, border, ox, oy, ow, oh, outerR, borderStyle, { thickness: bo });
 
   ctx.restore();
 }

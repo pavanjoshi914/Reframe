@@ -3,6 +3,7 @@ import type { RecordingMeta, CursorSample, ClickSample, CursorKindSample } from 
 import { suggestZoomsFromActivity } from './autoZoom';
 import type { CursorStyleId } from './cursorGlyphs';
 import type { ZoomStyle } from './export';
+import { DEFAULT_BORDER, DEFAULT_BORDER_STYLE, normalizeBorder, type BorderId, type BorderStyle } from './borders';
 import defaultWallpaperUrl from '../../assets/wallpapers/wallpaper-00.jpg';
 
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
@@ -97,6 +98,8 @@ export type LaneItem = {
   rectH?: number;
   blurStyle?: BlurStyle;
   blurStrength?: number; // 0..1
+  blurFeather?: number;  // 0..1 — how far the region's edge fades
+  progressive?: boolean; // feathered depth-of-field instead of a hard redaction
 } & AnnotationStyle;
 
 // Defaults applied when an annotation has no explicit value for a field.
@@ -145,6 +148,10 @@ export type EditorState = {
   // Live ref to the main <video> DOM element. Set by Preview on mount, used
   // by overlays like CropModal that need to render the same frames the editor
   // is showing (the element is already primed and at the right currentTime).
+  /** UI theme. A preference, not project content — never saved into a
+   *  .reframe.json, so opening someone else's project can't restyle your app. */
+  theme: 'dark' | 'light';
+  setTheme: (t: 'dark' | 'light') => void;
   mainVideoEl: HTMLVideoElement | null;
 
   aspect: AspectRatio;
@@ -163,6 +170,14 @@ export type EditorState = {
   polish: PolishPreset;
   showAdvanced: boolean;
   effects: { roundnessPx: number; paddingPct: number; shadowPct: number; motionBlur: number; blurBg: boolean; cursorSpotlight: number; cursorMagnifier: number };
+  // Edge treatment on the recording card (see borders.ts). Deliberately NOT
+  // part of `effects`: picking a polish preset replaces that object wholesale,
+  // which would silently throw away the chosen border.
+  border: BorderId;
+  // Thickness (percent of the card's short side), opacity and an optional tint.
+  // A percentage rather than pixels so the rim stays proportionate on a small
+  // picture-in-picture card and a full-width one alike, at every resolution.
+  borderStyle: BorderStyle;
 
   // "Full screen": the recording fills the output edge to edge, so no
   // background, padding, rounded corners or shadow are visible. Kept as its own
@@ -270,6 +285,8 @@ export type EditorState = {
   setPlaying: (p: boolean) => void;
   setAspect: (a: AspectRatio) => void;
   setBackground: (b: { mode: BackgroundMode; value: string }) => void;
+  setBorder: (b: BorderId) => void;
+  setBorderStyle: (v: Partial<BorderStyle>) => void;
   setCropRegion: (r: CropRegion) => void;
   setWebcam: (w: Partial<EditorState['webcam']>) => void;
   setLayoutPreset: (p: EditorState['layoutPreset']) => void;
@@ -320,6 +337,9 @@ export type SerializedProject = {
   polish: PolishPreset;
   showAdvanced: boolean;
   effects: EditorState['effects'];
+  // Optional: projects saved before borders existed load with no border.
+  border?: BorderId;
+  borderStyle?: BorderStyle;
   // Optional: projects saved before full-screen existed load framed, as they
   // were made.
   fullBleed?: boolean;
@@ -413,6 +433,8 @@ function docOf(s: EditorState): SerializedProject {
     polish: s.polish,
     showAdvanced: s.showAdvanced,
     effects: s.effects,
+    border: s.border,
+    borderStyle: s.borderStyle,
     fullBleed: s.fullBleed,
     zoomStyle: s.zoomStyle,
     exportFormat: s.exportFormat,
@@ -451,7 +473,7 @@ function aspectToRatio(a: AspectRatio, fallback: number): number {
 // climb.
 const presetEffects: Record<PolishPreset, EditorState['effects']> = {
   subtle: { roundnessPx: 6, paddingPct: 12, shadowPct: 6, motionBlur: 0, blurBg: false, cursorSpotlight: 0, cursorMagnifier: 0 },
-  soft: { roundnessPx: 14, paddingPct: 22, shadowPct: 16, motionBlur: 0, blurBg: false, cursorSpotlight: 0, cursorMagnifier: 0 },
+  soft: { roundnessPx: 20, paddingPct: 22, shadowPct: 16, motionBlur: 0, blurBg: false, cursorSpotlight: 0, cursorMagnifier: 0 },
   dramatic: { roundnessPx: 22, paddingPct: 70, shadowPct: 32, motionBlur: 0.5, blurBg: true, cursorSpotlight: 0, cursorMagnifier: 0 }
 };
 
@@ -463,6 +485,15 @@ export const useEditor = create<EditorState>((set, get) => ({
   currentMs: 0,
   playing: false,
   videoIntrinsicSize: null,
+  theme: (() => {
+    try { return (localStorage.getItem('reframe.theme') as 'dark' | 'light') || 'dark'; }
+    catch { return 'dark' as const; }
+  })(),
+  setTheme: (t) => {
+    try { localStorage.setItem('reframe.theme', t); } catch { /* private mode */ }
+    document.documentElement.setAttribute('data-theme', t);
+    set({ theme: t });
+  },
   mainVideoEl: null,
 
   aspect: '16:9',
@@ -491,6 +522,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   polish: 'soft',
   showAdvanced: false,
   effects: presetEffects.soft,
+  border: DEFAULT_BORDER,
+  borderStyle: DEFAULT_BORDER_STYLE,
   fullBleed: false,
   autoTrimPending: false,
   // Cinematic by default: the slow-settling ease-out is what makes a zoom read
@@ -578,6 +611,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   setPlaying: (p) => set({ playing: p }),
   setAspect: (a) => set({ aspect: a }),
   setBackground: (b) => set({ background: b }),
+  setBorder: (b) => set({ border: b }),
+  setBorderStyle: (v) => set((st) => ({ borderStyle: { ...st.borderStyle, ...v } })),
   setCropRegion: (r) => set({
     cropRegion: {
       x: clamp01(r.x),
@@ -662,7 +697,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       // A new scene starts on Orbit so something moves immediately.
       ...(kind === 'scene' ? { scene: 'orbit' } : {}),
       ...(kind === 'blur'
-        ? { rectX: 0.34, rectY: 0.4, rectW: 0.32, rectH: 0.14, blurStyle: 'blur' as const, blurStrength: 0.5 }
+        ? { rectX: 0.34, rectY: 0.4, rectW: 0.32, rectH: 0.14, blurStyle: 'blur' as const, blurStrength: 0.5, blurFeather: 0.5, progressive: false }
         : {})
     };
     // Jump the preview straight to the new item and pause, so the user sees it
@@ -760,6 +795,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       polish: data.polish,
       showAdvanced: data.showAdvanced,
       effects: data.effects,
+      // A project saved when the palette had more presets keeps a name that no
+      // longer exists; fall back rather than rendering nothing with no clue why.
+      border: normalizeBorder(data.border),
+      borderStyle: { ...DEFAULT_BORDER_STYLE, ...(data.borderStyle ?? {}) },
       fullBleed: data.fullBleed ?? false,
       autoTrimPending: false,
       // A project saved before zoom styles existed keeps the feel it was made
@@ -789,6 +828,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       polish: snap.polish,
       showAdvanced: snap.showAdvanced,
       effects: snap.effects,
+      border: normalizeBorder(snap.border),
+      borderStyle: snap.borderStyle ?? DEFAULT_BORDER_STYLE,
       fullBleed: snap.fullBleed ?? false,
       zoomStyle: snap.zoomStyle ?? s.zoomStyle,
       exportFormat: snap.exportFormat,

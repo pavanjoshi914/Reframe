@@ -363,6 +363,8 @@ export function Preview() {
         items: itemsNoAnno,
         background: st.background,
         effects: st.effects,
+        border: st.border,
+        borderStyle: st.borderStyle,
         webcam: st.webcam,
         layoutPreset: st.layoutPreset,
         cropRegion: st.cropRegion,
@@ -376,7 +378,20 @@ export function Preview() {
         zoomStyle: st.zoomStyle
       });
       const k = Math.max(0, Math.min(0.9, st.effects.motionBlur || 0));
-      ctx.globalAlpha = 1 - k;
+      if (st.playing) {
+        // Playing: blend, so the canvas holds an exponential average of the
+        // last few frames — that IS the motion blur.
+        ctx.globalAlpha = 1 - k;
+      } else {
+        // Paused there is no trail to average, and blending onto whatever was
+        // already on the canvas averages in the composition from BEFORE the
+        // edit. Change the padding with motion blur on and the previous card's
+        // border stays ghosted on screen — frozen, because the repaint is
+        // dirty-gated and stops after a few frames, long before the residue
+        // decays away. Clear and draw the frame itself.
+        ctx.clearRect(0, 0, bw, bh);
+        ctx.globalAlpha = 1;
+      }
       ctx.drawImage(work, 0, 0);
       ctx.globalAlpha = 1;
     };
@@ -667,7 +682,7 @@ export function Preview() {
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
         {!fileUrl && (
-          <div className="relative text-sm text-white/60">{t('editor.noRecording')}</div>
+          <div className="relative text-sm text-[var(--muted)]">{t('editor.noRecording')}</div>
         )}
 
         {/* Transparent drag handle over the canvas-drawn webcam PiP (standard
@@ -775,18 +790,25 @@ export function Preview() {
                 top: `${(item.rectY ?? 0.4) * 100}%`,
                 width: `${(item.rectW ?? 0.32) * 100}%`,
                 height: `${(item.rectH ?? 0.14) * 100}%`,
-                outline: selected ? '2px dashed rgba(255,255,255,0.95)' : '1px dashed rgba(255,255,255,0.6)',
+                // Editing chrome only while the region is selected. A dashed
+                // box drawn around every blur at all times is furniture the
+                // viewer has to mentally subtract — and it sits on the frame
+                // you are trying to judge. The div stays (invisible) so the
+                // region is still clickable to select.
+                outline: selected ? '2px dashed rgba(255,255,255,0.95)' : 'none',
                 outlineOffset: '-1px'
               }}
-              title={t('editor.dragReposition')}
+              title={selected ? t('editor.dragReposition') : undefined}
             >
-              <div
-                onPointerDown={(e) => onBlurResizeDown(e, item)}
-                onPointerMove={onBlurResizeMove}
-                onPointerUp={onBlurResizeUp}
-                onPointerCancel={onBlurResizeUp}
-                className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 cursor-nwse-resize rounded-sm bg-white ring-1 ring-black/50"
-              />
+              {selected && (
+                <div
+                  onPointerDown={(e) => onBlurResizeDown(e, item)}
+                  onPointerMove={onBlurResizeMove}
+                  onPointerUp={onBlurResizeUp}
+                  onPointerCancel={onBlurResizeUp}
+                  className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 cursor-nwse-resize rounded-sm bg-white ring-1 ring-black/50"
+                />
+              )}
             </div>
           );
         })}
@@ -819,7 +841,7 @@ export function Preview() {
             onPointerMove={onFocusMove}
             onPointerUp={onFocusUp}
             onPointerCancel={onFocusUp}
-            className="absolute z-20 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full bg-emerald-500/30 ring-2 ring-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.6)] active:cursor-grabbing"
+            className="absolute z-20 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full bg-[var(--accent)]/30 ring-2 ring-[var(--accent)] shadow-[0_0_12px_rgba(74,222,128,0.6)] active:cursor-grabbing"
             style={{ left: `${focusLeftPct}%`, top: `${focusTopPct}%` }}
             title={t('editor.dragFocus')}
           >
