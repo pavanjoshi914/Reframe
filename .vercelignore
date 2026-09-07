@@ -1,0 +1,19 @@
+# The Vercel project's Root Directory is `website`, but the CLI uploads the
+# whole repo as the deployment source — which here means the packaged desktop
+# builds, and a 173MB AppImage trips Vercel's 100MB per-file limit.
+# Only website/** is needed to build the site.
+node_modules
+dist
+dist-electron
+dist_electron
+release
+out
+*.AppImage
+*.deb
+*.dmg
+*.exe
+*.flatpak
+*.blockmap
+*.snap
+*.zip
+.git
