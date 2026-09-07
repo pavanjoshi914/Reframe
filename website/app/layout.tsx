@@ -30,13 +30,13 @@ export const metadata: Metadata = {
     siteName: site.name,
     title: `${site.name} — Free screen recorder & demo editor`,
     description: site.description,
-    images: [{ url: '/videos/demo-poster.webp', width: 1440, height: 810, alt: `A demo recorded and edited in ${site.name}` }]
+    images: [{ url: '/og.png', width: 1200, height: 630, alt: `${site.name} — ${site.tagline}` }]
   },
   twitter: {
     card: 'summary_large_image',
     title: `${site.name} — Free screen recorder & demo editor`,
     description: site.description,
-    images: ['/videos/demo-poster.webp']
+    images: ['/og.png']
   },
   icons: {
     icon: '/logo.png',

@@ -1,5 +1,9 @@
 # Reframe
 
+[![Reframe — turn raw screen recordings into polished product demos](website/public/og.png)](https://getreframe.vercel.app)
+
+**[▶ Watch the demo](https://getreframe.vercel.app)** · **[Download](https://github.com/pavanjoshi914/Reframe/releases/latest)** · **[Install guide](INSTALL.md)**
+
 A cross-platform desktop screen recorder + post-recording editor. Record your screen (with optional system audio, mic, and webcam), then re-frame it: backgrounds, layouts, zoom, trim, speed, annotations — and export to MP4. Targets Linux, Windows, macOS.
 
 ## Stack
@@ -27,7 +31,7 @@ npm run dev
 npm run electron
 ```
 
-`http://localhost:5173/` in a regular browser only shows a help page; the actual UI is in the desktop window.
+`http://127.0.0.1:5273/` in a regular browser only shows a help page; the actual UI is in the desktop window. (Not 5173 — that is Vite's default and other projects claim it; set `REFRAME_DEV_PORT` to move it.)
 
 ### Linux gotchas (handled automatically by `scripts/electron.mjs`)
 
