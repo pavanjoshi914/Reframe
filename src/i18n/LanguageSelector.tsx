@@ -12,12 +12,16 @@ export function LanguageSelector({ className = '' }: { className?: string }) {
       title="Language"
       aria-label="Language"
       className={
-        'cursor-pointer rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/80 outline-none hover:bg-white/10 ' +
+        // Tokens, not white-on-white. This component is shared with the HUD,
+        // whose document never gets a data-theme attribute — so it falls back
+        // to the :root dark values and stays dark, while the editor follows
+        // whatever theme is set.
+        'cursor-pointer rounded-md border border-[var(--stroke)] bg-[var(--fill)] px-2 py-1 text-xs text-[var(--text)] outline-none hover:bg-[var(--fill-hover)] ' +
         className
       }
     >
       {LANGS.map((l) => (
-        <option key={l.code} value={l.code} className="bg-[#15171c] text-white">
+        <option key={l.code} value={l.code} className="bg-[var(--panel)] text-[var(--text)]">
           {l.native}
         </option>
       ))}

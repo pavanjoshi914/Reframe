@@ -73,20 +73,20 @@ export function SupportDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--scrim)] p-6 backdrop-blur-sm"
       onClick={close}
       role="dialog"
       aria-modal="true"
       aria-labelledby="support-title"
     >
       <div
-        className="relative w-full max-w-md overflow-hidden rounded-xl border border-white/10 bg-[#16181d] shadow-2xl"
+        className="relative w-full max-w-md overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel-2)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={close}
           aria-label={t('support.close')}
-          className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-white/40 hover:bg-white/10 hover:text-white/80"
+          className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-[var(--faint)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
         >
           <X size={15} />
         </button>
@@ -96,39 +96,39 @@ export function SupportDialog({ onClose }: { onClose: () => void }) {
             <Heart size={20} fill="currentColor" />
           </span>
 
-          <h2 id="support-title" className="mt-4 text-lg font-semibold text-white">
+          <h2 id="support-title" className="mt-4 text-lg font-semibold text-[var(--text)]">
             {t('support.title')}
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-white/60">{t('support.body')}</p>
+          <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{t('support.body')}</p>
 
           <div className="mt-5 flex flex-col gap-2">
             <button
               onClick={() => open(SPONSOR_URL)}
-              className="flex w-full items-center justify-center gap-2 rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-black hover:bg-emerald-400"
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-black hover:bg-[var(--accent)]"
             >
               <Heart size={15} fill="currentColor" />
               {t('support.sponsor')}
             </button>
             <button
               onClick={() => open(SPONSOR_PAGE_URL)}
-              className="w-full rounded-md border border-white/10 px-4 py-2 text-sm text-white/80 hover:bg-white/5"
+              className="w-full rounded-md border border-[var(--line)] px-4 py-2 text-sm text-[var(--text)] hover:bg-[var(--panel-2)]"
             >
               {t('support.otherWays')}
             </button>
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-4 border-t border-white/5 bg-black/20 px-6 py-3">
-          <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-white/50 hover:text-white/70">
+        <div className="flex items-center justify-between gap-4 border-t border-white/5 bg-[var(--panel-2)] px-6 py-3">
+          <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-[var(--muted)] hover:text-[var(--muted)]">
             <input
               type="checkbox"
               checked={dontShow}
               onChange={(e) => setDontShow(e.target.checked)}
-              className="h-3.5 w-3.5 accent-emerald-500"
+              className="h-3.5 w-3.5 accent-[var(--accent)]"
             />
             {t('support.dontShowAgain')}
           </label>
-          <button onClick={close} className="text-xs text-white/50 hover:text-white/80">
+          <button onClick={close} className="text-xs text-[var(--muted)] hover:text-[var(--text)]">
             {t('support.later')}
           </button>
         </div>

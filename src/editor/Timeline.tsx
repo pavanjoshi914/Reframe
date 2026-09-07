@@ -5,7 +5,7 @@ import { isTextEntry } from './textEntry';
 import { useT } from '../i18n';
 
 const LANES: { kind: LaneKind; label: string; key: string; icon: LucideIcon; color: string; chip: string }[] = [
-  { kind: 'zoom', label: 'Zoom', key: 'Z', icon: ZoomIn, color: 'border-emerald-400', chip: 'bg-emerald-500/30' },
+  { kind: 'zoom', label: 'Zoom', key: 'Z', icon: ZoomIn, color: 'border-[var(--accent)]', chip: 'bg-[var(--accent)]/30' },
   { kind: 'trim', label: 'Trim', key: 'T', icon: Scissors, color: 'border-rose-400', chip: 'bg-rose-500/30' },
   { kind: 'annotation', label: 'Annotation', key: 'A', icon: MessageSquare, color: 'border-amber-400', chip: 'bg-amber-500/30' },
   { kind: 'speed', label: 'Speed', key: 'S', icon: Gauge, color: 'border-sky-400', chip: 'bg-sky-500/30' },
@@ -230,10 +230,10 @@ export function Timeline() {
   const emptyLanes = laneRows.filter((r) => r.laneItems.length === 0).map((r) => r.lane);
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-white/5 bg-[#0e0f12]">
-      <div className="flex items-center justify-between border-b border-white/5 px-3 py-1.5 text-xs text-white/50">
+    <div className="flex flex-col overflow-hidden rounded-xl border border-white/5 bg-[var(--panel)]">
+      <div className="flex items-center justify-between border-b border-white/5 px-3 py-1.5 text-xs text-[var(--muted)]">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-white/80">{formatTime(currentMs)} / {formatTime(durationMs)}</span>
+          <span className="font-mono text-[var(--text)]">{formatTime(currentMs)} / {formatTime(durationMs)}</span>
           <AspectSelector />
           <span className="text-[11px]">{t('tl.addHint')}</span>
         </div>
@@ -241,7 +241,7 @@ export function Timeline() {
           <button
             onClick={() => applyManualZoom(pixelsPerSecond / PPS_STEP)}
             disabled={pixelsPerSecond <= PPS_MIN + 0.01}
-            className="flex h-5 w-5 items-center justify-center rounded border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-40"
+            className="flex h-5 w-5 items-center justify-center rounded border border-[var(--line)] bg-[var(--panel-2)] text-[var(--muted)] hover:bg-[var(--panel-3)] disabled:opacity-40"
             title={t('tl.zoomOut')}
             aria-label={t('tl.zoomOut')}
           >
@@ -253,14 +253,14 @@ export function Timeline() {
             max={1000}
             value={Math.round(ppsToSlider(pixelsPerSecond) * 1000)}
             onChange={(e) => applyManualZoom(sliderToPps(Number(e.target.value) / 1000))}
-            className="h-1 w-28 cursor-pointer accent-emerald-500"
+            className="h-1 w-28 cursor-pointer accent-[var(--accent)]"
             aria-label={t('tl.timelineZoom')}
             title={t('tl.timelineZoom')}
           />
           <button
             onClick={() => applyManualZoom(pixelsPerSecond * PPS_STEP)}
             disabled={pixelsPerSecond >= PPS_MAX - 0.01}
-            className="flex h-5 w-5 items-center justify-center rounded border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-40"
+            className="flex h-5 w-5 items-center justify-center rounded border border-[var(--line)] bg-[var(--panel-2)] text-[var(--muted)] hover:bg-[var(--panel-3)] disabled:opacity-40"
             title={t('tl.zoomIn')}
             aria-label={t('tl.zoomIn')}
           >
@@ -270,17 +270,17 @@ export function Timeline() {
             onClick={() => setFitToWidth(true)}
             disabled={fitToWidth}
             className={
-              'flex items-center gap-1 rounded border border-white/10 px-1.5 py-0.5 ' +
+              'flex items-center gap-1 rounded border border-[var(--line)] px-1.5 py-0.5 ' +
               (fitToWidth
-                ? 'bg-emerald-500/15 text-emerald-300'
-                : 'bg-white/5 text-white/70 hover:bg-white/10')
+                ? 'bg-[var(--accent-dim)] text-[var(--accent)]'
+                : 'bg-[var(--panel-2)] text-[var(--muted)] hover:bg-[var(--panel-3)]')
             }
             title={t('tl.fitWidth')}
           >
             <Maximize2 size={11} />
             {t('tl.fit')}
           </button>
-          <span className="text-white/30">|</span>
+          <span className="text-[var(--faint)]">|</span>
           <span>{t('tl.zoomHint')}</span>
         </div>
       </div>
@@ -294,7 +294,7 @@ export function Timeline() {
       <div ref={scrollRef} className="min-w-0 max-h-[42vh] overflow-auto" onWheel={handleWheel}>
         <div style={{ width: LANE_LABEL_W + trackWidth + TRACK_END_PAD }}>
           {/* time ruler */}
-          <div className="sticky top-0 z-30 h-6 border-b border-white/5 bg-[#0a0b0e]" style={{ paddingLeft: LANE_LABEL_W }}>
+          <div className="sticky top-0 z-30 h-6 border-b border-white/5 bg-[var(--bg)]" style={{ paddingLeft: LANE_LABEL_W }}>
             <div
               ref={trackRef}
               // overflow-hidden matters for layout, not looks: each tick is an
@@ -314,10 +314,10 @@ export function Timeline() {
               {ticks.map((t) => (
                 <div
                   key={t}
-                  className="absolute top-0 h-full border-l border-white/10"
+                  className="absolute top-0 h-full border-l border-[var(--line)]"
                   style={{ left: t * pixelsPerSecond }}
                 >
-                  <span className="ml-1 text-[10px] text-white/40">{formatTickLabel(t, tickStep)}</span>
+                  <span className="ml-1 text-[10px] text-[var(--faint)]">{formatTickLabel(t, tickStep)}</span>
                 </div>
               ))}
             </div>
@@ -329,7 +329,7 @@ export function Timeline() {
               return (
                 <div key={lane.kind} className="flex h-12 items-stretch border-b border-white/5">
                   <div
-                    className="sticky left-0 z-20 flex shrink-0 items-center justify-between border-r border-white/5 bg-[#0a0b0e] px-2 text-[11px] text-white/60"
+                    className="sticky left-0 z-20 flex shrink-0 items-center justify-between border-r border-white/5 bg-[var(--bg)] px-2 text-[11px] text-[var(--muted)]"
                     style={{ width: LANE_LABEL_W }}
                   >
                     <span className="flex items-center gap-1.5">
@@ -342,7 +342,7 @@ export function Timeline() {
                           data-testid="suggest-zooms"
                           onClick={() => suggestZooms()}
                           disabled={!hasActivity}
-                          className="flex h-5 w-5 items-center justify-center rounded bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-30"
+                          className="flex h-5 w-5 items-center justify-center rounded bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent-dim)] disabled:opacity-30"
                           title={hasActivity ? t('tl.suggestZooms') : t('tl.noCursorData')}
                           aria-label={t('tl.suggestZooms')}
                         >
@@ -351,7 +351,7 @@ export function Timeline() {
                       )}
                       <button
                         onClick={() => addItem(lane.kind, currentMs)}
-                        className="flex h-5 w-5 items-center justify-center rounded bg-white/5 hover:bg-white/15"
+                        className="flex h-5 w-5 items-center justify-center rounded bg-[var(--panel-2)] hover:bg-white/15"
                         title={`${t('tl.add', { label: t('tl.' + lane.kind) })} (${lane.key})`}
                         aria-label={t('tl.add', { label: t('tl.' + lane.kind) })}
                       >
@@ -393,10 +393,10 @@ export function Timeline() {
 
             {/* playhead spans all lanes */}
             <div
-              className="pointer-events-none absolute inset-y-0 w-px bg-emerald-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]"
+              className="pointer-events-none absolute inset-y-0 w-px bg-[var(--accent)] shadow-[0_0_8px_rgba(74,222,128,0.6)]"
               style={{ left: LANE_LABEL_W + playheadPx }}
             >
-              <div className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-emerald-400" />
+              <div className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-[var(--accent)]" />
             </div>
           </div>
         </div>
@@ -404,24 +404,24 @@ export function Timeline() {
 
       {emptyLanes.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5 border-t border-white/5 px-2 py-1.5">
-          <span className="mr-0.5 text-[10px] uppercase tracking-wider text-white/30">{t('tl.addLane')}</span>
+          <span className="mr-0.5 text-[10px] uppercase tracking-wider text-[var(--faint)]">{t('tl.addLane')}</span>
           {emptyLanes.map((lane) => (
             <span key={lane.kind} className="flex items-center">
               <button
                 onClick={() => addItem(lane.kind, currentMs)}
-                className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] text-white/60 transition hover:border-white/25 hover:bg-white/10 hover:text-white"
+                className="flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-white/[0.03] px-2 py-1 text-[11px] text-[var(--muted)] transition hover:border-[var(--line-2)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
                 title={`${t('tl.add', { label: t('tl.' + lane.kind) })} (${lane.key})`}
               >
                 <lane.icon size={11} />
                 {t('tl.' + lane.kind)}
-                <span className="text-[9px] text-white/30">{lane.key}</span>
+                <span className="text-[9px] text-[var(--faint)]">{lane.key}</span>
               </button>
               {lane.kind === 'zoom' ? (
                 <button
                   data-testid="suggest-zooms"
                   onClick={() => suggestZooms()}
                   disabled={!hasActivity}
-                  className="ml-1 flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-30"
+                  className="ml-1 flex h-6 w-6 items-center justify-center rounded-md bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent-dim)] disabled:opacity-30"
                   title={hasActivity ? t('tl.suggestZooms') : t('tl.noCursorData')}
                   aria-label={t('tl.suggestZooms')}
                 >
@@ -517,7 +517,7 @@ function ItemChip({
       style={{ left, width }}
       title="Drag to move; drag edges to resize; click to select"
     >
-      <div className={'truncate px-1.5 pt-1 text-[10px] tracking-wide text-white/80 ' + (item.kind === 'annotation' ? 'normal-case' : 'uppercase')}>
+      <div className={'truncate px-1.5 pt-1 text-[10px] tracking-wide text-[var(--text)] ' + (item.kind === 'annotation' ? 'normal-case' : 'uppercase')}>
         {labelText}
       </div>
       {/* resize handles */}
@@ -553,24 +553,24 @@ function SelectedItemInspector() {
   const showSidebarHint = item.kind === 'zoom' || item.kind === 'speed';
 
   return (
-    <div className="flex items-center gap-3 border-b border-white/5 bg-[#0e0f12] px-3 py-1.5 text-xs">
-      <span className="font-medium uppercase tracking-wide text-white/60">{item.kind}</span>
-      <span className="font-mono text-white/40">
+    <div className="flex items-center gap-3 border-b border-white/5 bg-[var(--panel)] px-3 py-1.5 text-xs">
+      <span className="font-medium uppercase tracking-wide text-[var(--muted)]">{item.kind}</span>
+      <span className="font-mono text-[var(--faint)]">
         {formatTime(item.startMs)} → {formatTime(item.endMs)}
       </span>
 
       {item.kind === 'annotation' && (
-        <span className="truncate text-[11px] text-white/40">{t('tl.annotationEditHint')}</span>
+        <span className="truncate text-[11px] text-[var(--faint)]">{t('tl.annotationEditHint')}</span>
       )}
 
       {showSidebarHint && (
-        <span className="text-[11px] text-white/40">{t('tl.adjustHint')}</span>
+        <span className="text-[11px] text-[var(--faint)]">{t('tl.adjustHint')}</span>
       )}
 
       <div className="flex-1" />
       <button
         onClick={() => { removeItem(item.id); selectItem(null); }}
-        className="flex items-center gap-1 rounded border border-white/10 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-300 hover:bg-rose-500/20"
+        className="flex items-center gap-1 rounded border border-[var(--line)] bg-rose-500/10 px-2 py-1 text-[11px] text-rose-300 hover:bg-rose-500/20"
         title={t('tl.deleteDel')}
       >
         <Trash2 size={11} /> {t('common.delete')}
@@ -587,7 +587,7 @@ function AspectSelector() {
     <select
       value={aspect}
       onChange={(e) => setAspect(e.target.value as any)}
-      className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-xs text-white/80"
+      className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2 py-0.5 text-xs text-[var(--text)]"
       aria-label={t('editor.aspect')}
     >
       <option value="16:9">16:9</option>

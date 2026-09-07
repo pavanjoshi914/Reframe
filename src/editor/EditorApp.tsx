@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart } from 'lucide-react';
+import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart, Sun, Moon, ChevronUp, ChevronDown, Camera, Check } from 'lucide-react';
 import { SPONSOR_URL } from '@shared/sponsor';
 import { Preview } from './Preview';
 import { Sidebar } from './Sidebar';
@@ -7,6 +7,7 @@ import { Timeline } from './Timeline';
 import { useEditor, type SerializedProject } from './store';
 import { isTextEntry } from './textEntry';
 import type { ProjectFile } from '@shared/ipc';
+import { saveStillNow } from './export';
 import wordmarkUrl from '../../assets/logo-wordmark-transparent.png';
 import { useT } from '../i18n';
 import { LanguageSelector } from '../i18n/LanguageSelector';
@@ -23,6 +24,10 @@ declare global {
 }
 
 export function EditorApp() {
+  const [shotFlash, setShotFlash] = useState(false);
+  const [timelineCollapsed, setTimelineCollapsed] = useState(false);
+  const theme = useEditor((s) => s.theme);
+  const setTheme = useEditor((s) => s.setTheme);
   const setRecording = useEditor((s) => s.setRecording);
   const playing = useEditor((s) => s.playing);
   const setPlaying = useEditor((s) => s.setPlaying);
@@ -303,14 +308,15 @@ export function EditorApp() {
   }
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-[#0a0b0e]">
+    <div className="flex h-screen w-screen flex-col bg-[var(--bg)]">
       {/* top toolbar */}
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-white/5 bg-[#0e0f12] px-4">
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-white/5 bg-[var(--panel)] px-4">
         <div className="flex items-center gap-3 text-sm">
           <img
             src={wordmarkUrl}
             alt="Reframe"
-            className="h-7 object-contain [filter:brightness(0)_invert(1)]"
+            className="h-7 object-contain"
+            style={{ filter: 'var(--wordmark)' }}
           />
           <Divider />
           <FileMenu onSave={handleSaveProject} onLoad={handleLoadProject} />
@@ -319,7 +325,7 @@ export function EditorApp() {
             <button
               onClick={() => useEditor.getState().undo()}
               disabled={!canUndo}
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-white/10 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--line)] hover:bg-[var(--panel-2)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
               aria-label={t('editor.undo')}
               title={`${t('editor.undo')} (Ctrl+Z)`}
             >
@@ -328,7 +334,7 @@ export function EditorApp() {
             <button
               onClick={() => useEditor.getState().redo()}
               disabled={!canRedo}
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-white/10 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--line)] hover:bg-[var(--panel-2)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
               aria-label={t('editor.redo')}
               title={`${t('editor.redo')} (Ctrl+Shift+Z)`}
             >
@@ -343,13 +349,20 @@ export function EditorApp() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--line)] text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
+          >
+            {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
           <LanguageSelector />
           <Divider />
-          <label className="text-xs text-white/60">{t('editor.aspect')}</label>
+          <label className="text-xs text-[var(--muted)]">{t('editor.aspect')}</label>
           <select
             value={aspect}
             onChange={(e) => setAspect(e.target.value as any)}
-            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs"
+            className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2 py-1 text-xs"
           >
             <option value="16:9">16:9</option>
             <option value="4:3">4:3</option>
@@ -358,8 +371,8 @@ export function EditorApp() {
             <option value="auto">Auto</option>
           </select>
           <Divider />
-          <button onClick={handleLoadProject} className="rounded-md border border-white/10 px-3 py-1 text-xs hover:bg-white/5">{t('editor.loadProject')}</button>
-          <button onClick={handleSaveProject} className="rounded-md border border-white/10 px-3 py-1 text-xs hover:bg-white/5">{t('editor.saveProjectBtn')}</button>
+          <button onClick={handleLoadProject} className="rounded-md border border-[var(--line)] px-3 py-1 text-xs hover:bg-[var(--panel-2)]">{t('editor.loadProject')}</button>
+          <button onClick={handleSaveProject} className="rounded-md border border-[var(--line)] px-3 py-1 text-xs hover:bg-[var(--panel-2)]">{t('editor.saveProjectBtn')}</button>
           <Divider />
           {/* Always-available way to support the project, so the post-export
               prompt can stay rare and dismissible. */}
@@ -367,7 +380,7 @@ export function EditorApp() {
             onClick={() => void window.api.openExternal(SPONSOR_URL)}
             title={t('editor.sponsorTitle')}
             aria-label={t('editor.sponsorTitle')}
-            className="flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/70 transition hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300"
+            className="flex items-center gap-1.5 rounded-md border border-[var(--line)] px-2.5 py-1 text-xs text-[var(--muted)] transition hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300"
           >
             <Heart size={13} fill="currentColor" className="text-rose-400" />
             {t('editor.sponsor')}
@@ -383,23 +396,23 @@ export function EditorApp() {
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div
             ref={previewWrapRef}
-            className="flex flex-1 flex-col overflow-hidden rounded-xl border border-white/5 bg-[#0e0f12]"
+            className="flex flex-1 flex-col overflow-hidden rounded-xl border border-white/5 bg-[var(--panel)]"
           >
             <div className="flex-1 overflow-hidden">
               <Preview />
             </div>
             {/* playback strip — kept inside the fullscreen wrapper so play /
                 scrub / exit remain reachable when the preview is fullscreened. */}
-            <div className="flex h-10 shrink-0 items-center gap-3 border-t border-white/5 bg-[#0e0f12] px-4 text-xs">
+            <div className="flex h-10 shrink-0 items-center gap-3 border-t border-white/5 bg-[var(--panel)] px-4 text-xs">
               <button
                 onClick={() => setPlaying(!playing)}
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--panel-3)] hover:bg-white/20"
                 aria-label={playing ? t('editor.pause') : t('editor.play')}
                 title={playing ? t('editor.pause') : t('editor.play')}
               >
                 {playing ? <Pause size={14} /> : <Play size={14} />}
               </button>
-              <span className="font-mono text-white/60">
+              <span className="font-mono text-[var(--muted)]">
                 {fmt(currentMs)} / {fmt(durationMs)}
               </span>
               <input
@@ -408,18 +421,18 @@ export function EditorApp() {
                 max={Math.max(1, durationMs)}
                 value={currentMs}
                 onChange={(e) => useEditor.getState().setCurrent(Number(e.target.value))}
-                className="flex-1 accent-emerald-500"
+                className="flex-1 accent-[var(--accent)]"
                 aria-label={t('editor.scrubber')}
               />
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setVideoMuted(!videoMuted)}
-                  className="flex h-7 w-7 items-center justify-center rounded hover:bg-white/10"
+                  className="flex h-7 w-7 items-center justify-center rounded hover:bg-[var(--panel-3)]"
                   aria-label={videoMuted ? t('editor.unmute') : t('editor.mute')}
                   title={videoMuted ? t('editor.unmuteHint') : t('editor.muteHint')}
                 >
                   {videoMuted || videoVolume === 0 ? (
-                    <VolumeX size={14} className="text-white/60" />
+                    <VolumeX size={14} className="text-[var(--muted)]" />
                   ) : (
                     <Volume2 size={14} />
                   )}
@@ -435,22 +448,48 @@ export function EditorApp() {
                     if (v > 0 && videoMuted) setVideoMuted(false);
                     if (v === 0 && !videoMuted) setVideoMuted(true);
                   }}
-                  className="h-1 w-20 cursor-pointer accent-emerald-500"
+                  className="h-1 w-20 cursor-pointer accent-[var(--accent)]"
                   aria-label={t('editor.volume')}
                   title={t('editor.volume')}
                 />
               </div>
               <button
                 onClick={handleFullscreen}
-                className="flex h-7 w-7 items-center justify-center rounded hover:bg-white/10"
+                className="flex h-7 w-7 items-center justify-center rounded hover:bg-[var(--panel-3)]"
                 aria-label={isFullscreen ? t('editor.exitFullscreen') : t('editor.fullscreen')}
                 title={isFullscreen ? 'Exit fullscreen (Esc)' : t('editor.fullscreen')}
               >
                 {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
               </button>
+              {/* Collapse the lanes. The transport row above stays put, so the
+                  playhead and scrubber are still reachable with the timeline
+                  hidden — hiding both is what makes a collapsed timeline
+                  useless. */}
+              {/* Capture the current frame. It lives here as well as in the
+                  sidebar because this row is where the playhead is — and as an
+                  icon buried beside Export it was effectively hidden. */}
+              <button
+                onClick={async () => {
+                  const p = await saveStillNow();
+                  if (p) { setShotFlash(true); window.setTimeout(() => setShotFlash(false), 1400); }
+                }}
+                title={t('side.captureFrameHint')}
+                aria-label={t('side.captureFrame')}
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--line)] text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
+              >
+                {shotFlash ? <Check size={14} className="text-[var(--accent)]" /> : <Camera size={14} />}
+              </button>
+              <button
+                onClick={() => setTimelineCollapsed((v) => !v)}
+                title={timelineCollapsed ? 'Show timeline' : 'Hide timeline'}
+                aria-expanded={!timelineCollapsed}
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--line)] text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
+              >
+                {timelineCollapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
             </div>
           </div>
-          <Timeline />
+          {!timelineCollapsed && <Timeline />}
         </div>
         <Sidebar />
       </div>
@@ -461,7 +500,7 @@ export function EditorApp() {
 function FileMenu({ onSave, onLoad }: { onSave: () => void; onLoad: () => void }) {
   const t = useT();
   return (
-    <div className="flex items-center gap-3 text-white/60">
+    <div className="flex items-center gap-3 text-[var(--muted)]">
       <MenuItem
         label={t('editor.file')}
         items={[
@@ -504,8 +543,8 @@ function MenuItem({
     // Shared `name` makes these an exclusive accordion: opening one menu closes
     // the others, so the File/Edit/View dropdowns can't stack and overlap.
     <details name="editor-menu" className="relative">
-      <summary className="cursor-pointer list-none select-none text-white/60 hover:text-white">{label}</summary>
-      <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-md border border-white/10 bg-[#16181d] p-1 shadow-2xl">
+      <summary className="cursor-pointer list-none select-none text-[var(--muted)] hover:text-[var(--text)]">{label}</summary>
+      <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-md border border-[var(--line)] bg-[var(--panel-2)] p-1 shadow-2xl">
         {items.map((it) => (
           <button
             key={it.label}
@@ -513,10 +552,10 @@ function MenuItem({
               it.onClick();
               (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
             }}
-            className="flex w-full items-center justify-between gap-4 rounded px-2 py-1.5 text-left text-sm text-white/80 hover:bg-white/10"
+            className="flex w-full items-center justify-between gap-4 rounded px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--panel-3)]"
           >
             <span>{it.label}</span>
-            {it.shortcut && <span className="text-[10px] text-white/40">{it.shortcut}</span>}
+            {it.shortcut && <span className="text-[10px] text-[var(--faint)]">{it.shortcut}</span>}
           </button>
         ))}
       </div>
@@ -599,10 +638,10 @@ function ProjectNameField({ path }: { path: string }) {
       <button
         onClick={enterEdit}
         title={`${path}\n\n${t('editor.clickToRename')}`}
-        className="group flex max-w-[360px] items-center gap-2 truncate rounded px-1.5 py-0.5 text-xs text-white/55 hover:bg-white/[0.06] hover:text-white/80"
+        className="group flex max-w-[360px] items-center gap-2 truncate rounded px-1.5 py-0.5 text-xs text-[var(--muted)] hover:bg-white/[0.06] hover:text-[var(--text)]"
       >
         <span className="truncate">{projectDisplayName(path)}</span>
-        <span className="shrink-0 text-emerald-400/70">· {formatSavedAgo(lastSavedAt, t)}</span>
+        <span className="shrink-0 text-[var(--accent)]/70">· {formatSavedAgo(lastSavedAt, t)}</span>
       </button>
     );
   }
@@ -626,7 +665,7 @@ function ProjectNameField({ path }: { path: string }) {
             cancel();
           }
         }}
-        className="w-[280px] rounded border border-emerald-400/40 bg-black/40 px-2 py-0.5 text-xs text-white outline-none focus:border-emerald-400/70"
+        className="w-[280px] rounded border border-[var(--accent)] bg-[var(--field)] px-2 py-0.5 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
       />
       {error && <span className="text-xs text-red-400" title={error}>!</span>}
     </div>
@@ -634,7 +673,7 @@ function ProjectNameField({ path }: { path: string }) {
 }
 
 function Divider() {
-  return <span className="h-4 w-px bg-white/10" />;
+  return <span className="h-4 w-px bg-[var(--panel-3)]" />;
 }
 
 function fmt(ms: number) {

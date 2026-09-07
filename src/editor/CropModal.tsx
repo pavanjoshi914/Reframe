@@ -229,19 +229,19 @@ export function CropModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] p-6 backdrop-blur-sm"
       onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0e0f12] shadow-2xl">
+      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] shadow-2xl">
         {/* Header */}
         <div className="flex shrink-0 items-start justify-between border-b border-white/5 px-6 py-4">
           <div>
-            <h2 className="text-base font-semibold text-white">{t('side.cropVideo')}</h2>
-            <p className="mt-0.5 text-xs text-white/50">{t('crop.dragHint')}</p>
+            <h2 className="text-base font-semibold text-[var(--text)]">{t('side.cropVideo')}</h2>
+            <p className="mt-0.5 text-xs text-[var(--muted)]">{t('crop.dragHint')}</p>
           </div>
           <button
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded hover:bg-white/10"
+            className="flex h-7 w-7 items-center justify-center rounded hover:bg-[var(--panel-3)]"
             aria-label={t('common.close')}
           >
             <X size={16} />
@@ -292,22 +292,22 @@ export function CropModal({ onClose }: { onClose: () => void }) {
 
             {/* Edge handles */}
             <div
-              className="absolute h-2 cursor-ns-resize bg-emerald-400/0 hover:bg-emerald-400/30"
+              className="absolute h-2 cursor-ns-resize bg-[var(--accent)]/0 hover:bg-[var(--accent-dim)]"
               style={{ left: insetLeft, top: `calc(${insetTop} - 4px)`, width: insetW }}
               onPointerDown={(e) => onPointerDown('top', e)}
             />
             <div
-              className="absolute h-2 cursor-ns-resize bg-emerald-400/0 hover:bg-emerald-400/30"
+              className="absolute h-2 cursor-ns-resize bg-[var(--accent)]/0 hover:bg-[var(--accent-dim)]"
               style={{ left: insetLeft, top: `calc(${insetTop} + ${insetH} - 4px)`, width: insetW }}
               onPointerDown={(e) => onPointerDown('bottom', e)}
             />
             <div
-              className="absolute w-2 cursor-ew-resize bg-emerald-400/0 hover:bg-emerald-400/30"
+              className="absolute w-2 cursor-ew-resize bg-[var(--accent)]/0 hover:bg-[var(--accent-dim)]"
               style={{ top: insetTop, left: `calc(${insetLeft} - 4px)`, height: insetH }}
               onPointerDown={(e) => onPointerDown('left', e)}
             />
             <div
-              className="absolute w-2 cursor-ew-resize bg-emerald-400/0 hover:bg-emerald-400/30"
+              className="absolute w-2 cursor-ew-resize bg-[var(--accent)]/0 hover:bg-[var(--accent-dim)]"
               style={{ top: insetTop, left: `calc(${insetLeft} + ${insetW} - 4px)`, height: insetH }}
               onPointerDown={(e) => onPointerDown('right', e)}
             />
@@ -315,7 +315,7 @@ export function CropModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Numeric inputs + aspect-ratio + actions */}
-        <div className="shrink-0 border-t border-white/5 bg-[#0a0b0e] px-6 py-4">
+        <div className="shrink-0 border-t border-white/5 bg-[var(--bg)] px-6 py-4">
           <div className="flex flex-wrap items-end gap-3">
             <NumericField label="X" value={px.x} onChange={(v) => handleNumericChange('x', v)} disabled={!intrinsic} />
             <NumericField label="Y" value={px.y} onChange={(v) => handleNumericChange('y', v)} disabled={!intrinsic} />
@@ -323,14 +323,14 @@ export function CropModal({ onClose }: { onClose: () => void }) {
             <NumericField label="H" value={px.h} onChange={(v) => handleNumericChange('h', v)} disabled={!intrinsic} />
 
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] uppercase tracking-wider text-white/50">{t('crop.aspect')}</span>
+              <span className="text-[11px] uppercase tracking-wider text-[var(--muted)]">{t('crop.aspect')}</span>
               <select
                 value={aspectValue == null ? '' : String(aspectValue)}
                 onChange={(e) => {
                   const v = e.target.value === '' ? null : Number(e.target.value);
                   applyAspectPreset(v);
                 }}
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm"
+                className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2 py-1.5 text-sm"
               >
                 {ASPECT_PRESETS.map((p) => (
                   <option key={p.label} value={p.value == null ? '' : String(p.value)}>{p.value == null ? t('crop.free') : p.label}</option>
@@ -344,8 +344,8 @@ export function CropModal({ onClose }: { onClose: () => void }) {
               className={
                 'flex h-9 items-center justify-center rounded-md border px-2 text-xs ' +
                 (aspectLocked
-                  ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300'
-                  : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10') +
+                  ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                  : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--muted)] hover:bg-[var(--panel-3)]') +
                 ' disabled:opacity-40 disabled:cursor-not-allowed'
               }
               title={aspectLocked ? t('crop.aspectLocked') : t('crop.aspectUnlocked')}
@@ -354,7 +354,7 @@ export function CropModal({ onClose }: { onClose: () => void }) {
               {aspectLocked ? <Lock size={13} /> : <Unlock size={13} />}
             </button>
 
-            <div className="ml-auto text-xs text-white/40">
+            <div className="ml-auto text-xs text-[var(--faint)]">
               {intrinsic ? `${intrinsic.w} × ${intrinsic.h}px source` : ''}
             </div>
           </div>
@@ -362,19 +362,19 @@ export function CropModal({ onClose }: { onClose: () => void }) {
           <div className="mt-4 flex items-center justify-end gap-2">
             <button
               onClick={() => { setCrop(DEFAULT_CROP_REGION); setAspectLocked(false); setAspectValue(null); }}
-              className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10"
+              className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-1.5 text-xs text-[var(--text)] hover:bg-[var(--panel-3)]"
             >
               {t('common.reset')}
             </button>
             <button
               onClick={onClose}
-              className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10"
+              className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-1.5 text-xs text-[var(--text)] hover:bg-[var(--panel-3)]"
             >
               {t('common.cancel')}
             </button>
             <button
               onClick={handleCommit}
-              className="rounded-md bg-emerald-500 px-4 py-1.5 text-xs font-medium text-black hover:bg-emerald-400"
+              className="rounded-md bg-[var(--accent)] px-4 py-1.5 text-xs font-medium text-black hover:bg-[var(--accent)]"
             >
               {t('common.done')}
             </button>
@@ -398,7 +398,7 @@ function NumericField({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[11px] uppercase tracking-wider text-white/50">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-[var(--muted)]">{label}</span>
       <input
         type="number"
         value={value}
@@ -407,7 +407,7 @@ function NumericField({
           const v = Number(e.target.value);
           if (Number.isFinite(v)) onChange(Math.max(0, v));
         }}
-        className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-white/90 focus:border-emerald-400/60 focus:outline-none disabled:opacity-40"
+        className="w-20 rounded-md border border-[var(--line)] bg-[var(--field)] px-2 py-1.5 text-sm text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-40"
       />
     </label>
   );

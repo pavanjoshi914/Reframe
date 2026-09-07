@@ -2,12 +2,91 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme tokens.
+ *
+ * The values are the mockup's palette strip, which is the Apple system set:
+ * blue #007AFF, indigo #5856D6, green #34C759, orange #FF9F0A, red #FF3B30,
+ * greys #1D1D1F / #86868B / #E3E6ED. Mixing half of a system palette with
+ * invented hexes is what makes a UI look almost-right.
+ *
+ * NOTE: this moves the accent from emerald to system blue. That is a brand
+ * change, not a styling one — the HUD, the website and the release notes are
+ * all emerald. It is one token to put back.
+ */
+:root {
+  --bg:        #0f1115;
+  --panel:     #16181d;
+  --panel-2:   #1c1f26;
+  --panel-3:   #262a33;
+  --text:      #f5f5f7;
+  --muted:     #98989d;
+  --faint:     #8a8a8f;   /* 5.2:1 on --panel */
+  --line:      rgba(255, 255, 255, 0.12);
+  --line-2:    rgba(255, 255, 255, 0.18);
+  --accent:    #0a84ff;
+  --accent-dim:rgba(10, 132, 255, 0.18);
+  --accent-fg: #ffffff;
+  --fill:       rgba(255, 255, 255, 0.055);
+  --fill-hover: rgba(255, 255, 255, 0.10);
+  --stroke:     rgba(255, 255, 255, 0.10);
+  --field:     #0e1116;
+  --scrim:     rgba(0, 0, 0, 0.70);
+  --chip:       #262b36;
+  --chip-hover: #313847;
+  --wordmark:  brightness(0) invert(1);
+  --shadow:    0 10px 30px -12px rgba(0, 0, 0, 0.7);
+
+  /* Liquid glass: translucent fill + blurred, SATURATED backdrop + a
+     multi-layer shadow whose inset top highlight reads as a curved edge
+     catching light. Without the saturate the blur greys whatever is behind and
+     the surface looks cloudy instead of like glass. */
+  --glass:        rgba(255, 255, 255, 0.07);
+  --glass-hover:  rgba(255, 255, 255, 0.12);
+  --glass-border: rgba(255, 255, 255, 0.16);
+  --glass-blur:   blur(20px) saturate(180%);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14),
+                  0 1px 2px rgba(0, 0, 0, 0.30),
+                  0 8px 24px -14px rgba(0, 0, 0, 0.55);
+}
+
+:root[data-theme='light'] {
+  --bg:        #f5f7fb;
+  --panel:     #ffffff;
+  --panel-2:   #f5f7fb;
+  --panel-3:   #eceff5;
+  --text:      #1d1d1f;
+  --muted:     #5c5c61;   /* 6.7:1 on white */
+  --faint:     #6e6e73;   /* 5.1:1 — hints, still clearly secondary */
+  --line:      #e3e6ed;
+  --line-2:    #d5d9e3;
+  --accent:    #007aff;
+  --accent-dim:rgba(0, 122, 255, 0.12);
+  --accent-fg: #ffffff;
+  --fill:       rgba(15, 18, 25, 0.035);
+  --fill-hover: rgba(15, 18, 25, 0.075);
+  --stroke:     rgba(15, 18, 25, 0.08);
+  --field:     #ffffff;
+  --scrim:     rgba(15, 18, 25, 0.45);
+  --chip:       #ffffff;
+  --chip-hover: #e9ecf2;
+  --wordmark:  brightness(0) invert(0.06);
+  --shadow:    0 10px 28px -14px rgba(15, 18, 25, 0.28);
+
+  --glass:        rgba(255, 255, 255, 0.62);
+  --glass-hover:  rgba(255, 255, 255, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --glass-blur:   blur(20px) saturate(180%);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9),
+                  0 1px 2px rgba(15, 18, 25, 0.06),
+                  0 8px 24px -14px rgba(15, 18, 25, 0.18);
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
-  color: #e6e8ec;
+  color: var(--text);
   background: transparent;
   user-select: none;
   -webkit-user-select: none;
@@ -16,6 +95,7 @@ html, body, #root {
 button {
   font-family: inherit;
 }
+
 
 /* Focus rings belong to keyboard users. Dragging a slider with the mouse — the
    scrubber under the preview, the volume, any sidebar slider — used to leave a
@@ -71,3 +151,17 @@ button {
 *::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+
+/* One class for every glass surface, so the recipe lives in one place.
+   backdrop-filter needs something BEHIND it to be worth anything — over a flat
+   panel it renders as a lighter rectangle, which is why this goes on controls
+   and the rail rather than on backgrounds. */
+.glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+.glass-hover:hover { background: var(--glass-hover); }
