@@ -35,7 +35,7 @@ if (typeof electronBinary !== 'string') {
   process.exit(1);
 }
 
-const devUrl = 'http://127.0.0.1:5173/';
+const devUrl = `http://127.0.0.1:${process.env.REFRAME_DEV_PORT ?? 5273}/`;
 
 function probeVite() {
   return new Promise((resolve) => {

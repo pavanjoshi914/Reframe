@@ -58,7 +58,12 @@ export default defineConfig({
   },
   server: {
     host: '127.0.0.1',
-    port: 5173,
+    // Not 5173. That is Vite's default, so every other project on the machine
+    // claims it too — and with strictPort we do not fall back, we fail. Worse,
+    // when someone else got there first the Electron shell happily loaded THEIR
+    // page: the editor window once came up showing an unrelated portfolio site.
+    // Override with REFRAME_DEV_PORT if 5273 is taken as well.
+    port: Number(process.env.REFRAME_DEV_PORT ?? 5273),
     strictPort: true
   }
 });
