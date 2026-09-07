@@ -25,3 +25,32 @@ Provenance not recorded when they were added (2026-06-06). They match
 openscreen's `wallpaper2` … `wallpaper18` visually but are separately
 re-encoded files. Same licensing question as above applies until someone
 traces them.
+
+## wallpaper-19.jpg, wallpaper-20.jpg — skies
+
+Both from Unsplash, resampled to 2560px wide and stripped of metadata to keep
+the bundle small.
+
+- `wallpaper-19.jpg` — peach cumulus at golden hour, by **Billy Huynh**
+  (unsplash.com/photos/1501630834273-4b5604d2ee31)
+- `wallpaper-20.jpg` — white cumulus against deep blue, by **engin akyurt**
+  (unsplash.com/photos/1603437873662-dc1f44901825)
+
+The Unsplash Licence permits commercial use with no attribution required and
+no permission needed; it forbids selling unmodified copies and building a
+competing stock service. Neither applies here. The photographers are credited
+anyway because it costs nothing.
+
+Chosen deliberately over the wallpapers Screendrop ships: those are downloaded
+at runtime from a third party's server, credited to named authors, and are not
+covered by that repo's CC0 licence — they are not ours to redistribute.
+
+## wallpaper-21.jpg — soft blue sky
+
+Generated with ChatGPT (OpenAI) by the project owner, 1672x941, converted to
+JPEG and stripped of metadata. Generated rather than sourced, so there is no
+third-party licence to honour and nothing to attribute.
+
+Smaller than the rest of the set (the others are 2560px wide). It is a soft
+image with no fine detail, so the upscale to a 1080p or 4K frame costs nothing
+visible — but a busier picture at this size would soften.
