@@ -54,3 +54,15 @@ third-party licence to honour and nothing to attribute.
 Smaller than the rest of the set (the others are 2560px wide). It is a soft
 image with no fine detail, so the upscale to a 1080p or 4K frame costs nothing
 visible — but a busier picture at this size would soften.
+
+## wallpaper-22.jpg — night pedestal
+
+Generated with ChatGPT (OpenAI) by the project owner, 1672x941, converted to
+JPEG and stripped of metadata. Generated rather than sourced, so there is no
+third-party licence to honour and nothing to attribute.
+
+The only wallpaper in the set with a subject rather than a texture: a lit
+platform in the lower third, under a starfield and a ring of light. It is built
+to sit BEHIND a card — the platform reads as something the card stands on — so
+it wants a card that clears the lower third and roughly 30% padding. At full
+bleed, or with the card centred low, the platform is what gets covered up.

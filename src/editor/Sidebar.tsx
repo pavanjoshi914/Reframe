@@ -4,6 +4,7 @@ import { BORDER_IDS, BORDER_LABELS, BORDER_COLORS, BORDER_DEFAULTS, type BorderI
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem, type CursorStyle } from './store';
 import { runExport, cancelExport, saveStillNow } from './export';
 import { SCENE_GROUPS, DEFAULT_SCENE_SETTINGS, sceneInstances } from './scenes';
+import { SHADER_IDS, SHADER_LABELS, SHADER_FALLBACK, renderShaderBackground, MESH_PRESETS, meshPreset, renderMeshBackground, FIELD_PRESETS, FIELD_VARIANTS, FIELD_VARIANT_LABELS, fieldStyleOf, renderFieldBackground, bgClockMs, type ShaderId, type FieldVariant } from './shaders';
 import { CURSOR_GLYPHS, CURSOR_STYLE_IDS } from './cursorGlyphs';
 import type { SceneInstance } from './card3d';
 import { SupportDialog, shouldPromptAfterExport } from './SupportDialog';
@@ -46,8 +47,15 @@ export function Sidebar() {
   const activeTab = TABS.some((x) => x.id === tab) ? tab : 'canvas';
 
   return (
-    <div className="flex h-full w-[380px] overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)]">
-      <div className="flex w-[60px] shrink-0 flex-col gap-1 border-r border-[var(--line)] bg-[var(--panel-2)] p-1.5">
+    // TWO panels, not one split down the middle — the rail floats beside the
+    // inspector the way the reference has it, with the page showing between.
+    //
+    // `shrink-0` on both is load-bearing: this sits in a flex row next to the
+    // preview, and a flex item with a width but no shrink-0 is still allowed to
+    // compress. Narrow the window and the 380px sidebar was quietly squeezing,
+    // which re-wrapped the wallpaper grid and shuffled every row under it.
+    <div className="flex h-full shrink-0 gap-3">
+      <div className="flex w-[58px] shrink-0 flex-col gap-1 overflow-hidden rounded-xl bg-[var(--panel)] p-1.5">
         {TABS.map((x) => {
           const on = activeTab === x.id;
           const Icon = x.icon;
@@ -71,8 +79,8 @@ export function Sidebar() {
         })}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex-1 overflow-y-auto p-3">
+      <div className="flex w-[318px] min-w-0 shrink-0 flex-col overflow-hidden rounded-xl bg-[var(--panel)]">
+        <div className="sb-scroll flex-1 overflow-y-auto px-3 py-2">
           {activeTab === 'selection' && <SelectionSection />}
           {activeTab === 'cursor' && <CursorSection />}
           {activeTab === 'canvas' && <CompositionSection />}
@@ -544,7 +552,17 @@ const BORDER_SWATCH: Record<BorderId, { box?: React.CSSProperties; layers?: Reac
     ],
     box: { boxShadow: 'inset 0 0 0 1.5px rgba(255,255,255,0.9), inset 0 0 0 2.5px rgba(0,0,0,0.3)' }
   },
-  glow: { box: { boxShadow: '0 0 14px 2px rgba(96,165,250,0.85), inset 0 0 0 2px rgba(147,197,253,0.95)' } }
+  glow: { box: { boxShadow: '0 0 14px 2px rgba(96,165,250,0.85), inset 0 0 0 2px rgba(147,197,253,0.95)' } },
+  metal3d: {
+    box: {
+      // Two facets and a crease, same as the canvas paints: bright outer ring
+      // lit from the top-left, darker inner ring lit from the opposite side.
+      boxShadow:
+        'inset 0 0 0 1px rgba(255,255,255,0.55), inset 0 0 0 4px #9fb4d0,' +
+        'inset 0 0 0 5px rgba(0,0,0,0.38), inset 0 0 0 7px #55637a,' +
+        'inset 0 0 0 8px rgba(0,0,0,0.45), 0 0 10px 1px rgba(159,180,208,0.4)'
+    }
+  }
 };
 
 function BorderSection() {
@@ -764,7 +782,7 @@ function CompositionSection() {
         <ToggleRow label={t('side.enable')} checked={webcam.enabled} onChange={(v) => setWebcam({ enabled: v })} />
         <RangeRow label={t('side.size')} value={webcam.size} min={0.08} max={0.6} step={0.01} onChange={(v) => setWebcam({ size: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
         <div className="mt-2">
-          <div className="mb-1 text-xs text-[var(--muted)]">{t('side.shape')}</div>
+          <Label>{t('side.shape')}</Label>
           <div className="grid grid-cols-3 gap-1.5">
             <ShapeBtn active={webcam.shape === 'rectangle'} onClick={() => setWebcam({ shape: 'rectangle' })} label={t('side.rectangle')}>
               <RectangleHorizontal size={14} />
@@ -787,11 +805,62 @@ function CompositionSection() {
         <ToggleRow label={t('side.fullScreen')} checked={fullBleed} onChange={setFullBleed} />
         <p className="mb-2 text-[11px] leading-snug text-[var(--faint)]">{t('side.fullScreenHint')}</p>
         <div className={fullBleed ? 'pointer-events-none opacity-40' : undefined} aria-hidden={fullBleed}>
-        <div className="mb-2 flex gap-1">
+        <div className="mb-2 flex flex-wrap gap-1">
           <BgTab active={background.mode === 'image'} onClick={() => setBackground({ mode: 'image', value: background.mode === 'image' ? background.value : '' })}>{t('side.image')}</BgTab>
           <BgTab active={background.mode === 'color'} onClick={() => setBackground({ mode: 'color', value: background.mode === 'color' ? background.value : '#1a1d23' })}>{t('side.color')}</BgTab>
           <BgTab active={background.mode === 'gradient'} onClick={() => setBackground({ mode: 'gradient', value: background.mode === 'gradient' ? background.value : 'linear-gradient(135deg,#fb923c,#ec4899)' })}>{t('side.gradient')}</BgTab>
+          <BgTab active={background.mode === 'mesh'} onClick={() => setBackground({ mode: 'mesh', value: background.mode === 'mesh' ? background.value : MESH_PRESETS[0].id })}>{t('side.mesh')}</BgTab>
+          <BgTab active={background.mode === 'shader'} onClick={() => setBackground({ mode: 'shader', value: background.mode === 'shader' ? background.value : 'aurora' })}>{t('side.shader')}</BgTab>
+          <BgTab active={background.mode === 'field'} onClick={() => setBackground({ mode: 'field', value: background.mode === 'field' ? background.value : FIELD_PRESETS[0].id })}>{t('side.field')}</BgTab>
         </div>
+        {background.mode === 'field' && <FieldPanel />}
+        {background.mode === 'mesh' && (
+          <div className="space-y-2">
+            <div className="grid grid-cols-4 gap-1.5">
+              {MESH_PRESETS.map((m, i) => (
+                <button
+                  key={m.id}
+                  aria-label={`Mesh ${i + 1}`}
+                  title={`Mesh ${i + 1}`}
+                  onClick={() => setBackground({ mode: 'mesh', value: m.id })}
+                  className={
+                    'overflow-hidden rounded transition ' +
+                    (background.value === m.id
+                      ? 'ring-2 ring-[var(--accent)]'
+                      : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+                  }
+                >
+                  <MeshThumb id={m.id} />
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] leading-snug text-[var(--faint)]">{t('side.meshHint')}</p>
+          </div>
+        )}
+        {background.mode === 'shader' && (
+          <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-1.5">
+              {SHADER_IDS.map((id) => (
+                <button
+                  key={id}
+                  aria-label={SHADER_LABELS[id]}
+                  title={SHADER_LABELS[id]}
+                  onClick={() => setBackground({ mode: 'shader', value: id })}
+                  className={
+                    'overflow-hidden rounded transition ' +
+                    (background.value === id
+                      ? 'ring-2 ring-[var(--accent)]'
+                      : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+                  }
+                >
+                  <ShaderThumb id={id} />
+                  <div className="truncate px-1 py-1 text-[10px] text-[var(--muted)]">{SHADER_LABELS[id]}</div>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] leading-snug text-[var(--faint)]">{t('side.motionHint')}</p>
+          </div>
+        )}
         {background.mode === 'color' && (
           <div className="space-y-2">
             {/* Live preview tile — large, shows the current hex prominently */}
@@ -1531,9 +1600,12 @@ function ExportProgressModal({ busy, onCancel }: { busy: BusyState; onCancel: ()
 }
 
 function Label({ children }: { children: React.ReactNode }) {
-  // Sentence case at 11px, not uppercase with letter-spacing: tracking-wider
-  // costs real width in a 280px column and pushes labels onto two lines.
-  return <div className="mb-1.5 text-[11px] font-medium text-[var(--muted)]">{children}</div>;
+  // Section heading, matching the reference: small, uppercase, letterspaced and
+  // quiet, with a hairline RULE above it. The rule is what actually creates the
+  // grouping — without it a panel is one long column of rows and every heading
+  // has to shout to be read as a heading. `.sb-label` carries the spacing and
+  // border from index.css so the first heading in a panel can drop its rule.
+  return <div className="sb-label text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">{children}</div>;
 }
 
 // How zoom transitions move. Document-level, not per-region: mixing a snappy
@@ -2035,19 +2107,29 @@ function RangeRow({
   // the control looked dead. The reference solves it by making the pill itself
   // the control — its fill shows the value and you drag anywhere on it. That
   // fits any width, which is what lets these sit two-up.
-  const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
+  const pct = max > min ? Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100)) : 0;
+  // The text is drawn TWICE, in both inks, and the top copy is clipped to the
+  // fill. That is what lets a label sit across the fill's edge and stay legible
+  // on both sides of it — half white on blue, half dark on the track — instead
+  // of picking one colour and going invisible at some fill level. Both copies
+  // are `absolute inset-0` with identical padding, so they line up to the pixel
+  // and the clip never reflows or re-truncates the text.
+  const face = (ink: string) => (
+    <div className={'pointer-events-none absolute inset-0 flex items-center gap-2 px-3 ' + ink}>
+      <span className="min-w-0 flex-1 truncate text-[11px] font-medium" title={label}>{label}</span>
+      <span className="shrink-0 text-[11px] font-semibold tabular-nums">{fmt ? fmt(value) : value}</span>
+    </div>
+  );
   return (
-    <div className="glass relative flex h-8 items-center gap-2 overflow-hidden rounded-lg px-2">
+    <div className="relative h-8 overflow-hidden rounded-full bg-[var(--track)]">
       <div
-        className="pointer-events-none absolute inset-y-0 left-0 bg-[var(--accent-dim)]"
+        className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-[var(--accent)]"
         style={{ width: `${pct}%` }}
       />
-      <span className="pointer-events-none relative min-w-0 flex-1 truncate text-[11px] text-[var(--muted)]" title={label}>
-        {label}
-      </span>
-      <span className="pointer-events-none relative shrink-0 font-mono text-[11px] tabular-nums text-[var(--text)]">
-        {fmt ? fmt(value) : value}
-      </span>
+      {face('text-[var(--text)]')}
+      <div className="absolute inset-0" style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}>
+        {face('text-[var(--accent-fg)]')}
+      </div>
       {/* Invisible, but full-size: it stays a real range input, so the arrow
           keys, Home/End and screen readers all keep working. */}
       <input
@@ -2106,13 +2188,174 @@ function ShapeBtn({
   );
 }
 
+// Picker thumbnails come from the real shader, not a shipped PNG, so editing a
+// shader can never leave a stale picture in the sidebar.
+//
+// One frame on mount, and it animates only while hovered — and then at 10fps,
+// not 60. renderShaderBackground resizes ONE shared GL canvas per call, so a
+// thumbnail redrawing next to the main preview makes that canvas bounce between
+// 96px and 1280px every frame. At 10fps for one hovered tile that is free; six
+// tiles running permanently at 60fps would be a genuinely expensive sidebar.
+const THUMB_MS = 4200;   // far enough in that every preset has something to show
+
+// Field: a variant filter, a grid of starting points, and the colour controls.
+//
+// Presets alone can't cover this. The source site has ~290 Grain shaders and
+// they differ almost entirely in HUE — shipping three of them and calling it
+// done is the wrong shape of answer. A preset here seeds the sliders; the
+// sliders are what actually give you the other 287.
+function FieldPanel() {
+  const t = useT();
+  const background = useEditor((s) => s.background);
+  const setBackground = useEditor((s) => s.setBackground);
+  const fieldStyle = useEditor((s) => s.fieldStyle);
+  const setFieldStyle = useEditor((s) => s.setFieldStyle);
+  const [variant, setVariant] = useState<FieldVariant>(fieldStyle.variant);
+
+  const shown = FIELD_PRESETS.filter((f) => f.variant === variant);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1">
+        {FIELD_VARIANTS.map((v) => (
+          <button
+            key={v}
+            onClick={() => {
+              setVariant(v);
+              setFieldStyle({ variant: v });
+            }}
+            className={
+              'rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ' +
+              (variant === v
+                ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)]'
+                : 'text-[var(--muted)] hover:text-[var(--text)]')
+            }
+          >
+            {FIELD_VARIANT_LABELS[v]}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-1.5">
+        {shown.map((f, i) => (
+          <button
+            key={f.id}
+            aria-label={`${FIELD_VARIANT_LABELS[f.variant]} ${i + 1}`}
+            title={`${FIELD_VARIANT_LABELS[f.variant]} ${i + 1}`}
+            onClick={() => {
+              setBackground({ mode: 'field', value: f.id });
+              setFieldStyle(fieldStyleOf(f.id));
+            }}
+            className={
+              'overflow-hidden rounded transition ' +
+              (background.value === f.id
+                ? 'ring-2 ring-[var(--accent)]'
+                : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+            }
+          >
+            <FieldThumb id={f.id} />
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-1.5 pt-1">
+        <RangeRow label={t('side.fieldHue')} value={Math.round(fieldStyle.hue * 360)} min={0} max={360} step={1}
+          onChange={(v) => setFieldStyle({ hue: v / 360 })} fmt={(v) => `${v}°`} />
+        <RangeRow label={t('side.fieldSpread')} value={Math.round(fieldStyle.hueSpread * 360)} min={0} max={90} step={1}
+          onChange={(v) => setFieldStyle({ hueSpread: v / 360 })} fmt={(v) => `${v}°`} />
+        <RangeRow label={t('side.fieldChroma')} value={Math.round(fieldStyle.chroma * 500)} min={0} max={100} step={1}
+          onChange={(v) => setFieldStyle({ chroma: v / 500 })} fmt={(v) => `${v}%`} />
+        <RangeRow label={t('side.fieldLightness')} value={Math.round(fieldStyle.lightness * 100)} min={25} max={70} step={1}
+          onChange={(v) => setFieldStyle({ lightness: v / 100 })} fmt={(v) => `${v}%`} />
+      </div>
+      <p className="text-[11px] leading-snug text-[var(--faint)]">{t('side.fieldHint')}</p>
+    </div>
+  );
+}
+
+// Field thumbnails animate on hover like the shader ones — same 10fps budget,
+// same reason (one shared GL canvas that resizes per call).
+function FieldThumb({ id }: { id: string }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  const [hover, setHover] = useState(false);
+  useEffect(() => {
+    const cv = ref.current;
+    const ctx = cv?.getContext('2d');
+    if (!cv || !ctx) return;
+    const draw = (ms: number) => {
+      const src = renderFieldBackground(id, ms, cv.width, cv.height);
+      if (src) ctx.drawImage(src as CanvasImageSource, 0, 0, cv.width, cv.height);
+      else { ctx.fillStyle = '#08070d'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    };
+    draw(bgClockMs());
+    if (!hover) return;
+    const timer = window.setInterval(() => draw(bgClockMs()), 100);
+    return () => window.clearInterval(timer);
+  }, [id, hover]);
+  return (
+    <canvas ref={ref} width={96} height={60} className="block h-auto w-full"
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} />
+  );
+}
+
+// Mesh thumbnails never animate, so this is a straight one-shot draw.
+function MeshThumb({ id }: { id: string }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const cv = ref.current;
+    const ctx = cv?.getContext('2d');
+    if (!cv || !ctx) return;
+    const src = renderMeshBackground(id, cv.width, cv.height);
+    if (src) ctx.drawImage(src as CanvasImageSource, 0, 0, cv.width, cv.height);
+    else { ctx.fillStyle = meshPreset(id).colors[3]; ctx.fillRect(0, 0, cv.width, cv.height); }
+  }, [id]);
+  return <canvas ref={ref} width={72} height={48} className="block h-auto w-full" />;
+}
+
+function ShaderThumb({ id }: { id: ShaderId }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  const [hover, setHover] = useState(false);
+
+  useEffect(() => {
+    const cv = ref.current;
+    const ctx = cv?.getContext('2d');
+    if (!cv || !ctx) return;
+    const draw = (ms: number) => {
+      const src = renderShaderBackground(id, ms, cv.width, cv.height);
+      if (src) ctx.drawImage(src as CanvasImageSource, 0, 0, cv.width, cv.height);
+      else { ctx.fillStyle = SHADER_FALLBACK[id]; ctx.fillRect(0, 0, cv.width, cv.height); }
+    };
+    draw(THUMB_MS);
+    if (!hover) return;
+    const t0 = performance.now();
+    const timer = window.setInterval(() => draw(THUMB_MS + (performance.now() - t0)), 100);
+    return () => window.clearInterval(timer);
+  }, [id, hover]);
+
+  return (
+    <canvas
+      ref={ref}
+      width={96}
+      height={54}
+      className="block h-auto w-full"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    />
+  );
+}
+
 function BgTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
       className={
-        'flex-1 rounded-md px-2 py-1 text-xs ' +
-        (active ? 'bg-[var(--accent)] text-[var(--accent-fg)]' : 'glass glass-hover text-[var(--muted)]')
+        // Segmented control, macOS-style: a light pill with dark text marks the
+        // selection, not a coloured one. Blue is reserved for the ring on a
+        // chosen preset tile, so the two never compete for the same meaning.
+        'flex-1 basis-[28%] rounded-full px-2 py-1 text-[11px] font-medium transition-colors ' +
+        (active
+          ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)] shadow-sm'
+          : 'text-[var(--muted)] hover:text-[var(--text)]')
       }
     >
       {children}

@@ -3,6 +3,7 @@ import { useEditor, ANNOTATION_DEFAULTS, type LaneItem, WEBCAM_EDGE_MARGIN } fro
 import { primeVideo } from './videoPrime';
 import { detectBlackBorderFromVideo } from './autoTrim';
 import { drawFrame } from './export';
+import { bgClockMs } from './shaders';
 import { useT } from '../i18n';
 
 const aspectMap: Record<string, number | null> = {
@@ -326,6 +327,7 @@ export function Preview() {
     // immediately but the decoder delivers the picture a moment later, so one
     // repaint would show the PREVIOUS frame; keep painting briefly instead.
     let settle = 0;
+    let lastBgPaint = 0;
     // Any store change means the frame may look different.
     const unsubscribeDirty = useEditor.subscribe(() => { dirtyRef.current = true; });
     const render = () => {
@@ -339,8 +341,18 @@ export function Preview() {
       // software GL.
       const t = v ? v.currentTime : -1;
       if (t !== lastT || dirtyRef.current) settle = 8;
-      const changed = st.playing || settle > 0;
+      // An animated background is scenery: it moves on its own clock whether or
+      // not the video is playing, so a paused editor still has a reason to
+      // repaint. Throttled to ~30fps while paused — this repaints the WHOLE
+      // frame (card, border, cursor and all) to update the backdrop, and doing
+      // that 60 times a second forever is what made two open editors stutter
+      // the desktop on software GL.
+      const animatedBg = st.background.mode === 'shader' || st.background.mode === 'field';
+      const now = performance.now();
+      const bgTick = animatedBg && !st.playing && now - lastBgPaint >= 33;
+      const changed = st.playing || settle > 0 || bgTick;
       if (!changed) return;
+      if (bgTick) lastBgPaint = now;
       if (settle > 0) settle--;
       const rect = stage.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
@@ -370,6 +382,8 @@ export function Preview() {
         cropRegion: st.cropRegion,
         fullBleed: st.fullBleed,
         bgImage: bgImageRef.current,
+        bgTimeMs: bgClockMs(),
+        fieldStyle: st.fieldStyle,
         cursorSamples: st.cursorSamples,
         cursorSamplesSmooth: st.cursorSamplesSmooth,
         cursorClicks: st.cursorClicks,

@@ -4,6 +4,7 @@ import { suggestZoomsFromActivity } from './autoZoom';
 import type { CursorStyleId } from './cursorGlyphs';
 import type { ZoomStyle } from './export';
 import { DEFAULT_BORDER, DEFAULT_BORDER_STYLE, normalizeBorder, type BorderId, type BorderStyle } from './borders';
+import { DEFAULT_FIELD_STYLE, type FieldStyle } from './shaders';
 import defaultWallpaperUrl from '../../assets/wallpapers/wallpaper-00.jpg';
 
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
@@ -117,7 +118,10 @@ export const ANNOTATION_DEFAULTS: Required<AnnotationStyle> = {
   posY: 0.85
 };
 
-export type BackgroundMode = 'image' | 'color' | 'gradient';
+// Two WebGL-backed modes, both keeping their preset id in `value` (see
+// shaders.ts): 'mesh' is a still gradient field, 'shader' is animated and is the
+// only mode whose output depends on the playhead.
+export type BackgroundMode = 'image' | 'color' | 'gradient' | 'mesh' | 'shader' | 'field';
 
 export type PolishPreset = 'subtle' | 'soft' | 'dramatic';
 
@@ -178,6 +182,8 @@ export type EditorState = {
   // A percentage rather than pixels so the rim stays proportionate on a small
   // picture-in-picture card and a full-width one alike, at every resolution.
   borderStyle: BorderStyle;
+  /** Colour + treatment for a 'field' background. Geometry stays with the preset. */
+  fieldStyle: FieldStyle;
 
   // "Full screen": the recording fills the output edge to edge, so no
   // background, padding, rounded corners or shadow are visible. Kept as its own
@@ -287,6 +293,7 @@ export type EditorState = {
   setBackground: (b: { mode: BackgroundMode; value: string }) => void;
   setBorder: (b: BorderId) => void;
   setBorderStyle: (v: Partial<BorderStyle>) => void;
+  setFieldStyle: (v: Partial<FieldStyle>) => void;
   setCropRegion: (r: CropRegion) => void;
   setWebcam: (w: Partial<EditorState['webcam']>) => void;
   setLayoutPreset: (p: EditorState['layoutPreset']) => void;
@@ -340,6 +347,7 @@ export type SerializedProject = {
   // Optional: projects saved before borders existed load with no border.
   border?: BorderId;
   borderStyle?: BorderStyle;
+  fieldStyle?: FieldStyle;
   // Optional: projects saved before full-screen existed load framed, as they
   // were made.
   fullBleed?: boolean;
@@ -435,6 +443,7 @@ function docOf(s: EditorState): SerializedProject {
     effects: s.effects,
     border: s.border,
     borderStyle: s.borderStyle,
+    fieldStyle: s.fieldStyle,
     fullBleed: s.fullBleed,
     zoomStyle: s.zoomStyle,
     exportFormat: s.exportFormat,
@@ -524,6 +533,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   effects: presetEffects.soft,
   border: DEFAULT_BORDER,
   borderStyle: DEFAULT_BORDER_STYLE,
+  fieldStyle: DEFAULT_FIELD_STYLE,
   fullBleed: false,
   autoTrimPending: false,
   // Cinematic by default: the slow-settling ease-out is what makes a zoom read
@@ -613,6 +623,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setBackground: (b) => set({ background: b }),
   setBorder: (b) => set({ border: b }),
   setBorderStyle: (v) => set((st) => ({ borderStyle: { ...st.borderStyle, ...v } })),
+  setFieldStyle: (v) => set((st) => ({ fieldStyle: { ...st.fieldStyle, ...v } })),
   setCropRegion: (r) => set({
     cropRegion: {
       x: clamp01(r.x),
@@ -799,6 +810,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       // longer exists; fall back rather than rendering nothing with no clue why.
       border: normalizeBorder(data.border),
       borderStyle: { ...DEFAULT_BORDER_STYLE, ...(data.borderStyle ?? {}) },
+      fieldStyle: { ...DEFAULT_FIELD_STYLE, ...(data.fieldStyle ?? {}) },
       fullBleed: data.fullBleed ?? false,
       autoTrimPending: false,
       // A project saved before zoom styles existed keeps the feel it was made
@@ -830,6 +842,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       effects: snap.effects,
       border: normalizeBorder(snap.border),
       borderStyle: snap.borderStyle ?? DEFAULT_BORDER_STYLE,
+      fieldStyle: snap.fieldStyle ?? DEFAULT_FIELD_STYLE,
       fullBleed: snap.fullBleed ?? false,
       zoomStyle: snap.zoomStyle ?? s.zoomStyle,
       exportFormat: snap.exportFormat,
