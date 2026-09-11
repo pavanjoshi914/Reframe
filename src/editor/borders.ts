@@ -21,9 +21,9 @@
 // full-width one, and it has to be rescaled by hand for every export
 // resolution. A percentage is right at every size by construction.
 
-export type BorderId = 'default' | 'darkGlass' | 'liquidGlass' | 'retro' | 'stack' | 'glow';
+export type BorderId = 'default' | 'darkGlass' | 'liquidGlass' | 'retro' | 'stack' | 'glow' | 'metal3d';
 
-export const BORDER_IDS: BorderId[] = ['default', 'darkGlass', 'liquidGlass', 'retro', 'stack', 'glow'];
+export const BORDER_IDS: BorderId[] = ['default', 'darkGlass', 'liquidGlass', 'retro', 'stack', 'glow', 'metal3d'];
 
 export const DEFAULT_BORDER: BorderId = 'default';
 /** Percent of the card's short side. The reference apps sit under 1%. */
@@ -43,7 +43,8 @@ export const BORDER_LABELS: Record<BorderId, string> = {
   liquidGlass: 'Liquid Glass',
   retro: 'Retro',
   stack: 'Stack',
-  glow: 'Glow'
+  glow: 'Glow',
+  metal3d: '3D'
 };
 
 /** null = keep each preset's own colours. Anything else tints the main band. */
@@ -76,7 +77,11 @@ export const BORDER_DEFAULTS: Record<BorderId, BorderStyle> = {
   stack:       { widthPct: 5,   opacity: 35, color: '#ffffff' },
   // Thickness is the glow's REACH and opacity its brightness — there is no rim
   // to size, so the same two sliders drive the light instead.
-  glow:        { widthPct: 2.5, opacity: 60, color: '#3b82f6' }
+  glow:        { widthPct: 2.5, opacity: 60, color: '#3b82f6' },
+  // Wider than the glass rims because a chamfer needs room to read as one: two
+  // facets and two specular lines inside 1.4% of the card is four sub-pixel
+  // bands at preview size, which resolves to a flat grey stripe.
+  metal3d:     { widthPct: 2.6, opacity: 100, color: '#9fb4d0' }
 };
 
 export const DEFAULT_BORDER_STYLE: BorderStyle = {
@@ -143,7 +148,7 @@ function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
 function band(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, w: number, h: number, r: number,
-  inset: number, width: number, style: string
+  inset: number, width: number, style: string | CanvasGradient
 ) {
   const d = inset + width / 2;
   if (width <= 0 || w <= d * 2 || h <= d * 2) return;
@@ -162,12 +167,82 @@ function isLight(hex: string): boolean {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.55;
 }
 
+/**
+ * Mix a colour toward white (`k > 0`) or black (`k < 0`), |k| in 0..1.
+ *
+ * Metal is one hue read at many brightnesses — the facet turned toward the light
+ * and the one turned away are the SAME material. Deriving both ends from the
+ * picked colour is what keeps a tinted bezel looking like tinted metal instead
+ * of a grey bezel with a coloured line on it.
+ */
+function shade(hex: string, k: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const t = k < 0 ? 0 : 255;
+  const a = Math.min(1, Math.abs(k));
+  const ch = (v: number) => Math.round(v + (t - v) * a);
+  return `rgb(${ch((n >> 16) & 255)},${ch((n >> 8) & 255)},${ch(n & 255)})`;
+}
+
 /** #rrggbb → rgba() at the given alpha, so a picked colour can be layered. */
 function rgba(hex: string, a: number): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return hex;
   const n = parseInt(m[1], 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+/**
+ * Which presets emit light, in what colour, and with what falloff.
+ *
+ * `[reach, strength]` per pass: reach multiplies the rim thickness to give the
+ * blur radius, strength is the alpha it lands at. Shared by BOTH render paths —
+ * the flat one casts it from a rounded rect, the 3D one from the projected
+ * card's alpha — so a tweak here moves the light in the preview, the export and
+ * the rotated render together instead of in one of the three.
+ */
+export function emissionSpec(
+  id: BorderId,
+  st: BorderStyle
+): { color: string; passes: readonly (readonly [number, number])[] } | null {
+  // A light source: wide reach, bright.
+  if (id === 'glow') return { color: st.color ?? '#60a5fa', passes: [[1.6, 0.55], [5.0, 0.35]] };
+  // Bounce off a lit edge, not a light source — tighter and much weaker. Without
+  // it a tinted bezel on a dark background reads as a sticker laid on top.
+  if (id === 'metal3d') return { color: st.color ?? '#9fb4d0', passes: [[1.1, 0.26], [3.4, 0.16]] };
+  return null;
+}
+
+/**
+ * Additive light thrown from a rounded rect, in one or more passes.
+ *
+ * Emission, not a painted halo. Light ADDS to what it falls on — a lamp over a
+ * red wall gives a brighter red, never a grey one. `lighter` is canvas's
+ * additive blend, so the light sums with the background instead of covering it,
+ * and a coloured emission tints whatever it lands on the way real light would.
+ *
+ * Several passes, because emission is not one blur: a tight bright core where
+ * the source is, and a wide dim falloff around it. A single radius reads as a
+ * sticker of fog; the pair reads as something luminous. The fill is black and
+ * therefore invisible under `lighter` — only the shadow it casts lands.
+ */
+function emit(
+  ctx: CanvasRenderingContext2D,
+  px: number, py: number, pw: number, ph: number, pr: number,
+  T: number, color: string,
+  passes: readonly (readonly [number, number])[]
+) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const [reach, strength] of passes) {
+    ctx.shadowColor = rgba(color, strength);
+    ctx.shadowBlur = T * reach;
+    ctx.fillStyle = '#000';
+    rr(ctx, px, py, pw, ph, pr);
+    ctx.fill();
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
 }
 
 /** Painted before the card, outside its silhouette. Flat path only. */
@@ -213,28 +288,9 @@ export function paintBorderUnder(
       rr(ctx, px + off * 0.6, py - off, pw - off * 0.2, ph, pr);
       ctx.fill();
     }
-  } else if (id === 'glow') {
-    // Emission, not a painted halo.
-    //
-    // Light ADDS to what it falls on — a lamp over a red wall gives a brighter
-    // red, never a grey one. `lighter` is canvas's additive blend, so the glow
-    // sums with the background instead of covering it, and a coloured glow
-    // tints whatever it lands on the way real light would.
-    //
-    // Two passes, because emission is not one blur: a tight bright core where
-    // the source is, and a wide dim falloff around it. A single radius reads as
-    // a sticker of fog; the pair reads as something luminous.
-    const glow = st.color ?? '#60a5fa';
-    ctx.globalCompositeOperation = 'lighter';
-    for (const [reach, strength] of [[1.6, 0.55], [5.0, 0.35]] as const) {
-      ctx.shadowColor = rgba(glow, strength);
-      ctx.shadowBlur = T * reach;
-      ctx.fillStyle = '#000';   // invisible under `lighter`; only its shadow lands
-      rr(ctx, px, py, pw, ph, pr);
-      ctx.fill();
-      ctx.fill();
-    }
-    ctx.globalCompositeOperation = 'source-over';
+  } else {
+    const e = emissionSpec(id, st);
+    if (e) emit(ctx, px, py, pw, ph, pr, T, e.color, e.passes);
   }
   ctx.restore();
 }
@@ -281,6 +337,47 @@ export function paintBorderOver(
     // A dark hairline on the outermost pixels: a white rim over a white page is
     // white over white at every opacity, and this is what separates them.
     band(ctx, x, y, w, h, r, 0, hair, 'rgba(0,0,0,0.30)');
+  } else if (id === 'metal3d') {
+    // A machined bezel: a raised chamfer around the picture.
+    //
+    // What sells depth here is not the gradient, it's that the ring is TWO
+    // facets meeting at a crease. Each catches the key light at a different
+    // angle, so the outer one runs bright→dark across the card while the inner
+    // one runs dark→bright. A single band with one gradient — the obvious first
+    // attempt — reads as a printed stripe no matter how contrasty it is, because
+    // nothing in it changes direction.
+    //
+    // The light is fixed at top-left (the diagonal of every gradient below).
+    // Under rotation this whole ring is baked into the card texture and turns
+    // with it, so the highlight travels with the card like an anodised edge
+    // rather than staying put like a real specular would. That is the honest
+    // limit of doing this in the texture instead of the fragment shader.
+    const base = tint ?? '#9fb4d0';
+    const outer = T * 0.55;
+    const inner = T - outer;
+    const lit = shade(base, 0.72);
+    const dim = shade(base, -0.66);
+
+    const gOut = ctx.createLinearGradient(x, y, x + w, y + h);
+    gOut.addColorStop(0, lit);
+    gOut.addColorStop(0.45, base);
+    gOut.addColorStop(1, dim);
+    band(ctx, x, y, w, h, r, 0, outer, gOut);
+
+    const gIn = ctx.createLinearGradient(x, y, x + w, y + h);
+    gIn.addColorStop(0, dim);
+    gIn.addColorStop(0.55, shade(base, -0.22));
+    gIn.addColorStop(1, lit);
+    band(ctx, x, y, w, h, r, outer, inner, gIn);
+
+    // Specular on the outermost pixels and a dark crease where the facets meet.
+    // Both are hairlines by design: widen either and the bezel stops looking
+    // machined and starts looking drawn.
+    band(ctx, x, y, w, h, r, 0, hair, 'rgba(255,255,255,0.55)');
+    band(ctx, x, y, w, h, r, Math.max(0, outer - hair / 2), hair, 'rgba(0,0,0,0.38)');
+    // Contact shadow on the picture's own edge, so the screen sits DOWN inside
+    // the bezel instead of being pasted flush against it.
+    band(ctx, x, y, w, h, r, Math.max(0, T - hair), hair * 1.6, 'rgba(0,0,0,0.45)');
   }  // glow paints nothing here — its light lives entirely in the under pass
 
   ctx.restore();

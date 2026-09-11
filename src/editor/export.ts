@@ -14,7 +14,8 @@ import {
   type VideoCodec
 } from 'mediabunny';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
-import { paintBorderUnder, paintBorderOver, borderOutset, normalizeBorder, DEFAULT_BORDER_STYLE, type BorderId, type BorderStyle } from './borders';
+import { paintBorderUnder, paintBorderOver, borderOutset, borderThickness, emissionSpec, normalizeBorder, DEFAULT_BORDER_STYLE, type BorderId, type BorderStyle } from './borders';
+import { renderShaderBackground, normalizeShader, SHADER_FALLBACK, renderMeshBackground, meshPreset, renderFieldBackground, bgClockMs } from './shaders';
 import { useEditor, type CropRegion, type EditorState, ANNOTATION_DEFAULTS } from './store';
 import type { CursorSample, ClickSample, CursorKindSample } from '@shared/ipc';
 import { renderCard3D, renderScene3D, projectCardPoint, type CardXform } from './card3d';
@@ -566,7 +567,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   const ctx = canvas.getContext('2d', { willReadFrequently: isGif });
   if (!ctx) throw new Error('2D canvas unavailable');
 
-  const drawCtx: DrawCtx = { items, background, effects, border: state.border, borderStyle: state.borderStyle, webcam, layoutPreset, cropRegion, fullBleed: state.fullBleed, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorKinds: state.cursorKinds, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle };
+  const drawCtx: DrawCtx = { items, background, effects, border: state.border, borderStyle: state.borderStyle, fieldStyle: state.fieldStyle, webcam, layoutPreset, cropRegion, fullBleed: state.fullBleed, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorKinds: state.cursorKinds, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle };
 
   // Motion blur: composite each frame onto a scratch canvas, then blend it onto
   // the output at alpha (1-k) so the output is an exponential frame average
@@ -1006,6 +1007,12 @@ export type DrawCtx = {
   cropRegion: CropRegion;
   fullBleed?: boolean;
   bgImage: HTMLImageElement | null;
+  // Clock for animated (shader) backgrounds, when it should NOT be the playhead.
+  // The preview passes wall-clock here so the background keeps moving while the
+  // video is paused; the exporter omits it and the frame's own timestamp is
+  // used, because an exported file has no "now" to read.
+  bgTimeMs?: number;
+  fieldStyle?: import('./shaders').FieldStyle;
   cursorSamples?: CursorSample[];
   cursorSamplesSmooth?: CursorSample[];
   cursorClicks?: ClickSample[];
@@ -1226,6 +1233,8 @@ export async function captureStill(state: EditorState): Promise<{ data: ArrayBuf
     cropRegion: state.cropRegion,
     fullBleed: state.fullBleed,
     bgImage,
+    bgTimeMs: bgClockMs(),
+    fieldStyle: state.fieldStyle,
     zoomStyle: state.zoomStyle,
     border: state.border,
     borderStyle: state.borderStyle,
@@ -1294,7 +1303,41 @@ export function drawFrame(
     // reveal the base colour in a band around the frame.
     const ov = blurPx > 0 ? 0.05 : 0;
     const bx = -outW * ov, by = -outH * ov, bw = outW * (1 + 2 * ov), bh = outH * (1 + 2 * ov);
-    if (background.mode === 'color') {
+    if (background.mode === 'shader') {
+      // Driven by `ms`, the playhead — so the preview, the export and a
+      // captured still all show the same frame of the animation. Rendered
+      // small and scaled up (see shaders.ts); these are smooth fields with no
+      // detail to lose, and a 4K frame of fbm per output frame is not worth
+      // paying for. Falls back to a flat colour if WebGL is missing, rather
+      // than leaving the frame empty.
+      const sid = normalizeShader(background.value);
+      const sh = renderShaderBackground(sid, d.bgTimeMs ?? ms, Math.round(bw), Math.round(bh));
+      if (sh) {
+        c.drawImage(sh as CanvasImageSource, bx, by, bw, bh);
+      } else {
+        c.fillStyle = SHADER_FALLBACK[sid];
+        c.fillRect(bx, by, bw, bh);
+      }
+    } else if (background.mode === 'field') {
+      // Animated like a shader, so it reads the same clock.
+      const fd = renderFieldBackground(background.value, d.bgTimeMs ?? ms, Math.round(bw), Math.round(bh), d.fieldStyle);
+      if (fd) {
+        c.drawImage(fd as CanvasImageSource, bx, by, bw, bh);
+      } else {
+        c.fillStyle = '#08070d';
+        c.fillRect(bx, by, bw, bh);
+      }
+    } else if (background.mode === 'mesh') {
+      // Still, so no `ms` — a mesh renders the same at every point on the
+      // timeline, which is the entire difference between it and a shader.
+      const mh = renderMeshBackground(background.value, Math.round(bw), Math.round(bh));
+      if (mh) {
+        c.drawImage(mh as CanvasImageSource, bx, by, bw, bh);
+      } else {
+        c.fillStyle = meshPreset(background.value).colors[3];
+        c.fillRect(bx, by, bw, bh);
+      }
+    } else if (background.mode === 'color') {
       c.fillStyle = background.value;
       c.fillRect(bx, by, bw, bh);
     } else if (background.mode === 'gradient') {
@@ -1665,6 +1708,74 @@ function sceneCardBox(x: number, y: number, w: number, h: number, st: SceneSetti
   return [x + (w - cw) / 2 + dx, y + (h - ch) / 2 + dy, cw, ch];
 }
 
+// Its own scratch rather than a shared one: this is consumed inside
+// drawVideoBox, while the blur scratches are still live for regions painted
+// after the card, and reusing one across both is how you get a blur region
+// tinted with someone else's glow.
+let _emitCanvas: OffscreenCanvas | HTMLCanvasElement | null = null;
+function emitCanvas(w: number, h: number) {
+  if (!_emitCanvas) {
+    _emitCanvas = typeof OffscreenCanvas !== 'undefined'
+      ? new OffscreenCanvas(w, h)
+      : Object.assign(document.createElement('canvas'), { width: w, height: h });
+  } else if (_emitCanvas.width !== w || _emitCanvas.height !== h) {
+    _emitCanvas.width = w; _emitCanvas.height = h;
+  }
+  return _emitCanvas;
+}
+
+/**
+ * Emission for the 3D path, derived from the projected card's own alpha.
+ *
+ * An emissive preset lights what is AROUND the card, which is precisely what
+ * the 3D path cannot bake into the texture — the texture is the card, and
+ * anything drawn outside it is cut off. So the flat path's `under` pass is
+ * skipped there, and until now Glow simply produced no glow the moment you
+ * tilted the card: the one situation it is most wanted in.
+ *
+ * The fix needs no shader. The GL canvas is already the card's silhouette in
+ * screen space with perspective and rounded corners resolved, so recolouring it
+ * through `source-in` and blurring it gives light that follows the rotation
+ * exactly, for the cost of one canvas and two blurred draws.
+ */
+function paintEmission3D(
+  ctx: CanvasRenderingContext2D,
+  gl: CanvasImageSource,
+  outW: number, outH: number,
+  border: BorderId, st: BorderStyle,
+  cw: number, ch: number
+) {
+  const spec = emissionSpec(border, st);
+  if (!spec) return;
+  const alpha = Math.min(1, Math.max(0, st.opacity) / 100);
+  const T = borderThickness(cw, ch, st.widthPct);
+  if (alpha <= 0 || T <= 0) return;
+
+  const sc = emitCanvas(outW, outH);
+  const sctx = sc.getContext('2d') as CanvasRenderingContext2D | null;
+  if (!sctx) return;
+  sctx.setTransform(1, 0, 0, 1, 0, 0);
+  sctx.globalCompositeOperation = 'source-over';
+  sctx.filter = 'none';
+  sctx.clearRect(0, 0, outW, outH);
+  sctx.drawImage(gl, 0, 0, outW, outH);
+  // Keep the silhouette's alpha, replace its colour with the light's.
+  sctx.globalCompositeOperation = 'source-in';
+  sctx.fillStyle = spec.color;
+  sctx.fillRect(0, 0, outW, outH);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const [reach, strength] of spec.passes) {
+    // shadowBlur is roughly 2σ where CSS blur(r) is σ = r, so the reach halves
+    // here to land on the same falloff the flat path casts.
+    ctx.filter = `blur(${Math.max(0.5, (T * reach) / 2)}px)`;
+    ctx.globalAlpha = strength * alpha;
+    ctx.drawImage(sc as CanvasImageSource, 0, 0);
+  }
+  ctx.restore();
+}
+
 function cardCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
   if (!_cardCanvas) {
     _cardCanvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
@@ -1780,6 +1891,10 @@ function drawVideoBox(
       // (The old approach filled the projected 4-corner polygon with opaque
       // black behind the card; the card's transparent rounded corners let that
       // sharp polygon show through, which read as "roundness is broken".)
+      // Light first, then the shadow, then the card — the same order the flat
+      // path uses (under → shadow → picture), so a glow reads identically
+      // whether or not the card happens to be tilted.
+      paintEmission3D(ctx, gl as CanvasImageSource, outW, outH, border, borderStyle, cw, ch);
       const shadowAlpha = Math.max(0, shadowPct) / 100;
       ctx.save();
       if (shadowAlpha > 0) {
