@@ -11,6 +11,16 @@ export default defineConfig({
         entry: 'electron/main.ts',
         onstart({ startup }) {
           delete process.env.ELECTRON_RUN_AS_NODE;
+          // REFRAME_NO_ELECTRON=1 builds main/preload and serves the renderer
+          // but does NOT launch the app — for when you want to attach your own
+          // Electron (scripts/electron.mjs, or one with a debugging port) to
+          // this dev server. Two instances share one userData dir, so the one
+          // you didn't mean to start also runs an autosaver, and it will write
+          // over the project the one you did mean to start is editing.
+          if (process.env.REFRAME_NO_ELECTRON) {
+            console.log('[vite-plugin-electron] REFRAME_NO_ELECTRON set — not launching');
+            return;
+          }
           console.log('[vite-plugin-electron] launching electron…');
           startup(['.', '--no-sandbox']);
         },
