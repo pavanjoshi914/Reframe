@@ -310,7 +310,7 @@ export function EditorApp() {
   return (
     <div className="flex h-screen w-screen flex-col bg-[var(--bg)]">
       {/* top toolbar */}
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-white/5 bg-[var(--panel)] px-4">
+      <div className="flex h-11 shrink-0 items-center justify-between bg-transparent px-4">
         <div className="flex items-center gap-3 text-sm">
           <img
             src={wordmarkUrl}
@@ -325,7 +325,7 @@ export function EditorApp() {
             <button
               onClick={() => useEditor.getState().undo()}
               disabled={!canUndo}
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--line)] hover:bg-[var(--panel-2)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--fill)] hover:bg-[var(--fill-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-[var(--fill)]"
               aria-label={t('editor.undo')}
               title={`${t('editor.undo')} (Ctrl+Z)`}
             >
@@ -334,7 +334,7 @@ export function EditorApp() {
             <button
               onClick={() => useEditor.getState().redo()}
               disabled={!canRedo}
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--line)] hover:bg-[var(--panel-2)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--fill)] hover:bg-[var(--fill-hover)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-[var(--fill)]"
               aria-label={t('editor.redo')}
               title={`${t('editor.redo')} (Ctrl+Shift+Z)`}
             >
@@ -352,7 +352,7 @@ export function EditorApp() {
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--line)] text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]"
           >
             {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
           </button>
@@ -371,8 +371,8 @@ export function EditorApp() {
             <option value="auto">Auto</option>
           </select>
           <Divider />
-          <button onClick={handleLoadProject} className="rounded-md border border-[var(--line)] px-3 py-1 text-xs hover:bg-[var(--panel-2)]">{t('editor.loadProject')}</button>
-          <button onClick={handleSaveProject} className="rounded-md border border-[var(--line)] px-3 py-1 text-xs hover:bg-[var(--panel-2)]">{t('editor.saveProjectBtn')}</button>
+          <button onClick={handleLoadProject} className="rounded-full bg-[var(--fill)] px-3 py-1 text-xs font-medium hover:bg-[var(--fill-hover)]">{t('editor.loadProject')}</button>
+          <button onClick={handleSaveProject} className="rounded-full bg-[var(--fill)] px-3 py-1 text-xs font-medium hover:bg-[var(--fill-hover)]">{t('editor.saveProjectBtn')}</button>
           <Divider />
           {/* Always-available way to support the project, so the post-export
               prompt can stay rare and dismissible. */}
@@ -392,18 +392,18 @@ export function EditorApp() {
           page background so the gaps between them read as gutters, openscreen-
           style. Padding / gap collapse to 0 while previewWrap is fullscreened
           so the rounded corners don't show on a 100vw element. */}
-      <div className="flex flex-1 gap-2 overflow-hidden p-2">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
+      <div className="flex flex-1 gap-3 overflow-hidden p-3 pt-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
           <div
             ref={previewWrapRef}
-            className="flex flex-1 flex-col overflow-hidden rounded-xl border border-white/5 bg-[var(--panel)]"
+            className="flex flex-1 flex-col overflow-hidden rounded-xl bg-[var(--panel)]"
           >
             <div className="flex-1 overflow-hidden">
               <Preview />
             </div>
             {/* playback strip — kept inside the fullscreen wrapper so play /
                 scrub / exit remain reachable when the preview is fullscreened. */}
-            <div className="flex h-10 shrink-0 items-center gap-3 border-t border-white/5 bg-[var(--panel)] px-4 text-xs">
+            <div className="flex h-10 shrink-0 items-center gap-3 border-t border-[var(--line)] bg-[var(--panel)] px-4 text-xs">
               <button
                 onClick={() => setPlaying(!playing)}
                 className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--panel-3)] hover:bg-white/20"
@@ -475,7 +475,7 @@ export function EditorApp() {
                 }}
                 title={t('side.captureFrameHint')}
                 aria-label={t('side.captureFrame')}
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--line)] text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]"
               >
                 {shotFlash ? <Check size={14} className="text-[var(--accent)]" /> : <Camera size={14} />}
               </button>
@@ -483,7 +483,7 @@ export function EditorApp() {
                 onClick={() => setTimelineCollapsed((v) => !v)}
                 title={timelineCollapsed ? 'Show timeline' : 'Hide timeline'}
                 aria-expanded={!timelineCollapsed}
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--line)] text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]"
               >
                 {timelineCollapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </button>

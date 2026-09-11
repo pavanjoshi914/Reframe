@@ -230,7 +230,7 @@ export function Timeline() {
   const emptyLanes = laneRows.filter((r) => r.laneItems.length === 0).map((r) => r.lane);
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-white/5 bg-[var(--panel)]">
+    <div className="flex flex-col overflow-hidden rounded-xl bg-[var(--panel)]">
       <div className="flex items-center justify-between border-b border-white/5 px-3 py-1.5 text-xs text-[var(--muted)]">
         <div className="flex items-center gap-3">
           <span className="font-mono text-[var(--text)]">{formatTime(currentMs)} / {formatTime(durationMs)}</span>
