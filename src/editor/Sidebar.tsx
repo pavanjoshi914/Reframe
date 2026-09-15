@@ -754,6 +754,14 @@ function CompositionSection() {
   const setBackground = useEditor((s) => s.setBackground);
   const fullBleed = useEditor((s) => s.fullBleed);
   const setFullBleed = useEditor((s) => s.setFullBleed);
+  const cropRegion = useEditor((s) => s.cropRegion);
+  const setCropRegion = useEditor((s) => s.setCropRegion);
+  const fileUrl = useEditor((s) => s.fileUrl);
+  const videoIntrinsicSize = useEditor((s) => s.videoIntrinsicSize);
+  const [cropOpen, setCropOpen] = useState(false);
+
+  const cropActive =
+    cropRegion.x !== 0 || cropRegion.y !== 0 || cropRegion.width !== 1 || cropRegion.height !== 1;
 
   async function handleUploadImage() {
     const res = await window.api.pickImageFile();
@@ -762,6 +770,49 @@ function CompositionSection() {
 
   return (
     <div className="space-y-4">
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <Label>{t('side.videoFraming')}</Label>
+          {cropActive && (
+            <span className="rounded bg-[var(--accent-dim)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent)]">
+              {t('side.cropped')}
+            </span>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setCropOpen(true)}
+            disabled={!fileUrl}
+            className="flex flex-1 items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs font-medium hover:bg-[var(--panel-3)] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Crop size={14} /> {cropActive ? t('side.editCrop') : t('side.cropVideo')}
+          </button>
+          {cropActive && (
+            <button
+              onClick={() => setCropRegion(DEFAULT_CROP_REGION)}
+              className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2.5 text-xs text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
+              title={t('side.clearCrop')}
+            >
+              {t('common.reset')}
+            </button>
+          )}
+        </div>
+        {videoIntrinsicSize && (
+          <div className="mt-1.5 flex items-center justify-between text-[11px] text-[var(--faint)]">
+            <span>
+              {Math.round(cropRegion.width * videoIntrinsicSize.width)} ×{' '}
+              {Math.round(cropRegion.height * videoIntrinsicSize.height)} px
+            </span>
+            <span>
+              {cropActive
+                ? `${Math.round(cropRegion.width * 100)}% of source`
+                : '100% (full frame)'}
+            </span>
+          </div>
+        )}
+        {cropOpen && <CropModal onClose={() => setCropOpen(false)} />}
+      </div>
+
       <div>
         <Label>{t('side.layout')}</Label>
         <select

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart, Sun, Moon, ChevronUp, ChevronDown, Camera, Check } from 'lucide-react';
+import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart, Sun, Moon, ChevronUp, ChevronDown, Camera, Check, Crop } from 'lucide-react';
 import { SPONSOR_URL } from '@shared/sponsor';
 import { Preview } from './Preview';
 import { Sidebar } from './Sidebar';
 import { Timeline } from './Timeline';
+import { CropModal } from './CropModal';
 import { useEditor, type SerializedProject } from './store';
 import { isTextEntry } from './textEntry';
 import type { ProjectFile } from '@shared/ipc';
@@ -43,6 +44,11 @@ export function EditorApp() {
   const currentProjectPath = useEditor((s) => s.currentProjectPath);
   const canUndo = useEditor((s) => s.past.length > 0);
   const canRedo = useEditor((s) => s.future.length > 0);
+  const fileUrl = useEditor((s) => s.fileUrl);
+  const cropRegion = useEditor((s) => s.cropRegion);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const isCropped =
+    cropRegion.x !== 0 || cropRegion.y !== 0 || cropRegion.width !== 1 || cropRegion.height !== 1;
 
   // Load recording on first mount + listen for new recordings & opened
   // projects. Also kick off the auto-save lifecycle: every fresh recording
@@ -250,6 +256,11 @@ export function EditorApp() {
         return;
       }
       if (typing) return;
+      if ((e.key === 'c' || e.key === 'C') && !mod && !e.altKey) {
+        e.preventDefault();
+        if (useEditor.getState().fileUrl) setCropModalOpen((v) => !v);
+        return;
+      }
       if (e.key === ' ') {
         e.preventDefault();
         setPlaying(!useEditor.getState().playing);
@@ -319,7 +330,7 @@ export function EditorApp() {
             style={{ filter: 'var(--wordmark)' }}
           />
           <Divider />
-          <FileMenu onSave={handleSaveProject} onLoad={handleLoadProject} />
+          <FileMenu onSave={handleSaveProject} onLoad={handleLoadProject} onCrop={() => setCropModalOpen(true)} />
           <Divider />
           <div className="flex items-center gap-1">
             <button
@@ -465,6 +476,25 @@ export function EditorApp() {
                   playhead and scrubber are still reachable with the timeline
                   hidden — hiding both is what makes a collapsed timeline
                   useless. */}
+              {/* Crop video tool */}
+              <button
+                onClick={() => setCropModalOpen(true)}
+                disabled={!fileUrl}
+                title={t('editor.cropShortcut')}
+                aria-label={t('editor.crop')}
+                className={
+                  'relative flex h-7 w-7 items-center justify-center rounded-full transition ' +
+                  (isCropped
+                    ? 'bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)]'
+                    : 'bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]') +
+                  ' disabled:cursor-not-allowed disabled:opacity-30'
+                }
+              >
+                <Crop size={14} />
+                {isCropped && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[var(--accent)] ring-2 ring-[var(--panel)]" />
+                )}
+              </button>
               {/* Capture the current frame. It lives here as well as in the
                   sidebar because this row is where the playhead is — and as an
                   icon buried beside Export it was effectively hidden. */}
@@ -493,11 +523,12 @@ export function EditorApp() {
         </div>
         <Sidebar />
       </div>
+      {cropModalOpen && <CropModal onClose={() => setCropModalOpen(false)} />}
     </div>
   );
 }
 
-function FileMenu({ onSave, onLoad }: { onSave: () => void; onLoad: () => void }) {
+function FileMenu({ onSave, onLoad, onCrop }: { onSave: () => void; onLoad: () => void; onCrop?: () => void }) {
   const t = useT();
   return (
     <div className="flex items-center gap-3 text-[var(--muted)]">
@@ -513,6 +544,7 @@ function FileMenu({ onSave, onLoad }: { onSave: () => void; onLoad: () => void }
         items={[
           { label: t('editor.undo'), onClick: () => useEditor.getState().undo(), shortcut: 'Ctrl+Z' },
           { label: t('editor.redo'), onClick: () => useEditor.getState().redo(), shortcut: 'Ctrl+Shift+Z' },
+          ...(onCrop ? [{ label: t('editor.crop'), onClick: onCrop, shortcut: 'C' }] : []),
           { label: t('editor.deleteSelected'), onClick: () => {
               const id = useEditor.getState().selectedItemId;
               if (id) useEditor.getState().removeItem(id);
