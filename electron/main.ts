@@ -908,9 +908,9 @@ ipcMain.handle('capture:setPendingSource', async (_evt, sourceId: string) => {
   try {
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
     const src = sources.find((s) => s.id === sourceId);
-    if (src && sourceId.startsWith('window:')) {
+    if (sourceId.startsWith('window:')) {
       const handle = sourceId.split(':')[1] ?? '';
-      if (handle) pendingWindow = { handle, name: src.name };
+      if (handle) pendingWindow = { handle, name: src?.name ?? 'Window' };
     }
     if (src && src.display_id) {
       recordedDisplay = screen.getAllDisplays().find((d) => String(d.id) === String(src.display_id)) ?? null;
@@ -2120,10 +2120,23 @@ app.whenReady().then(async () => {
   // images living in the same folder is the thing users trip over, and a PNG
   // in a Videos directory never gets found again.
   stillsDir = path.join(app.getPath('pictures'), 'Reframe');
-  fs.mkdirSync(recordingsTempDir, { recursive: true });
-  fs.mkdirSync(projectsDir, { recursive: true });
-  fs.mkdirSync(exportsDir, { recursive: true });
-  fs.mkdirSync(stillsDir, { recursive: true });
+  try {
+    fs.mkdirSync(recordingsTempDir, { recursive: true });
+    fs.mkdirSync(projectsDir, { recursive: true });
+    fs.mkdirSync(exportsDir, { recursive: true });
+    fs.mkdirSync(stillsDir, { recursive: true });
+  } catch (err) {
+    console.warn('[main] user dirs uncreatable, falling back to temp/Reframe', err);
+    const fallbackDir = path.join(app.getPath('temp'), 'Reframe');
+    recordingsTempDir = path.join(fallbackDir, 'RecordingsTemp');
+    projectsDir = path.join(fallbackDir, 'Projects');
+    exportsDir = path.join(fallbackDir, 'Recordings');
+    stillsDir = path.join(fallbackDir, 'Pictures');
+    fs.mkdirSync(recordingsTempDir, { recursive: true });
+    fs.mkdirSync(projectsDir, { recursive: true });
+    fs.mkdirSync(exportsDir, { recursive: true });
+    fs.mkdirSync(stillsDir, { recursive: true });
+  }
   console.log('[main] paths:', { recordingsTempDir, projectsDir, exportsDir, stillsDir });
 
   // Drop the default OS menubar (File/Edit/View/Window/Help). The editor's

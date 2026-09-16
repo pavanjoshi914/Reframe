@@ -246,6 +246,8 @@ async function startHelperRecording(
 }
 
 export async function startRecording(opts: RecordingOptions): Promise<RecordingHandle> {
+  const isWindow = opts.sourceId.startsWith('window:');
+
   // "Hide cursor": capture the screen OUTSIDE Chromium, in the main process.
   // That is the only way to omit the OS pointer on any platform — Chromium
   // removed the getDisplayMedia `cursor` constraint, so it accepts
@@ -279,9 +281,9 @@ export async function startRecording(opts: RecordingOptions): Promise<RecordingH
       mandatory: {
         chromeMediaSource: 'desktop',
         chromeMediaSourceId: opts.sourceId,
-        minWidth: 1280,
+        minWidth: isWindow ? 1 : 1280,
         maxWidth: 3840,
-        minHeight: 720,
+        minHeight: isWindow ? 1 : 720,
         maxHeight: 2160,
         minFrameRate: 30,
         maxFrameRate: 60
@@ -289,33 +291,7 @@ export async function startRecording(opts: RecordingOptions): Promise<RecordingH
     }
   };
 
-  // Cursor-hidden capture (opt-in): grab the screen via getDisplayMedia with
-  // cursor:'never'. main's display-media handler resolves it to the source the
-  // user already picked (no OS picker). We try with system audio, then without,
-  // then fall back to the normal cursor-included getUserMedia path — so a
-  // failure here never prevents a recording.
-  let screenStream: MediaStream | null = null;
-  if (opts.hideCursor) {
-    try {
-      await window.api.setPendingCaptureSource(opts.sourceId);
-      const gdm = (withAudio: boolean) =>
-        navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: 'never', width: { max: 3840 }, height: { max: 2160 }, frameRate: { max: 60 } },
-          audio: withAudio
-        } as DisplayMediaStreamOptions);
-      try {
-        screenStream = await gdm(!!opts.withSystemAudio);
-      } catch {
-        screenStream = await gdm(false);
-      }
-    } catch (err) {
-      console.warn('[recording] cursor-hidden capture failed; using normal capture', err);
-      screenStream = null;
-    }
-  }
-  if (!screenStream) {
-    screenStream = await navigator.mediaDevices.getUserMedia(constraints);
-  }
+  const screenStream = await navigator.mediaDevices.getUserMedia(constraints);
 
   let combinedStream = screenStream;
   if (opts.withMic) {

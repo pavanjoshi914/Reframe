@@ -17,18 +17,16 @@ import type { CropRegion } from './store';
 // black across its WHOLE length, so a dark-themed app whose edge pixels are
 // #1e1e1e or which has one bright pixel in the margin keeps every pixel it has.
 
-// A pixel this dark or darker counts as "the transparent margin". Not 0, because
-// the encoder's colour conversion rounds a few values off true black.
+// A pixel this dark or darker counts as "the transparent margin" or a black bar.
+// Not 0, because the encoder's colour conversion rounds a few values off true black.
 const BLACK = 6;
-// Give up rather than trim more than this off any one side. A window shadow is
-// tens of pixels; anything approaching a third of the frame is content we have
-// misread, not a margin.
-const MAX_SIDE = 0.2;
+// Scan cap per side. A window shadow margin is tens of pixels; pillarbox bars
+// (e.g. a tall or square window inside a 16:9 canvas) can reach ~45% on each side.
+const MAX_SIDE = 0.45;
 
 /**
- * Find the pure-black border around a frame and return the crop that removes it,
- * or null if there is nothing to trim (or the frame doesn't look like a window
- * in a transparent margin).
+ * Find the black border or pillarbox/letterbox around a frame and return the crop
+ * that removes it, or null if there is nothing to trim.
  *
  * `read` returns the frame's pixels as RGBA rows, width*height*4.
  */
@@ -66,26 +64,24 @@ export function detectBlackBorder(
   let right = 0;
   while (right < maxX && colIsBlack(w - 1 - right)) right++;
 
-  // The margin we are looking for surrounds the window, so it is present on all
-  // four sides. Requiring that is what separates it from black bars, which come
-  // in one opposing pair: a letterboxed video (bars top and bottom only) or a
-  // pillarboxed one (left and right only) keeps its bars, because there they are
-  // part of the picture rather than an artefact of how the window was grabbed.
-  if (!top || !bottom || !left || !right) return null;
+  // We trim if there is a 4-sided transparent margin (e.g. CSD window shadow),
+  // OR pillarbox bars (opposing left & right), OR letterbox bars (opposing top & bottom).
+  // Requiring opposing pairs is what protects content: an app whose left sidebar
+  // is dark keeps it because the right edge has content.
+  const hasHorizontalBars = left > 0 && right > 0;
+  const hasVerticalBars = top > 0 && bottom > 0;
+  if (!hasHorizontalBars && !hasVerticalBars) return null;
 
-  // Any side that ran all the way to the cap means the scan never found content
-  // — a blank warm-up frame, or a genuinely dark image. Without this a fully
-  // black frame trims to the cap on all four sides and passes every check below,
-  // silently cropping 36% off a perfectly good recording.
-  if (top >= maxY || bottom >= maxY || left >= maxX || right >= maxX) return null;
+  // A completely black frame (e.g. warm-up frame) runs all scanned sides to the cap.
+  if (left >= maxX && right >= maxX && top >= maxY && bottom >= maxY) return null;
 
-  // A frame that is black on every side but only a pixel or two deep is far
-  // more likely to be a letterboxed video or a dark UI than a window margin.
+  // A frame that is black on edges but only a pixel or two deep total is far
+  // more likely to be an alignment rounding artifact than a margin or black bar.
   if (top + bottom + left + right < 4) return null;
 
   const cw = w - left - right;
   const ch = h - top - bottom;
-  if (cw < w * 0.5 || ch < h * 0.5) return null;
+  if (cw < w * 0.1 || ch < h * 0.1) return null;
 
   return { x: left / w, y: top / h, width: cw / w, height: ch / h };
 }

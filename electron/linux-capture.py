@@ -119,10 +119,18 @@ AUDIO_DEV = argv[6] if len(argv) > 6 and argv[6] else None
 
 Gst.init(None)
 
-try:
-    conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-except Exception as e:  # noqa: BLE001
-    fail("no-session-bus:%s" % e)
+conn = None
+
+
+def get_session_bus():
+    global conn
+    if conn is None:
+        try:
+            conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        except Exception as e:  # noqa: BLE001
+            raise RuntimeError("no-session-bus:%s" % e)
+    return conn
+
 
 loop = GLib.MainLoop()
 pipeline = None
@@ -234,7 +242,7 @@ def say_origin(x, y):
     say("ORIGIN %d %d,%d" % (time.time() * 1000, x, y))
 
 
-def watch_window(xid, size):
+def watch_window(xid, size, initial_raw_size=None):
     """Finalize cleanly if the captured window is resized or disappears.
 
     ximagesrc is pinned to the size negotiated at PLAYING and cannot follow a
@@ -243,6 +251,8 @@ def watch_window(xid, size):
     file is the best available outcome, and far better than the process dying
     with most of the video still in the muxer.
     """
+    raw_size = initial_raw_size or size
+
     def tick():
         if pipeline is None:
             return False
@@ -263,7 +273,8 @@ def watch_window(xid, size):
             sys.stderr.flush()
             request_stop()
             return False
-        if (geo[2] - geo[2] % 2, geo[3] - geo[3] % 2) != size:
+        cur_raw_size = (geo[2] - geo[2] % 2, geo[3] - geo[3] % 2)
+        if cur_raw_size != raw_size:
             sys.stderr.write("WINDOW-RESIZED %dx%d -> finalizing\n" % (geo[2], geo[3]))
             sys.stderr.flush()
             request_stop()
@@ -272,9 +283,12 @@ def watch_window(xid, size):
         # drawable, not a screen region) but it does move the frame of reference
         # the parent normalizes cursor samples into. Report it, timestamped, so
         # the sidecar can use the origin that was in effect at each sample.
-        if (geo[0], geo[1]) != _origin["at"]:
-            _origin["at"] = (geo[0], geo[1])
-            say_origin(geo[0], geo[1])
+        cur_pos = (geo[0], geo[1])
+        if cur_pos != _origin.get("raw_pos"):
+            _origin["raw_pos"] = cur_pos
+            actual_origin = (geo[0] + _ximage_crop["startx"], geo[1] + _ximage_crop["starty"])
+            _origin["at"] = actual_origin
+            say_origin(*actual_origin)
         return True
 
     # 100ms: fast enough that a resize is normally caught before ximagesrc's
@@ -286,6 +300,66 @@ def x11_window_origin(xid):
     """Absolute top-left of `xid` on screen, in physical X pixels, or None."""
     geo = x11_window_geometry(xid)
     return (geo[0], geo[1]) if geo else None
+
+
+def x11_screen_size():
+    """(width, height) of default root window in physical X pixels."""
+    import ctypes
+    lib, dpy = _x11()
+    if lib is None or dpy is None:
+        return 1920, 1080
+    try:
+        lib.XDefaultRootWindow.restype = ctypes.c_ulong
+        lib.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+        root = lib.XDefaultRootWindow(ctypes.c_void_p(dpy))
+        geo = x11_window_geometry(root)
+        if geo and geo[2] > 0 and geo[3] > 0:
+            return geo[2], geo[3]
+    except Exception:
+        pass
+    return 1920, 1080
+
+
+def x11_frame_extents(xid):
+    """(left, right, top, bottom) shadow margin from _GTK_FRAME_EXTENTS, or zeros."""
+    import ctypes
+    lib, dpy = _x11()
+    if lib is None or dpy is None:
+        return 0, 0, 0, 0
+    try:
+        atom = lib.XInternAtom(ctypes.c_void_p(dpy), b"_GTK_FRAME_EXTENTS", False)
+        if not atom:
+            return 0, 0, 0, 0
+        actual_type = ctypes.c_ulong()
+        actual_format = ctypes.c_int()
+        nitems = ctypes.c_ulong()
+        bytes_after = ctypes.c_ulong()
+        prop = ctypes.c_void_p()
+        lib.XGetWindowProperty.restype = ctypes.c_int
+        lib.XGetWindowProperty.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong,
+            ctypes.c_long, ctypes.c_long, ctypes.c_int, ctypes.c_ulong,
+            ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_ulong),
+            ctypes.POINTER(ctypes.c_void_p)
+        ]
+        status = lib.XGetWindowProperty(
+            ctypes.c_void_p(dpy), ctypes.c_ulong(xid), atom,
+            0, 4, False, 0,
+            ctypes.byref(actual_type), ctypes.byref(actual_format),
+            ctypes.byref(nitems), ctypes.byref(bytes_after), ctypes.byref(prop)
+        )
+        if status == 0 and prop and nitems.value >= 4:
+            vals = ctypes.cast(prop, ctypes.POINTER(ctypes.c_long))
+            ext = (int(vals[0]), int(vals[1]), int(vals[2]), int(vals[3]))
+            lib.XFree(prop)
+            return ext
+    except Exception:
+        pass
+    return 0, 0, 0, 0
+
+
+_ximage_crop = {"startx": 0, "starty": 0, "endx": 0, "endy": 0}
 
 
 def negotiate_ximage():
@@ -337,7 +411,42 @@ def negotiate_ximage():
             raise RuntimeError("window-%d-no-size" % WINDOW_XID)
     finally:
         probe.set_state(Gst.State.NULL)
-    return "ximage", WINDOW_XID, (w - w % 2, h - h % 2)
+
+    geo = x11_window_geometry(WINDOW_XID)
+    if geo is None:
+        raise RuntimeError("window-%d-no-geo" % WINDOW_XID)
+    win_x, win_y, win_w, win_h = geo
+    root_w, root_h = x11_screen_size()
+    ext_left, ext_right, ext_top, ext_bottom = x11_frame_extents(WINDOW_XID)
+
+    # In X11, XShmGetImage / XGetImage returns BadMatch if the capture rectangle
+    # extends outside the root window boundary (e.g. when a window is snapped,
+    # tiled, or moved near the edge, its invisible CSD drop-shadow margin extends
+    # past 0 or past the screen size). Clamping to the on-screen visible rectangle
+    # and insetting any transparent CSD margin completely avoids BadMatch and
+    # captures the actual window content cleanly.
+    start_x = max(0, -win_x, ext_left)
+    start_y = max(0, -win_y, ext_top)
+    end_x = win_w - 1 - max(0, (win_x + win_w) - root_w, ext_right)
+    end_y = win_h - 1 - max(0, (win_y + win_h) - root_h, ext_bottom)
+
+    if end_x <= start_x or end_y <= start_y:
+        start_x, start_y = 0, 0
+        end_x, end_y = w - 1, h - 1
+
+    capture_w = end_x - start_x + 1
+    capture_h = end_y - start_y + 1
+    capture_w -= (capture_w % 2)
+    capture_h -= (capture_h % 2)
+    end_x = start_x + capture_w - 1
+    end_y = start_y + capture_h - 1
+
+    _ximage_crop["startx"] = start_x
+    _ximage_crop["starty"] = start_y
+    _ximage_crop["endx"] = end_x
+    _ximage_crop["endy"] = end_y
+
+    return "ximage", WINDOW_XID, (capture_w, capture_h)
 
 
 # ── route 1: GNOME Mutter (no dialog, exact region) ─────────────────────────
@@ -426,6 +535,7 @@ def ensure_pipewire(timeout=5.0):
 def negotiate_mutter():
     """-> (node_id, fd|None, size|None). Raises if unavailable."""
     ensure_pipewire()
+    conn = get_session_bus()
     SC = "org.gnome.Mutter.ScreenCast"
 
     def call(path, iface, method, args, reply_type):
@@ -484,6 +594,7 @@ PORTAL_SC = "org.freedesktop.portal.ScreenCast"
 def negotiate_portal():
     """-> (node_id, fd, size). Raises if unavailable/denied."""
     ensure_pipewire()
+    conn = get_session_bus()
     # Requests reply on a path derived from our bus name + a token we choose;
     # subscribing to the PREDICTED path before calling avoids missing a fast reply.
     sender = conn.get_unique_name()[1:].replace(".", "_")
@@ -641,11 +752,13 @@ def video_source(node, fd, size):
         # window that isn't repainting emits nothing and the encoder starves,
         # which is the same one-frame trap pipewiresrc's framerate=0/1 sets.
         #
-        # endx/endy (inclusive, window-relative when xid is set) trim the odd
-        # last row/column: H.264 4:2:0 needs even dimensions and a window can be
-        # any size at all.
+        # startx/starty and endx/endy (inclusive, window-relative) clamp the grab
+        # strictly inside the root window boundary to prevent BadMatch errors and
+        # black frames on clipped/tiled/snapped windows, while trimming CSD drop-shadows.
         return ("ximagesrc name=vsrc xid=%d show-pointer=false use-damage=false "
-                "endx=%d endy=%d" % (fd, size[0] - 1, size[1] - 1))
+                "startx=%d starty=%d endx=%d endy=%d"
+                % (fd, _ximage_crop["startx"], _ximage_crop["starty"],
+                   _ximage_crop["endx"], _ximage_crop["endy"]))
     return ("pipewiresrc name=vsrc path=%d %s do-timestamp=true"
             % (node, ("fd=%d" % fd) if fd is not None else ""))
 
@@ -772,16 +885,20 @@ say("BACKEND %s" % backend)
 if size:
     say("SIZE %dx%d" % (size[0], size[1]))
 if backend == "ximage":
-    # Where the captured window sits on screen, so the parent can normalize the
-    # cursor sidecar against the WINDOW instead of the display. Re-emitted by
+    # Where the captured window content sits on screen, so the parent can normalize the
+    # cursor sidecar against the recorded window frame. Re-emitted by
     # watch_window() whenever the user moves the window.
     origin = x11_window_origin(WINDOW_XID)
     if origin:
-        _origin["at"] = origin
-        say_origin(*origin)
+        actual_origin = (origin[0] + _ximage_crop["startx"], origin[1] + _ximage_crop["starty"])
+        _origin["raw_pos"] = (origin[0], origin[1])
+        _origin["at"] = actual_origin
+        say_origin(*actual_origin)
 build_and_start(node, fd, size)
 if backend == "ximage":
-    watch_window(WINDOW_XID, size)
+    raw_geo = x11_window_geometry(WINDOW_XID)
+    initial_raw = (raw_geo[2] - raw_geo[2] % 2, raw_geo[3] - raw_geo[3] % 2) if raw_geo else None
+    watch_window(WINDOW_XID, size, initial_raw_size=initial_raw)
 
 loop.run()
 

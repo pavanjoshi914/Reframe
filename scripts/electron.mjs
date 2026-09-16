@@ -71,7 +71,8 @@ if (viteUp) {
 
 if (process.platform === 'linux' && !env.DISPLAY) env.DISPLAY = ':1';
 
-const args = ['.', '--no-sandbox'];
+const userArgs = process.argv.slice(2);
+const args = ['.', '--no-sandbox', ...userArgs];
 console.log('[electron] binary :', electronBinary);
 console.log('[electron] DISPLAY:', env.DISPLAY);
 if (env.VITE_DEV_SERVER_URL) console.log('[electron] dev URL:', env.VITE_DEV_SERVER_URL);
