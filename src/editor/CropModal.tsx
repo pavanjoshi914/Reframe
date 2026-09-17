@@ -44,6 +44,8 @@ export function CropModal({ onClose }: { onClose: () => void }) {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const previewWrapRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState<{ w: number; h: number } | null>(null);
   const [intrinsic, setIntrinsic] = useState<{ w: number; h: number } | null>(null);
 
   // Drive the preview canvas at rAF cadence from the editor's main video.
@@ -120,6 +122,30 @@ export function CropModal({ onClose }: { onClose: () => void }) {
 
   // Container aspect ratio mirrors the source video
   const videoAspect = intrinsic ? intrinsic.w / intrinsic.h : 16 / 9;
+
+  // Keep the container box strictly matching the video's aspect ratio without
+  // letterbox/pillarbox bars inside it, so crop handle percentages map 1:1 to video pixels.
+  useEffect(() => {
+    const wrap = previewWrapRef.current;
+    if (!wrap) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const availW = entry.contentRect.width;
+      const availH = Math.min(entry.contentRect.height, window.innerHeight * 0.6);
+      if (availW <= 0 || availH <= 0 || !videoAspect) return;
+
+      let w = availW;
+      let h = w / videoAspect;
+      if (h > availH) {
+        h = availH;
+        w = h * videoAspect;
+      }
+      setContainerSize({ w: Math.max(10, Math.round(w)), h: Math.max(10, Math.round(h)) });
+    });
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [videoAspect]);
 
   // ---- drag handling ----
   const dragRef = useRef<{
@@ -591,18 +617,26 @@ export function CropModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Preview area */}
-        <div className="flex flex-1 items-center justify-center overflow-auto p-6 bg-black/40">
+        <div ref={previewWrapRef} className="flex flex-1 items-center justify-center overflow-hidden p-6 bg-black/40">
           <div
             ref={containerRef}
-            className="relative w-full select-none rounded-md bg-black shadow-2xl"
-            style={{ aspectRatio: String(videoAspect), maxHeight: '60vh' }}
+            className="relative select-none rounded-md bg-black shadow-2xl shrink-0"
+            style={
+              containerSize
+                ? { width: `${containerSize.w}px`, height: `${containerSize.h}px` }
+                : {
+                    width: `min(100%, calc(60vh * ${videoAspect}))`,
+                    height: `min(60vh, calc(100% / ${videoAspect}))`,
+                    aspectRatio: String(videoAspect)
+                  }
+            }
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
           >
             <canvas
               ref={canvasRef}
-              className="absolute inset-0 h-full w-full rounded-md object-contain pointer-events-none"
+              className="absolute inset-0 h-full w-full rounded-md pointer-events-none"
             />
 
             {/* Dim overlay outside crop + Rule-of-thirds grid */}

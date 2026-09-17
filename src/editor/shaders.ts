@@ -792,6 +792,19 @@ varying vec2  vUV;
 const float TAU = 6.28318530718;
 
 float hash12(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+
+// OpenShaders 3D hash
+vec3 hash3(vec3 p) {
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yxz + 33.33);
+  return fract((p.xxy + p.yxx) * p.zyx);
+}
+
+// OpenShaders blue noise
+float blueNoise(vec2 p, float frame) {
+  p += 5.588238 * mod(frame, 64.0);
+  return fract(52.9829189 * fract(0.06711056 * p.x + 0.00583715 * p.y));
+}
 float vnoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
   vec2 u = f * f * (3.0 - 2.0 * f);
@@ -912,10 +925,15 @@ void main() {
   }
   color = tonemap(color);
 
-  // ── Variants that change HOW it is drawn ─────────────────────────────────
-  if (V > 0.5 && V < 1.5) {         // grain, strongest in the mids
-    float g = hash12(frag + floor(uTime * 24.0) * 17.13) - 0.5;
-    color += g * 0.085 * (0.35 + luma(color) * (1.0 - luma(color)) * 2.6);
+  if (V > 0.5 && V < 1.5) {         // grain: OpenShaders triangular film grain
+    const float uStrength = 1.15;
+    const float uScale = 1.25;
+    float size = max(1.0, 1.8 * uScale);
+    vec2 n = hash3(vec3(floor(frag / size), floor(uTime * 24.0))).xy;
+    float g = n.x + n.y - 1.0;
+    float shade = clamp(luma(color), 0.0, 1.0);
+    float response = 4.0 * shade * (1.0 - shade);
+    color += g * (0.035 + 0.1 * response) * uStrength;
   } else if (V > 1.5 && V < 2.5) {  // ascii
     float cell = px * 9.0;
     vec2 uvc = fract(pos / cell) - 0.5;
@@ -950,7 +968,7 @@ void main() {
   }
 
   color *= 1.0 - smoothstep(0.5, 1.6, length(pos)) * 0.06;            // vignette
-  color += (hash12(frag + floor(uTime * 24.0)) - 0.5) / 255.0;        // debanding
+  color += (blueNoise(frag, floor(uTime * 24.0)) - 0.5) / 255.0;        // blue noise debanding
   gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
 }`;
 
