@@ -75,6 +75,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.5.1" date="2026-09-17">
+      <description>
+        <p>Enhanced video crop with 8-point handles, aspect ratio presets (16:9, 9:16, 1:1, 4:3) with aspect locking, transport bar access, and pixel-accurate alignment. Upgraded Field grain shader with OpenShaders triangular distribution dither and blue noise debanding. Resolved black screen on Linux window capture and eliminated forced pillarbox bars across platforms.</p>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-09-11">
       <description>
         <p>Animated backgrounds. Thirteen shader backdrops — aurora, waves, fire, smoke, rays and more — plus sixteen still mesh gradients and a new Field generator with nine treatments (grain, ASCII, dither, halftone, sparkle, liquid, mosaic, chromatic) and hue, spread, chroma and lightness controls. A moving background runs on its own clock, so it keeps going while the video is paused and animates in the export. New 3D border preset: a machined metal bezel that follows the card's perspective. Emissive borders now glow correctly when the card is tilted, which they previously did not. The editor is restyled — black ground, floating panels, section rules, and sliders whose label rides the fill.</p>
