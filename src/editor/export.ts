@@ -1116,7 +1116,7 @@ export type DrawCtx = {
   cursorSamplesSmooth?: CursorSample[];
   cursorClicks?: ClickSample[];
   cursorKinds?: CursorKindSample[];
-  cursorFx?: { enabled: boolean; size: number; clicks: boolean; clickPress?: boolean; smoothing?: number; style?: string; color?: string; hideWhenIdle?: boolean; emoji?: string; motionBlur?: number; tilt?: number };
+  cursorFx?: { enabled: boolean; size: number; clicks: boolean; clickPress?: boolean; smoothing?: number; style?: string; color?: string; hideWhenIdle?: boolean; hideCompletely?: boolean; emoji?: string; motionBlur?: number; tilt?: number };
   zoomStyle?: ZoomStyle;
 };
 
@@ -1587,7 +1587,7 @@ export function drawFrame(
     // to, and a cursor floating over flying tiles reads as a glitch — hide it
     // and let it return with the plain video when the scene ends.
     const cfx = d.cursorFx;
-    if (cfx?.enabled && !scene && (d.cursorSamples?.length || d.cursorClicks?.length)) {
+    if (cfx?.enabled && !cfx?.hideCompletely && !scene && (d.cursorSamples?.length || d.cursorClicks?.length)) {
       const { w: sw, h: sh } = srcDims(srcCanvas);
       const toOut = (nx: number, ny: number) =>
         cursorToOutput({ x: nx, y: ny }, sw, sh, cropRegion, card.x, card.y, card.w, card.h, activeZoom ?? undefined, outW, outH);

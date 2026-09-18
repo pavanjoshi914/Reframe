@@ -1286,126 +1286,145 @@ function CursorSection() {
   const setCursorFx = useEditor((s) => s.setCursorFx);
   const hasCursorData = useEditor((s) => s.cursorSamples.length > 0);
   // A hide-cursor clip has NO baked-in cursor, so the synthetic one is the only
-  // cursor there is — it's always shown (no on/off toggle); the user styles it
-  // instead. Non-hide recordings keep the toggle (cursor is optional on top).
+  // cursor there is — it's shown unless the user chooses to hide cursor completely.
+  // Non-hide recordings keep the toggle (cursor is optional on top).
   const hideCursorClip = useEditor((s) => !!s.recording?.hideCursor);
-  const on = cursorFx.enabled || hideCursorClip;
+  const hideCompletely = !!cursorFx.hideCompletely;
+  const on = !hideCompletely && (cursorFx.enabled || hideCursorClip);
   const style = cursorFx.style ?? 'system';
   const color = cursorFx.color ?? '#ffffff';
   return (
     <div className="space-y-3">
-      {!hideCursorClip && (
-        <div data-cursorctl="enabled">
-          <ToggleRow label={t('side.smoothCursor')} checked={cursorFx.enabled} onChange={(v) => setCursorFx({ enabled: v })} />
+      <div data-cursorctl="hideCompletely">
+        <ToggleRow
+          label={t('side.hideCursorCompletely')}
+          checked={hideCompletely}
+          onChange={(v) => setCursorFx({ hideCompletely: v })}
+        />
+        <p className="mt-1 text-[11px] text-[var(--faint)]">{t('side.hideCursorCompletelyTip')}</p>
+      </div>
+
+      {hideCompletely ? (
+        <div className="rounded-lg border border-[var(--line)] bg-[var(--fill)] p-3 text-center text-xs text-[var(--muted)]">
+          {t('side.cursorHiddenNotice')}
         </div>
-      )}
-      {on && (
+      ) : (
         <>
-          <div data-cursorctl="idle">
-            <ToggleRow
-              label={t('side.hideWhenIdle')}
-              checked={!!cursorFx.hideWhenIdle}
-              onChange={(v) => setCursorFx({ hideWhenIdle: v })}
-            />
-            <p className="mt-1 text-[11px] text-[var(--faint)]">{t('side.hideWhenIdleTip')}</p>
-          </div>
-          <div data-cursorctl="style">
-            <Label>{t('side.style')}</Label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {CURSOR_STYLE_IDS.map((id) => (
-                <CursorStyleTile
-                  key={id}
-                  id={id}
-                  label={t(CURSOR_STYLE_LABEL[id])}
-                  color={color}
-                  active={style === id}
-                  emojiPreview={cursorFx.emoji}
-                  onClick={() => setCursorFx({ style: id })}
-                />
-              ))}
+          {!hideCursorClip && (
+            <div data-cursorctl="enabled">
+              <ToggleRow label={t('side.smoothCursor')} checked={cursorFx.enabled} onChange={(v) => setCursorFx({ enabled: v })} />
             </div>
-            {style === 'emoji' ? <EmojiCursorPicker /> : null}
-          </div>
-          <div data-cursorctl="color">
-            <Label>{t('side.color')}</Label>
-            <div className="flex items-center gap-1.5">
-              {CURSOR_COLORS.map((c) => (
-                <button
-                  key={c}
-                  aria-label={`Cursor color ${c}`}
-                  title={c}
-                  onClick={() => setCursorFx({ color: c })}
-                  className={
-                    'h-6 w-6 rounded-full transition ' +
-                    (color.toLowerCase() === c.toLowerCase() ? 'ring-2 ring-[var(--accent)]' : 'ring-1 ring-[var(--line)] hover:ring-white/40')
-                  }
-                  style={{ backgroundColor: c }}
+          )}
+          {on && (
+            <>
+              <div data-cursorctl="idle">
+                <ToggleRow
+                  label={t('side.hideWhenIdle')}
+                  checked={!!cursorFx.hideWhenIdle}
+                  onChange={(v) => setCursorFx({ hideWhenIdle: v })}
                 />
-              ))}
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setCursorFx({ color: e.target.value })}
-                className="h-6 w-6 shrink-0 cursor-pointer rounded border border-[var(--line)] bg-transparent"
-                aria-label={t('side.color')}
-              />
-            </div>
-          </div>
-          <div data-cursorctl="size">
-            <RangeRow
-              label={t('side.cursorSize')}
-              value={Math.round(cursorFx.size * 100)}
-              min={50}
-              max={300}
-              step={10}
-              onChange={(v) => setCursorFx({ size: v / 100 })}
-              fmt={(v) => `${(v / 100).toFixed(1)}×`}
-            />
-          </div>
-          <div data-cursorctl="smoothing">
-            <RangeRow
-              label={t('side.cursorSmoothing')}
-              value={Math.round((cursorFx.smoothing ?? 0.5) * 100)}
-              min={0}
-              max={100}
-              step={5}
-              onChange={(v) => setCursorFx({ smoothing: v / 100 })}
-              fmt={(v) => (v === 0 ? t('side.cursorSmoothingOff') : `${v}%`)}
-            />
-          </div>
-          <div data-cursorctl="motionblur">
-            <RangeRow
-              label={t('side.cursorMotionBlur')}
-              value={Math.round((cursorFx.motionBlur ?? 0) * 100)}
-              min={0}
-              max={100}
-              step={5}
-              onChange={(v) => setCursorFx({ motionBlur: v / 100 })}
-              fmt={(v) => (v === 0 ? t('side.cursorSmoothingOff') : `${v}%`)}
-            />
-          </div>
-          <div data-cursorctl="tilt">
-            <RangeRow
-              label={t('side.cursorTilt')}
-              value={Math.round((cursorFx.tilt ?? 0) * 100)}
-              min={0}
-              max={100}
-              step={5}
-              onChange={(v) => setCursorFx({ tilt: v / 100 })}
-              fmt={(v) => (v === 0 ? t('side.cursorSmoothingOff') : `${v}%`)}
-            />
-          </div>
-          <div data-cursorctl="clicks">
-            <ToggleRow label={t('side.clickRipple')} checked={cursorFx.clicks} onChange={(v) => setCursorFx({ clicks: v })} />
-          </div>
-          <div data-cursorctl="clickpress">
-            <ToggleRow label={t('side.clickPress')} checked={cursorFx.clickPress ?? true} onChange={(v) => setCursorFx({ clickPress: v })} />
-          </div>
+                <p className="mt-1 text-[11px] text-[var(--faint)]">{t('side.hideWhenIdleTip')}</p>
+              </div>
+              <div data-cursorctl="style">
+                <Label>{t('side.style')}</Label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {CURSOR_STYLE_IDS.map((id) => (
+                    <CursorStyleTile
+                      key={id}
+                      id={id}
+                      label={t(CURSOR_STYLE_LABEL[id])}
+                      color={color}
+                      active={style === id}
+                      emojiPreview={cursorFx.emoji}
+                      onClick={() => setCursorFx({ style: id })}
+                    />
+                  ))}
+                </div>
+                {style === 'emoji' ? <EmojiCursorPicker /> : null}
+              </div>
+              <div data-cursorctl="color">
+                <Label>{t('side.color')}</Label>
+                <div className="flex items-center gap-1.5">
+                  {CURSOR_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      aria-label={`Cursor color ${c}`}
+                      title={c}
+                      onClick={() => setCursorFx({ color: c })}
+                      className={
+                        'h-6 w-6 rounded-full transition ' +
+                        (color.toLowerCase() === c.toLowerCase() ? 'ring-2 ring-[var(--accent)]' : 'ring-1 ring-[var(--line)] hover:ring-white/40')
+                      }
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                  <input
+                    type="color"
+                    aria-label="Custom cursor color"
+                    value={color}
+                    onChange={(e) => setCursorFx({ color: e.target.value })}
+                    className="h-6 w-6 cursor-pointer rounded-full border-0 bg-transparent p-0"
+                    title="Custom color"
+                  />
+                </div>
+              </div>
+              <div data-cursorctl="size">
+                <RangeRow
+                  label={t('side.cursorSize')}
+                  min={50}
+                  max={300}
+                  step={10}
+                  value={Math.round(cursorFx.size * 100)}
+                  fmt={(v) => `${v}%`}
+                  onChange={(v) => setCursorFx({ size: v / 100 })}
+                />
+              </div>
+              <div data-cursorctl="smoothing">
+                <RangeRow
+                  label={t('side.cursorSmoothing')}
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={Math.round((cursorFx.smoothing ?? 0.5) * 100)}
+                  fmt={(v) => (v === 0 ? t('side.cursorSmoothingOff') : `${v}%`)}
+                  onChange={(v) => setCursorFx({ smoothing: v / 100 })}
+                />
+              </div>
+              <div data-cursorctl="motionblur">
+                <RangeRow
+                  label={t('side.cursorMotionBlur')}
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={Math.round((cursorFx.motionBlur ?? 0) * 100)}
+                  fmt={(v) => (v === 0 ? t('side.cursorSmoothingOff') : `${v}%`)}
+                  onChange={(v) => setCursorFx({ motionBlur: v / 100 })}
+                />
+              </div>
+              <div data-cursorctl="tilt">
+                <RangeRow
+                  label={t('side.cursorTilt')}
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={Math.round((cursorFx.tilt ?? 0) * 100)}
+                  fmt={(v) => (v === 0 ? t('side.cursorSmoothingOff') : `${v}%`)}
+                  onChange={(v) => setCursorFx({ tilt: v / 100 })}
+                />
+              </div>
+              <div data-cursorctl="clicks">
+                <ToggleRow label={t('side.clickRipple')} checked={cursorFx.clicks} onChange={(v) => setCursorFx({ clicks: v })} />
+              </div>
+              <div data-cursorctl="clickpress">
+                <ToggleRow label={t('side.clickPress')} checked={cursorFx.clickPress ?? true} onChange={(v) => setCursorFx({ clickPress: v })} />
+              </div>
+            </>
+          )}
+          <p className="text-[11px] text-[var(--faint)]">
+            {on && !hasCursorData ? t('side.cursorNoData') : t('side.cursorTip')}
+          </p>
         </>
       )}
-      <p className="text-[11px] text-[var(--faint)]">
-        {on && !hasCursorData ? t('side.cursorNoData') : t('side.cursorTip')}
-      </p>
     </div>
   );
 }

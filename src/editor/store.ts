@@ -282,7 +282,7 @@ export type EditorState = {
   // picks or types, not a fixed one. Ignored by every other style.
   cursorFx: {
     enabled: boolean; size: number; clicks: boolean; smoothing: number;
-    style: CursorStyle; color: string; hideWhenIdle: boolean; emoji: string;
+    style: CursorStyle; color: string; hideWhenIdle: boolean; hideCompletely?: boolean; emoji: string;
     // Click feedback, deliberately TWO independent switches. They are different
     // ideas: `clicks` draws a ring that radiates from where the pointer was,
     // `clickPress` scales the pointer itself the way a real press does. Some
@@ -403,7 +403,7 @@ export type SerializedProject = {
 // these — so this only decides how a NEW recording starts out.
 const DEFAULT_CURSOR_FX: EditorState['cursorFx'] = {
   enabled: false, size: 1.4, clicks: false, smoothing: 0.5, style: 'system',
-  color: '#ffffff', hideWhenIdle: false, emoji: '👆', motionBlur: 0.6, tilt: 0.5,
+  color: '#ffffff', hideWhenIdle: false, hideCompletely: false, emoji: '👆', motionBlur: 0.6, tilt: 0.5,
   clickPress: true
 };
 
