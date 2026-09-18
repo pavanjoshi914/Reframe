@@ -308,6 +308,7 @@ export type EditorState = {
 
   // Actions
   setRecording: (r: RecordingMeta, fileUrl: string, webcamFileUrl?: string | null) => void;
+  setRecordingDuration: (durationMs: number) => void;
   setCurrentProjectPath: (p: string | null) => void;
   setLastSavedAt: (t: number | null) => void;
   setVideoIntrinsicSize: (size: { width: number; height: number } | null) => void;
@@ -611,33 +612,47 @@ export const useEditor = create<EditorState>((set, get) => ({
   setCurrentProjectPath: (p) => set({ currentProjectPath: p }),
   setLastSavedAt: (t) => set({ lastSavedAt: t }),
 
-  setRecording: (r, fileUrl, webcamFileUrl) =>
+  setRecordingDuration: (durationMs) =>
     set((s) => ({
-      recording: r,
-      fileUrl,
-      webcamFileUrl: webcamFileUrl ?? null,
-      durationMs: r.durationMs,
-      // Fresh recording → fresh undo history.
-      past: [],
-      future: [],
-      // Auto-enable webcam in editor if a webcam file came with the recording
-      // and the user hasn't explicitly turned it on/off in this session.
-      webcam: webcamFileUrl ? { ...s.webcam, enabled: true } : s.webcam,
-      // A region the user drew is their choice — only auto-trim when they made
-      // no such choice.
-      autoTrimPending: !r.region,
-      // If the recording was captured with a region selection, pre-fill the
-      // editor's crop to match. The region is already stored as normalized
-      // 0..1 fractions, which is exactly the cropRegion shape.
-      cropRegion: r.region
-        ? {
-            x: clamp01(r.region.x),
-            y: clamp01(r.region.y),
-            width: Math.max(0.05, Math.min(1 - clamp01(r.region.x), r.region.width)),
-            height: Math.max(0.05, Math.min(1 - clamp01(r.region.y), r.region.height))
-          }
-        : DEFAULT_CROP_REGION
+      durationMs,
+      recording: s.recording ? { ...s.recording, durationMs } : null
     })),
+
+  setRecording: (r, fileUrl, webcamFileUrl) =>
+    set((s) => {
+      const isSameRecording = s.recording?.filePath === r.filePath;
+      const hasCustomCrop =
+        s.cropRegion.x !== 0 ||
+        s.cropRegion.y !== 0 ||
+        s.cropRegion.width !== 1 ||
+        s.cropRegion.height !== 1;
+
+      return {
+        recording: r,
+        fileUrl,
+        webcamFileUrl: webcamFileUrl ?? null,
+        durationMs: r.durationMs,
+        // Fresh recording → fresh undo history.
+        past: isSameRecording ? s.past : [],
+        future: isSameRecording ? s.future : [],
+        // Auto-enable webcam in editor if a webcam file came with the recording
+        // and the user hasn't explicitly turned it on/off in this session.
+        webcam: webcamFileUrl ? { ...s.webcam, enabled: true } : s.webcam,
+        // Only auto-trim if it's a new recording, has no capture region, and has no existing custom crop.
+        autoTrimPending: isSameRecording || hasCustomCrop ? false : !r.region,
+        // Preserve existing cropRegion if already set or same recording!
+        cropRegion: hasCustomCrop || isSameRecording
+          ? s.cropRegion
+          : r.region
+            ? {
+                x: clamp01(r.region.x),
+                y: clamp01(r.region.y),
+                width: Math.max(0.05, Math.min(1 - clamp01(r.region.x), r.region.width)),
+                height: Math.max(0.05, Math.min(1 - clamp01(r.region.y), r.region.height))
+              }
+            : DEFAULT_CROP_REGION
+      };
+    }),
   setVideoIntrinsicSize: (size) => set({ videoIntrinsicSize: size }),
   setMainVideoEl: (el) => set({ mainVideoEl: el }),
   setCurrent: (ms) => set((s) => {

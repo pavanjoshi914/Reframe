@@ -22,7 +22,7 @@ export function Preview() {
   const playing = useEditor((s) => s.playing);
   const setCurrent = useEditor((s) => s.setCurrent);
   const setPlaying = useEditor((s) => s.setPlaying);
-  const setRecording = useEditor((s) => s.setRecording);
+  const setRecordingDuration = useEditor((s) => s.setRecordingDuration);
   const setVideoIntrinsicSize = useEditor((s) => s.setVideoIntrinsicSize);
   const recording = useEditor((s) => s.recording);
   const videoIntrinsicSize = useEditor((s) => s.videoIntrinsicSize);
@@ -317,7 +317,7 @@ export function Preview() {
         await primeVideo(webcamRef.current, recording?.durationMs ?? 0);
       }
       if (v.duration && isFinite(v.duration) && recording) {
-        setRecording({ ...recording, durationMs: v.duration * 1000 }, fileUrl ?? '', webcamFileUrl ?? null);
+        setRecordingDuration(v.duration * 1000);
       }
       // A window recording arrives inside a black picture frame: the grab reads
       // the window's own drawable, which includes the invisible margin the
@@ -354,7 +354,7 @@ export function Preview() {
       v.removeEventListener('ended', onEnded);
       v.removeEventListener('loadedmetadata', onLoaded);
     };
-  }, [recording, fileUrl, webcamFileUrl, setRecording, setCurrent, setPlaying, setVideoIntrinsicSize, items]);
+  }, [recording, fileUrl, webcamFileUrl, setRecordingDuration, setCurrent, setPlaying, setVideoIntrinsicSize, items]);
 
   // Preload an image background for the canvas compositor (mirrors export.ts).
   useEffect(() => {
