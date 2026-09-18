@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight, Camera, Crosshair, LayoutTemplate, Palette, MousePointer2 , type LucideIcon } from 'lucide-react';
+import { ChevronDown, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight, Camera, Crosshair, LayoutTemplate, Palette, MousePointer2, Music, Play, Pause, Scissors, ExternalLink, type LucideIcon } from 'lucide-react';
 import { BORDER_IDS, BORDER_LABELS, BORDER_COLORS, BORDER_DEFAULTS, type BorderId } from './borders';
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem, type CursorStyle } from './store';
 import { runExport, cancelExport, saveStillNow } from './export';
@@ -9,7 +9,9 @@ import { CURSOR_GLYPHS, CURSOR_STYLE_IDS } from './cursorGlyphs';
 import type { SceneInstance } from './card3d';
 import { SupportDialog, shouldPromptAfterExport } from './SupportDialog';
 import { CropModal } from './CropModal';
+import { AudioTrimModal } from './AudioTrimModal';
 import { useT } from '../i18n';
+import { BUNDLED_AUDIO_TRACKS } from './audioTracks';
 
 const ZOOM_PRESETS = [1.25, 1.5, 1.8, 2.2, 3.5, 5];
 const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 3, 5];
@@ -40,7 +42,8 @@ export function Sidebar() {
     { id: 'canvas', label: 'Canvas', icon: LayoutTemplate },
     { id: 'style', label: 'Style', icon: Palette },
     { id: 'border', label: 'Border', icon: Square },
-    { id: 'cursor', label: 'Cursor', icon: MousePointer2 }
+    { id: 'cursor', label: 'Cursor', icon: MousePointer2 },
+    { id: 'audio', label: 'Audio', icon: Music }
   ];
   // A selection appears and disappears as you click regions, so the tab it adds
   // must not strand you on a tab that no longer exists.
@@ -91,6 +94,7 @@ export function Sidebar() {
             </div>
           )}
           {activeTab === 'border' && <BorderSection />}
+          {activeTab === 'audio' && <AudioSection />}
         </div>
         <ExportSection />
       </div>
@@ -2492,3 +2496,396 @@ const COLOR_SWATCHES = [
   '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#78716c',
   '#0a0b0e', '#1f2937', '#475569', '#ffffff'
 ];
+
+function AudioSection() {
+  const t = useT();
+  const backgroundAudio = useEditor((s) => s.backgroundAudio);
+  const setBackgroundAudioTrack = useEditor((s) => s.setBackgroundAudioTrack);
+  const setBackgroundAudioVolume = useEditor((s) => s.setBackgroundAudioVolume);
+  const setBackgroundAudioLoop = useEditor((s) => s.setBackgroundAudioLoop);
+  const setBackgroundAudioMuted = useEditor((s) => s.setBackgroundAudioMuted);
+  const setBackgroundAudioTrim = useEditor((s) => s.setBackgroundAudioTrim);
+  const setBackgroundAudioTrackDuration = useEditor((s) => s.setBackgroundAudioTrackDuration);
+  const clearBackgroundAudio = useEditor((s) => s.clearBackgroundAudio);
+
+  const videoVolume = useEditor((s) => s.videoVolume);
+  const setVideoVolume = useEditor((s) => s.setVideoVolume);
+  const videoMuted = useEditor((s) => s.videoMuted);
+  const setVideoMuted = useEditor((s) => s.setVideoMuted);
+
+  const [auditionId, setAuditionId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [trimModalOpen, setTrimModalOpen] = useState(false);
+  const [modalTrackInfo, setModalTrackInfo] = useState<{
+    id: string;
+    name: string;
+    genre?: string;
+    url: string;
+    startSec: number;
+    endSec: number | null;
+  } | null>(null);
+
+  const auditionAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const toggleAudition = (e: React.MouseEvent, id: string, url: string) => {
+    e.stopPropagation();
+    if (auditionId === id) {
+      auditionAudioRef.current?.pause();
+      setAuditionId(null);
+    } else {
+      if (auditionAudioRef.current) {
+        auditionAudioRef.current.pause();
+      }
+      const a = new Audio(url);
+      a.volume = Math.max(0, Math.min(1, backgroundAudio.volume));
+      a.onended = () => setAuditionId(null);
+      auditionAudioRef.current = a;
+      a.play().catch(() => setAuditionId(null));
+      setAuditionId(id);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (auditionAudioRef.current) {
+        auditionAudioRef.current.pause();
+        auditionAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  const openTrimForTrack = (track: { id: string; name: string; genre?: string; url: string }) => {
+    if (auditionAudioRef.current) {
+      auditionAudioRef.current.pause();
+      setAuditionId(null);
+    }
+    const isCurrent = backgroundAudio.id === track.id && backgroundAudio.url === track.url;
+    setModalTrackInfo({
+      id: track.id,
+      name: track.name,
+      genre: track.genre,
+      url: track.url,
+      startSec: isCurrent ? backgroundAudio.startSec : 0,
+      endSec: isCurrent ? backgroundAudio.endSec : null
+    });
+    setTrimModalOpen(true);
+  };
+
+  const handleImport = async () => {
+    try {
+      const res = await window.api.pickAudioFile();
+      if (res) {
+        openTrimForTrack({
+          id: 'custom',
+          name: res.name,
+          genre: 'Imported Audio',
+          url: res.url
+        });
+      }
+    } catch (err) {
+      console.warn('[sidebar] pickAudioFile failed', err);
+    }
+  };
+
+  const hasMusic = Boolean(backgroundAudio.url);
+  const currentPreset = BUNDLED_AUDIO_TRACKS.find((b) => b.id === backgroundAudio.id);
+  const maxDur = Math.max(
+    1,
+    backgroundAudio.trackDuration || currentPreset?.duration || 60
+  );
+  const startSec = Math.max(0, Math.min(maxDur - 1, backgroundAudio.startSec ?? 0));
+  const endSec = Math.min(maxDur, backgroundAudio.endSec && backgroundAudio.endSec > startSec ? backgroundAudio.endSec : maxDur);
+  const segmentDur = Math.max(0.1, endSec - startSec);
+
+  const fmtTime = (s: number) => {
+    const mins = Math.floor(s / 60);
+    const secs = Math.floor(s % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const filteredTracks = BUNDLED_AUDIO_TRACKS.filter((track) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return track.name.toLowerCase().includes(q) || track.genre.toLowerCase().includes(q);
+  });
+
+  const FREE_DEMO_SOURCES = [
+    {
+      name: 'Unminus',
+      desc: 'Free commercial music for apps & product demos',
+      url: 'https://unminus.com'
+    },
+    {
+      name: 'Mixkit Tech',
+      desc: 'Free stock music for technology videos',
+      url: 'https://mixkit.co/free-stock-music/tag/technology/'
+    },
+    {
+      name: 'Pixabay Demo',
+      desc: 'Full-length commercial MP3s, no attribution required',
+      url: 'https://pixabay.com/music/search/tech/'
+    },
+    {
+      name: 'Chosic CC0',
+      desc: 'Searchable public domain & filter by length',
+      url: 'https://www.chosic.com/free-music/all/?attribute_license=cc0'
+    }
+  ];
+
+  return (
+    <div className="space-y-4 text-[11px]">
+      {/* Active Music Card (if music track is loaded) */}
+      {hasMusic && (
+        <div className="rounded-xl border border-[var(--line)] bg-[var(--fill)] p-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="min-w-0 flex-1 pr-2">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate font-semibold text-[var(--accent)]">{backgroundAudio.name}</span>
+                <span className="rounded bg-[var(--accent)]/15 px-1.5 py-0.5 text-[9px] font-medium text-[var(--accent)]">Active</span>
+              </div>
+              <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[var(--faint)]">
+                <span>{fmtTime(startSec)} → {fmtTime(endSec)}</span>
+                <span>•</span>
+                <span className="font-medium text-[var(--text)]">{Math.round(segmentDur)}s clip</span>
+              </div>
+            </div>
+            <button
+              onClick={clearBackgroundAudio}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--faint)] hover:bg-[var(--fill-hover)] hover:text-[var(--danger)] transition"
+              title="Remove music track"
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
+
+          {/* Visual Trim Button */}
+          <button
+            onClick={() =>
+              openTrimForTrack({
+                id: backgroundAudio.id || 'custom',
+                name: backgroundAudio.name,
+                genre: currentPreset?.genre || 'Custom Audio',
+                url: backgroundAudio.url!
+              })
+            }
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--accent-dim)] px-3 py-2 text-[11px] font-medium text-[var(--accent)] hover:brightness-110 active:scale-[0.99] transition-all"
+          >
+            <Scissors size={13} />
+            <span>{t('side.adjustTrim') || 'Visual Trim (Start / End)'}</span>
+          </button>
+
+          {/* Quick Volume & Loop Controls */}
+          <div className="space-y-2 pt-1 border-t border-[var(--line)]">
+            <RangeRow
+              label={t('side.musicVolume')}
+              value={Math.round(backgroundAudio.volume * 100)}
+              min={0}
+              max={100}
+              step={1}
+              onChange={(v) => setBackgroundAudioVolume(v / 100)}
+              fmt={(v) => `${v}%`}
+            />
+            <ToggleRow
+              label={t('side.loopMusic')}
+              checked={backgroundAudio.loop}
+              onChange={setBackgroundAudioLoop}
+            />
+            <ToggleRow
+              label={t('side.muteMusic')}
+              checked={backgroundAudio.muted}
+              onChange={setBackgroundAudioMuted}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Preset Music Selection Section */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="font-medium text-[var(--text)]">{t('side.backgroundMusic')}</span>
+          {!hasMusic && <span className="text-[10px] text-[var(--faint)]">Select a track</span>}
+        </div>
+
+        {/* Search bar for bundled songs */}
+        <div className="relative mb-2">
+          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('side.searchMusic')}
+            className="w-full rounded-lg bg-[var(--fill)] py-1.5 pl-7 pr-2.5 text-[11px] text-[var(--text)] placeholder-[var(--faint)] outline-none ring-1 ring-[var(--line)] focus:ring-[var(--accent)] transition"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]"
+            >
+              <X size={11} />
+            </button>
+          )}
+        </div>
+
+        {/* Track selection cards */}
+        <div className="max-h-[220px] overflow-y-auto space-y-1.5 pr-1 sb-scroll">
+          {/* None Card */}
+          <button
+            onClick={clearBackgroundAudio}
+            className={
+              'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left transition ' +
+              (!hasMusic
+                ? 'glass text-[var(--accent)] ring-1 ring-[var(--accent)]'
+                : 'bg-[var(--fill)] text-[var(--faint)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]')
+            }
+          >
+            <span className="font-medium">{t('side.none')}</span>
+            {!hasMusic && <span className="text-[10px] opacity-80">Active</span>}
+          </button>
+
+          {/* Bundled Presets */}
+          {filteredTracks.map((track) => {
+            const isSelected = backgroundAudio.id === track.id;
+            const isAuditioning = auditionId === track.id;
+            return (
+              <div
+                key={track.id}
+                onClick={() => openTrimForTrack(track)}
+                className={
+                  'group flex cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 transition ' +
+                  (isSelected
+                    ? 'glass ring-1 ring-[var(--accent)] text-[var(--text)]'
+                    : 'bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]')
+                }
+              >
+                <div className="min-w-0 flex-1 pr-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className={'truncate font-medium ' + (isSelected ? 'text-[var(--accent)]' : '')}>
+                      {track.name}
+                    </span>
+                    {isSelected && <span className="rounded bg-[var(--accent)]/15 px-1 py-0.2 text-[9px] text-[var(--accent)]">Active</span>}
+                  </div>
+                  <div className="truncate text-[10px] text-[var(--faint)]">{track.genre} • {track.duration}s</div>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => toggleAudition(e, track.id, track.url)}
+                    title={isAuditioning ? 'Pause preview' : 'Quick preview'}
+                    className={
+                      'flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition ' +
+                      (isAuditioning
+                        ? 'bg-[var(--accent)] text-white'
+                        : 'bg-[var(--fill-hover)] text-[var(--text)] hover:bg-[var(--fill-active)]')
+                    }
+                  >
+                    {isAuditioning ? <Pause size={11} /> : <Play size={11} className="translate-x-[0.5px]" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openTrimForTrack(track);
+                    }}
+                    title="Trim and adjust audio"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)] transition"
+                  >
+                    <Scissors size={11} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Import Button */}
+          <button
+            onClick={handleImport}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--line)] py-2.5 text-[11px] text-[var(--muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)]"
+          >
+            <Upload size={13} />
+            <span>{t('side.importAudio')}</span>
+          </button>
+        </div>
+
+        <p className="mt-2 text-[10px] leading-relaxed text-[var(--faint)]">
+          {t('side.audioCredits')}
+        </p>
+      </div>
+
+      {/* Free Demo Music Resources */}
+      <div className="space-y-2 border-t border-[var(--line)] pt-3">
+        <div className="flex items-center justify-between">
+          <span className="font-medium text-[var(--text)]">{t('side.moreMusicResources') || 'Get More Free Music'}</span>
+        </div>
+        <p className="text-[10px] text-[var(--faint)]">
+          {t('side.moreMusicTip') || 'Curated sources with full-length royalty-free music for product demos:'}
+        </p>
+        <div className="space-y-1.5">
+          {FREE_DEMO_SOURCES.map((source) => (
+            <button
+              key={source.name}
+              onClick={() => void window.api.openExternal(source.url)}
+              className="flex w-full items-center justify-between rounded-lg bg-[var(--fill)] px-2.5 py-1.5 text-left text-[11px] text-[var(--muted)] transition hover:bg-[var(--fill-hover)] hover:text-[var(--text)] group"
+            >
+              <div className="min-w-0 flex-1 pr-2">
+                <div className="font-medium text-[var(--text)] group-hover:text-[var(--accent)] transition-colors">
+                  {source.name}
+                </div>
+                <div className="truncate text-[9px] text-[var(--faint)]">{source.desc}</div>
+              </div>
+              <ExternalLink size={12} className="text-[var(--faint)] group-hover:text-[var(--text)] shrink-0" />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Video Original Audio Settings */}
+      <div className="space-y-2 border-t border-[var(--line)] pt-3">
+        <span className="font-medium text-[var(--text)]">{t('side.videoAudio')}</span>
+        <RangeRow
+          label={t('side.videoVolume')}
+          value={Math.round(videoVolume * 100)}
+          min={0}
+          max={100}
+          step={1}
+          onChange={(v) => setVideoVolume(v / 100)}
+          fmt={(v) => `${v}%`}
+        />
+        <ToggleRow
+          label={t('side.muteVideo')}
+          checked={videoMuted}
+          onChange={setVideoMuted}
+        />
+      </div>
+
+      {/* Audio Trim Popup Modal */}
+      {trimModalOpen && modalTrackInfo && (
+        <AudioTrimModal
+          open={trimModalOpen}
+          onClose={() => setTrimModalOpen(false)}
+          trackName={modalTrackInfo.name}
+          genre={modalTrackInfo.genre}
+          url={modalTrackInfo.url}
+          initialStartSec={modalTrackInfo.startSec}
+          initialEndSec={modalTrackInfo.endSec}
+          initialVolume={backgroundAudio.volume}
+          initialLoop={backgroundAudio.loop}
+          onApply={({ startSec: newStart, endSec: newEnd, volume: newVol, loop: newLoop, duration: newDur }) => {
+            setBackgroundAudioTrack({
+              id: modalTrackInfo.id,
+              name: modalTrackInfo.name,
+              url: modalTrackInfo.url
+            });
+            setBackgroundAudioTrim(newStart, newEnd);
+            setBackgroundAudioVolume(newVol);
+            setBackgroundAudioLoop(newLoop);
+            if (newDur > 0) {
+              setBackgroundAudioTrackDuration(newDur);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+

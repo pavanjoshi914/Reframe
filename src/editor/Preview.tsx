@@ -54,9 +54,11 @@ export function Preview() {
 
   const videoVolume = useEditor((s) => s.videoVolume);
   const videoMuted = useEditor((s) => s.videoMuted);
+  const backgroundAudio = useEditor((s) => s.backgroundAudio);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const webcamRef = useRef<HTMLVideoElement>(null);
+  const bgAudioRef = useRef<HTMLAudioElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   // Canvas preview: a single <canvas> composited every rAF by the SAME
   // drawFrame the exporter uses (true WYSIWYG), with the <video>s as hidden
@@ -160,6 +162,68 @@ export function Preview() {
     if (Math.abs(wc.currentTime - target) > 0.3) wc.currentTime = target;
     wc.play().catch(() => {});
   }, [currentMs, playing, items, webcamFileUrl]);
+
+  // Background audio sync — controls play/pause, volume, rate, and timeline alignment.
+  useEffect(() => {
+    const a = bgAudioRef.current;
+    if (!a || !backgroundAudio.url) return;
+    a.volume = Math.max(0, Math.min(1, backgroundAudio.volume));
+    a.muted = backgroundAudio.muted;
+    a.loop = backgroundAudio.loop;
+  }, [backgroundAudio.volume, backgroundAudio.muted, backgroundAudio.loop, backgroundAudio.url]);
+
+  const onBgAudioLoadedMetadata = () => {
+    const a = bgAudioRef.current;
+    if (a && Number.isFinite(a.duration) && a.duration > 0) {
+      useEditor.getState().setBackgroundAudioTrackDuration(a.duration);
+    }
+  };
+
+  useEffect(() => {
+    const a = bgAudioRef.current;
+    if (!a || !backgroundAudio.url) return;
+
+    const speed = items.find((it) => it.kind === 'speed' && currentMs >= it.startMs && currentMs <= it.endMs);
+    const targetRate = speed?.speed ?? 1;
+    if (Math.abs(a.playbackRate - targetRate) > 0.01) a.playbackRate = targetRate;
+
+    const dur = a.duration;
+    if (dur && Number.isFinite(dur) && dur > 0) {
+      const vidSec = currentMs / 1000;
+      const startSec = Math.max(0, backgroundAudio.startSec ?? 0);
+      const endSec = backgroundAudio.endSec && backgroundAudio.endSec > startSec
+        ? Math.min(dur, backgroundAudio.endSec)
+        : dur;
+      const segmentDur = Math.max(0.1, endSec - startSec);
+
+      if (!playing || backgroundAudio.muted) {
+        a.pause();
+        const expectedSec = backgroundAudio.loop
+          ? startSec + (vidSec % segmentDur)
+          : Math.min(startSec + vidSec, endSec);
+        if (Math.abs(a.currentTime - expectedSec) > 0.15) {
+          a.currentTime = expectedSec;
+        }
+        return;
+      }
+
+      let expectedSec: number;
+      if (backgroundAudio.loop) {
+        expectedSec = startSec + (vidSec % segmentDur);
+      } else {
+        if (vidSec >= segmentDur) {
+          a.pause();
+          return;
+        }
+        expectedSec = startSec + vidSec;
+      }
+
+      if (Math.abs(a.currentTime - expectedSec) > 0.25) {
+        a.currentTime = expectedSec;
+      }
+      a.play().catch(() => {});
+    }
+  }, [currentMs, playing, items, backgroundAudio.url, backgroundAudio.muted, backgroundAudio.loop, backgroundAudio.startSec, backgroundAudio.endSec]);
 
   // Prime the webcam on its OWN loadedmetadata. MediaRecorder WebMs have
   // duration=Infinity until you phantom-seek past the file; without this the
@@ -687,6 +751,15 @@ export function Preview() {
             style={{ width: 2, height: 2 }}
             playsInline
             muted
+          />
+        )}
+        {backgroundAudio.url && (
+          <audio
+            ref={bgAudioRef}
+            src={backgroundAudio.url}
+            loop={backgroundAudio.loop}
+            onLoadedMetadata={onBgAudioLoadedMetadata}
+            preload="auto"
           />
         )}
 

@@ -1915,6 +1915,27 @@ ipcMain.handle('image:pick', async (evt) => {
   return { dataUrl: `data:${mime};base64,${buf.toString('base64')}`, name: path.basename(filePath) };
 });
 
+ipcMain.handle('audio:pick', async (evt) => {
+  const win = BrowserWindow.fromWebContents(evt.sender) ?? liveEditor() ?? undefined;
+  const res = await dialog.showOpenDialog(win!, {
+    title: 'Choose Background Audio Track',
+    filters: [
+      { name: 'Audio Files', extensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'weba'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  });
+  if (res.canceled || res.filePaths.length === 0) return null;
+  const srcPath = res.filePaths[0];
+  const baseName = path.basename(srcPath);
+  const audioDir = path.join(recordingsTempDir, 'audio');
+  fs.mkdirSync(audioDir, { recursive: true });
+  const destPath = path.join(audioDir, `${Date.now()}-${baseName}`);
+  fs.copyFileSync(srcPath, destPath);
+  const url = `media://local${pathToFileURL(destPath).pathname}`;
+  return { url, name: baseName, filePath: destPath };
+});
+
 ipcMain.handle('external:open', (_evt, url: string) => {
   if (typeof url !== 'string') return;
   // Only allow http(s) and mailto.
@@ -2168,6 +2189,12 @@ app.whenReady().then(async () => {
     const ext = path.extname(p).toLowerCase();
     if (ext === '.mp4' || ext === '.m4v') return 'video/mp4';
     if (ext === '.mov') return 'video/quicktime';
+    if (ext === '.mp3') return 'audio/mpeg';
+    if (ext === '.wav') return 'audio/wav';
+    if (ext === '.m4a' || ext === '.aac') return 'audio/mp4';
+    if (ext === '.ogg') return 'audio/ogg';
+    if (ext === '.flac') return 'audio/flac';
+    if (ext === '.weba') return 'audio/webm';
     return 'video/webm';
   };
   protocol.handle('media', async (req) => {

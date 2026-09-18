@@ -40,6 +40,7 @@ const api: Api = {
   getLastLoadedProject: () => ipcRenderer.invoke('project:lastLoaded'),
   openExportsFolder: () => ipcRenderer.invoke('exports:openFolder'),
   pickImageFile: () => ipcRenderer.invoke('image:pick'),
+  pickAudioFile: () => ipcRenderer.invoke('audio:pick'),
   openExternal: (url) => ipcRenderer.invoke('external:open', url),
   saveExport: (req) => ipcRenderer.invoke('export:save', req),
   saveStill: (req) => ipcRenderer.invoke('still:save', req),

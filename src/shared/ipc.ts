@@ -157,6 +157,7 @@ export type Api = {
   // Browse exports (user-visible MP4/GIF/WebM files).
   openExportsFolder: () => Promise<void>;
   pickImageFile: () => Promise<{ dataUrl: string; name: string } | null>;
+  pickAudioFile: () => Promise<{ url: string; name: string; filePath: string } | null>;
   openExternal: (url: string) => Promise<void>;
   saveExport: (req: ExportRequest) => Promise<{ saved: boolean; path?: string }>;
   /** One composited frame as PNG, written straight to the OS pictures folder. */

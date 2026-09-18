@@ -420,6 +420,96 @@ function audioBufferToWav(buf: AudioBuffer): ArrayBuffer {
   return out;
 }
 
+function computeOutputDurationSec(sourceDurationSec: number, items: ReturnType<typeof useEditor.getState>['items']): number {
+  const trims = items.filter((it) => it.kind === 'trim');
+  const speeds = items.filter((it) => it.kind === 'speed');
+  const stepMs = 50;
+  const totalSteps = Math.ceil((sourceDurationSec * 1000) / stepMs);
+  let outMs = 0;
+  for (let s = 0; s < totalSteps; s++) {
+    const ms = s * stepMs;
+    if (trims.some((t) => ms >= t.startMs && ms < t.endMs)) continue;
+    const speed = speeds.find((sp) => ms >= sp.startMs && ms <= sp.endMs)?.speed ?? 1;
+    outMs += stepMs / (speed || 1);
+  }
+  return Math.max(0.1, outMs / 1000);
+}
+
+async function mixWithBackgroundAudio({
+  timelineAudio,
+  backgroundAudio,
+  outputDurationSec
+}: {
+  timelineAudio: AudioBuffer | null;
+  backgroundAudio: ReturnType<typeof useEditor.getState>['backgroundAudio'];
+  outputDurationSec: number;
+}): Promise<AudioBuffer | null> {
+  if (!backgroundAudio?.url || backgroundAudio.muted || backgroundAudio.volume <= 0) {
+    return timelineAudio;
+  }
+
+  const AC: typeof AudioContext =
+    window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!AC) return timelineAudio;
+
+  let bgBuffer: AudioBuffer;
+  try {
+    const res = await fetch(backgroundAudio.url);
+    const ab = await res.arrayBuffer();
+    const ac = new AC();
+    bgBuffer = await ac.decodeAudioData(ab);
+    await ac.close().catch(() => {});
+  } catch (err) {
+    console.warn('[export] Failed to decode background audio track:', err);
+    return timelineAudio;
+  }
+
+  const targetSampleRate = timelineAudio?.sampleRate ?? bgBuffer.sampleRate ?? 48000;
+  const targetChannels = 2;
+  const totalSeconds = timelineAudio ? (timelineAudio.length / timelineAudio.sampleRate) : outputDurationSec;
+  const targetLength = Math.max(1, Math.round(totalSeconds * targetSampleRate));
+
+  const offlineCtx = new OfflineAudioContext(targetChannels, targetLength, targetSampleRate);
+
+  if (timelineAudio && timelineAudio.length > 0) {
+    const vidSrc = offlineCtx.createBufferSource();
+    vidSrc.buffer = timelineAudio;
+    vidSrc.connect(offlineCtx.destination);
+    vidSrc.start(0);
+  }
+
+  const bgDuration = bgBuffer.duration;
+  const startSec = Math.max(0, Math.min(bgDuration, backgroundAudio.startSec ?? 0));
+  const endSec = backgroundAudio.endSec && backgroundAudio.endSec > startSec
+    ? Math.min(bgDuration, backgroundAudio.endSec)
+    : bgDuration;
+  const segmentDuration = Math.max(0.1, endSec - startSec);
+
+  const bgSrc = offlineCtx.createBufferSource();
+  bgSrc.buffer = bgBuffer;
+  if (backgroundAudio.loop) {
+    bgSrc.loop = true;
+    bgSrc.loopStart = startSec;
+    bgSrc.loopEnd = endSec;
+    bgSrc.start(0, startSec);
+  } else {
+    bgSrc.loop = false;
+    bgSrc.start(0, startSec, segmentDuration);
+  }
+
+  const bgGain = offlineCtx.createGain();
+  bgGain.gain.value = Math.max(0, Math.min(1, backgroundAudio.volume));
+  bgSrc.connect(bgGain);
+  bgGain.connect(offlineCtx.destination);
+
+  try {
+    return await offlineCtx.startRendering();
+  } catch (err) {
+    console.warn('[export] OfflineAudioContext rendering failed:', err);
+    return timelineAudio;
+  }
+}
+
 export async function runExport({ onProgress }: { onProgress: ProgressFn }): Promise<boolean> {
   cancelRequested = false;
   const state = useEditor.getState();
@@ -428,7 +518,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   const {
     fileUrl, webcamFileUrl, items, background, effects, webcam,
     layoutPreset, aspect, exportQuality, exportFormat, cropRegion, videoMuted, videoVolume,
-    exportEncoder
+    exportEncoder, backgroundAudio
   } = state;
 
   onProgress('Preparing', 0);
@@ -707,46 +797,55 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   let outAudioBuffer: AudioBuffer | null = null;
   // On the ffmpeg path the audio is muxed by ffmpeg from a WAV, so no
   // mediabunny audio track is added — but the timeline audio is still rebuilt.
-  if (!videoMuted) {
-    try {
+  try {
+    if (!videoMuted) {
       const audioTrack = await screenInput.getPrimaryAudioTrack();
       if (audioTrack) {
         outAudioBuffer = await buildTimelineAudio(screenBuf, items, videoVolume);
-        // A recording with system audio armed but nothing playing yields a
-        // buffer of digital silence. Muxing that in costs bytes, gains nothing,
-        // and — on MP4 — used to be the difference between a file a site would
-        // accept and one it would not. Skip it.
         if (outAudioBuffer && isSilent(outAudioBuffer)) {
           outAudioBuffer = null;
         }
-        if (outAudioBuffer && outAudioBuffer.length > 0) {
-          // Chromium cannot ENCODE AAC (isConfigSupported is false for both
-          // mp4a.40.2 and mp4a.40.5), so an MP4 written here can only carry
-          // Opus — which is legal by a later ISO spec and rejected almost
-          // everywhere in practice. Rather than lose the audio, main converts
-          // the finished MP4's audio to AAC with the bundled ffmpeg, copying
-          // the video stream (see mp4AudioToAac). So asking for Opus here is
-          // correct: it is an intermediate, not what lands on disk.
-          const audioCodec = await getFirstEncodableAudioCodec(
-            isMp4 ? ['aac', 'opus'] : ['opus', 'vorbis'],
-            { numberOfChannels: outAudioBuffer.numberOfChannels, sampleRate: outAudioBuffer.sampleRate }
-          );
-          if (audioCodec && !useFfmpeg) {
-            audioSource = new AudioBufferSource({ codec: audioCodec, bitrate: 192_000 });
-            output.addAudioTrack(audioSource);
-          } else if (useFfmpeg) {
-            /* kept in outAudioBuffer; ffmpeg muxes it at the end */
-          } else {
-            console.warn('[export] no encodable audio codec; exporting without audio');
-            outAudioBuffer = null;
-          }
-        }
       }
-    } catch (err) {
-      console.warn('[export] audio passthrough failed; exporting without audio', err);
-      audioSource = null;
+    }
+
+    // Blend in background audio if configured
+    const estOutputDur = computeOutputDurationSec(sourceDurationSec, items);
+    outAudioBuffer = await mixWithBackgroundAudio({
+      timelineAudio: outAudioBuffer,
+      backgroundAudio,
+      outputDurationSec: estOutputDur
+    });
+
+    if (outAudioBuffer && isSilent(outAudioBuffer)) {
       outAudioBuffer = null;
     }
+
+    if (outAudioBuffer && outAudioBuffer.length > 0) {
+      // Chromium cannot ENCODE AAC (isConfigSupported is false for both
+      // mp4a.40.2 and mp4a.40.5), so an MP4 written here can only carry
+      // Opus — which is legal by a later ISO spec and rejected almost
+      // everywhere in practice. Rather than lose the audio, main converts
+      // the finished MP4's audio to AAC with the bundled ffmpeg, copying
+      // the video stream (see mp4AudioToAac). So asking for Opus here is
+      // correct: it is an intermediate, not what lands on disk.
+      const audioCodec = await getFirstEncodableAudioCodec(
+        isMp4 ? ['aac', 'opus'] : ['opus', 'vorbis'],
+        { numberOfChannels: outAudioBuffer.numberOfChannels, sampleRate: outAudioBuffer.sampleRate }
+      );
+      if (audioCodec && !useFfmpeg) {
+        audioSource = new AudioBufferSource({ codec: audioCodec, bitrate: 192_000 });
+        output.addAudioTrack(audioSource);
+      } else if (useFfmpeg) {
+        /* kept in outAudioBuffer; ffmpeg muxes it at the end */
+      } else {
+        console.warn('[export] no encodable audio codec; exporting without audio');
+        outAudioBuffer = null;
+      }
+    }
+  } catch (err) {
+    console.warn('[export] audio mixing failed; exporting without audio', err);
+    audioSource = null;
+    outAudioBuffer = null;
   }
 
   // Start the ffmpeg encoder (if selected) before the first frame is drawn.

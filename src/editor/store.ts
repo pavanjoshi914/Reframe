@@ -16,6 +16,30 @@ export type BlurStyle = 'blur' | 'pixelate';
 // compositor and the sidebar picker draw from one source.
 export type CursorStyle = CursorStyleId;
 
+export type BackgroundAudio = {
+  id: string | null;      // track id or 'custom' or null
+  name: string;           // display name
+  url: string | null;     // media:// or asset URL
+  volume: number;         // 0..1 (default 0.4)
+  loop: boolean;          // default true
+  muted: boolean;         // default false
+  startSec: number;       // where to start in the audio track (seconds, default 0)
+  endSec: number | null;  // where to end in the audio track (seconds, null = full track)
+  trackDuration: number;  // measured duration in seconds (0 if not yet loaded)
+};
+
+export const DEFAULT_BACKGROUND_AUDIO: BackgroundAudio = {
+  id: null,
+  name: '',
+  url: null,
+  volume: 0.4,
+  loop: true,
+  muted: false,
+  startSec: 0,
+  endSec: null,
+  trackDuration: 0
+};
+
 export type AnnotationStyle = {
   // Visual styling for an annotation. All fields optional so older projects
   // load with sensible defaults.
@@ -217,6 +241,7 @@ export type EditorState = {
   // pipeline drops the audio track entirely, so the saved file has no sound.
   videoVolume: number; // 0..1
   videoMuted: boolean;
+  backgroundAudio: BackgroundAudio;
 
   // Export
   exportFormat: 'mp4' | 'webm' | 'gif';
@@ -308,6 +333,13 @@ export type EditorState = {
   setExportEncoder: (e: 'builtin' | 'ffmpeg') => void;
   setVideoVolume: (v: number) => void;
   setVideoMuted: (m: boolean) => void;
+  setBackgroundAudioTrack: (track: { id: string | null; name: string; url: string | null }) => void;
+  setBackgroundAudioVolume: (volume: number) => void;
+  setBackgroundAudioLoop: (loop: boolean) => void;
+  setBackgroundAudioMuted: (muted: boolean) => void;
+  setBackgroundAudioTrim: (startSec: number, endSec?: number | null) => void;
+  setBackgroundAudioTrackDuration: (duration: number) => void;
+  clearBackgroundAudio: () => void;
   addItem: (kind: LaneKind, atMs: number) => void;
   // Add a spotlight/magnify region spanning the whole video, cursor-tracked.
   addWholeVideoEffect: (kind: 'spotlight' | 'magnify') => void;
@@ -358,6 +390,9 @@ export type SerializedProject = {
   exportEncoder?: EditorState['exportEncoder'];
   items: LaneItem[];
   cursorFx?: EditorState['cursorFx'];
+  videoVolume?: number;
+  videoMuted?: boolean;
+  backgroundAudio?: BackgroundAudio;
 };
 
 // `clicks` (the ripple) is OFF and `clickPress` is ON by default: the press is
@@ -450,7 +485,10 @@ function docOf(s: EditorState): SerializedProject {
     exportQuality: s.exportQuality,
     exportEncoder: s.exportEncoder,
     items: s.items,
-    cursorFx: s.cursorFx
+    cursorFx: s.cursorFx,
+    videoVolume: s.videoVolume,
+    videoMuted: s.videoMuted,
+    backgroundAudio: s.backgroundAudio
   };
 }
 
@@ -551,6 +589,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   videoVolume: 1,
   videoMuted: false,
+  backgroundAudio: { ...DEFAULT_BACKGROUND_AUDIO },
 
   currentProjectPath: null,
   lastSavedAt: null,
@@ -690,6 +729,55 @@ export const useEditor = create<EditorState>((set, get) => ({
   setExportEncoder: (e) => set({ exportEncoder: e }),
   setVideoVolume: (v) => set({ videoVolume: Math.max(0, Math.min(1, v)) }),
   setVideoMuted: (m) => set({ videoMuted: m }),
+  setBackgroundAudioTrack: (track) =>
+    set((s) => ({
+      backgroundAudio: {
+        ...s.backgroundAudio,
+        id: track.id,
+        name: track.name,
+        url: track.url
+      }
+    })),
+  setBackgroundAudioVolume: (volume) =>
+    set((s) => ({
+      backgroundAudio: {
+        ...s.backgroundAudio,
+        volume: Math.max(0, Math.min(1, volume))
+      }
+    })),
+  setBackgroundAudioLoop: (loop) =>
+    set((s) => ({
+      backgroundAudio: {
+        ...s.backgroundAudio,
+        loop
+      }
+    })),
+  setBackgroundAudioMuted: (muted) =>
+    set((s) => ({
+      backgroundAudio: {
+        ...s.backgroundAudio,
+        muted
+      }
+    })),
+  setBackgroundAudioTrim: (startSec, endSec) =>
+    set((s) => ({
+      backgroundAudio: {
+        ...s.backgroundAudio,
+        startSec: Math.max(0, startSec),
+        endSec: endSec != null && endSec > 0 ? endSec : null
+      }
+    })),
+  setBackgroundAudioTrackDuration: (duration) =>
+    set((s) => ({
+      backgroundAudio: {
+        ...s.backgroundAudio,
+        trackDuration: Math.max(0, duration)
+      }
+    })),
+  clearBackgroundAudio: () =>
+    set({
+      backgroundAudio: { ...DEFAULT_BACKGROUND_AUDIO }
+    }),
   addItem: (kind, atMs) => {
     const dur = get().durationMs || 1000;
     const len = Math.min(2000, Math.max(200, dur - atMs));
@@ -821,6 +909,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       exportEncoder: data.exportEncoder ?? 'builtin',
       items: data.items,
       cursorFx: { ...DEFAULT_CURSOR_FX, ...(data.cursorFx ?? {}) },
+      videoVolume: data.videoVolume ?? 1,
+      videoMuted: data.videoMuted ?? false,
+      backgroundAudio: data.backgroundAudio ? { ...DEFAULT_BACKGROUND_AUDIO, ...data.backgroundAudio } : { ...DEFAULT_BACKGROUND_AUDIO },
       selectedItemId: null,
       // Loading a project is a fresh document → reset undo history.
       past: [],
@@ -850,6 +941,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       exportEncoder: snap.exportEncoder ?? 'builtin',
       items: snap.items,
       cursorFx: snap.cursorFx ?? s.cursorFx,
+      videoVolume: snap.videoVolume ?? s.videoVolume,
+      videoMuted: snap.videoMuted ?? s.videoMuted,
+      backgroundAudio: snap.backgroundAudio ? { ...DEFAULT_BACKGROUND_AUDIO, ...snap.backgroundAudio } : s.backgroundAudio,
       selectedItemId: snap.items.some((it) => it.id === s.selectedItemId) ? s.selectedItemId : null
     })),
   // Push a pre-change snapshot onto the past stack (called by the debounced
