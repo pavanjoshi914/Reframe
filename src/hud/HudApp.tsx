@@ -18,7 +18,8 @@ import {
   MdDragIndicator,
   MdKeyboardArrowUp,
   MdCheck,
-  MdMouse
+  MdMouse,
+  MdImage
 } from 'react-icons/md';
 import type { DesktopSource, Region } from '@shared/ipc';
 import { useT } from '../i18n';
@@ -470,6 +471,15 @@ export function HudApp() {
 
         <IconBtn onClick={() => window.api.openProjectFromPicker()} title={t('hud.openProject')}>
           <MdInsertDriveFile size={18} />
+        </IconBtn>
+        <IconBtn
+          onClick={async () => {
+            const img = await window.api.pickImageForEditing();
+            if (img) await window.api.openEditorForImage(img);
+          }}
+          title={t('hud.openImage')}
+        >
+          <MdImage size={18} />
         </IconBtn>
         <IconBtn onClick={() => window.api.openExportsFolder()} title={t('hud.openExports')}>
           <MdFolderOpen size={18} />

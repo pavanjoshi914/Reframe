@@ -166,7 +166,9 @@ export type CropRegion = { x: number; y: number; width: number; height: number }
 export const DEFAULT_CROP_REGION: CropRegion = { x: 0, y: 0, width: 1, height: 1 };
 
 export type EditorState = {
+  mediaType: 'video' | 'image';
   recording: RecordingMeta | null;
+  imageMeta: import('@shared/ipc').ImageMeta | null;
   fileUrl: string | null;
   webcamFileUrl: string | null;
   durationMs: number;
@@ -181,6 +183,7 @@ export type EditorState = {
   theme: 'dark' | 'light';
   setTheme: (t: 'dark' | 'light') => void;
   mainVideoEl: HTMLVideoElement | null;
+  mainImageEl: HTMLImageElement | null;
 
   aspect: AspectRatio;
 
@@ -252,6 +255,8 @@ export type EditorState = {
   // fine detail on text at a fraction of the bitrate. Opt-in while it is
   // being compared against the old path.
   exportEncoder: 'builtin' | 'ffmpeg';
+  imageExportFormat: 'png' | 'jpeg' | 'webp';
+  imageExportScale: 1 | 2 | 3;
 
   // Timeline
   items: LaneItem[];
@@ -308,11 +313,15 @@ export type EditorState = {
 
   // Actions
   setRecording: (r: RecordingMeta, fileUrl: string, webcamFileUrl?: string | null) => void;
+  setImage: (image: import('@shared/ipc').ImageMeta) => void;
   setRecordingDuration: (durationMs: number) => void;
   setCurrentProjectPath: (p: string | null) => void;
   setLastSavedAt: (t: number | null) => void;
   setVideoIntrinsicSize: (size: { width: number; height: number } | null) => void;
   setMainVideoEl: (el: HTMLVideoElement | null) => void;
+  setMainImageEl: (el: HTMLImageElement | null) => void;
+  setImageExportFormat: (f: 'png' | 'jpeg' | 'webp') => void;
+  setImageExportScale: (s: 1 | 2 | 3) => void;
   setCurrent: (ms: number) => void;
   setPlaying: (p: boolean) => void;
   setAspect: (a: AspectRatio) => void;
@@ -389,6 +398,10 @@ export type SerializedProject = {
   exportFormat: EditorState['exportFormat'];
   exportQuality: EditorState['exportQuality'];
   exportEncoder?: EditorState['exportEncoder'];
+  imageExportFormat?: EditorState['imageExportFormat'];
+  imageExportScale?: EditorState['imageExportScale'];
+  mediaType?: EditorState['mediaType'];
+  imageMeta?: EditorState['imageMeta'];
   items: LaneItem[];
   cursorFx?: EditorState['cursorFx'];
   videoVolume?: number;
@@ -485,6 +498,10 @@ function docOf(s: EditorState): SerializedProject {
     exportFormat: s.exportFormat,
     exportQuality: s.exportQuality,
     exportEncoder: s.exportEncoder,
+    imageExportFormat: s.imageExportFormat,
+    imageExportScale: s.imageExportScale,
+    mediaType: s.mediaType,
+    imageMeta: s.imageMeta,
     items: s.items,
     cursorFx: s.cursorFx,
     videoVolume: s.videoVolume,
@@ -526,7 +543,9 @@ const presetEffects: Record<PolishPreset, EditorState['effects']> = {
 };
 
 export const useEditor = create<EditorState>((set, get) => ({
+  mediaType: 'video',
   recording: null,
+  imageMeta: null,
   fileUrl: null,
   webcamFileUrl: null,
   durationMs: 0,
@@ -543,6 +562,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ theme: t });
   },
   mainVideoEl: null,
+  mainImageEl: null,
 
   aspect: '16:9',
 
@@ -587,6 +607,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   // around 8 Mbps. Defaulting lower just made zooms look soft for no saving.
   exportQuality: 'high',
   exportEncoder: 'builtin',
+  imageExportFormat: 'png',
+  imageExportScale: 2,
 
   videoVolume: 1,
   videoMuted: false,
@@ -618,6 +640,37 @@ export const useEditor = create<EditorState>((set, get) => ({
       recording: s.recording ? { ...s.recording, durationMs } : null
     })),
 
+  setImage: (image) =>
+    set((s) => {
+      const isSameImage = s.imageMeta?.filePath === image.filePath;
+      const hasCustomCrop =
+        s.cropRegion.x !== 0 ||
+        s.cropRegion.y !== 0 ||
+        s.cropRegion.width !== 1 ||
+        s.cropRegion.height !== 1;
+
+      return {
+        mediaType: 'image',
+        imageMeta: image,
+        recording: null,
+        fileUrl: image.fileUrl,
+        webcamFileUrl: null,
+        durationMs: 0,
+        currentMs: 0,
+        playing: false,
+        videoIntrinsicSize: { width: image.width, height: image.height },
+        aspect: 'auto',
+        cropRegion: isSameImage && hasCustomCrop ? s.cropRegion : DEFAULT_CROP_REGION,
+        autoTrimPending: false,
+        past: isSameImage ? s.past : [],
+        future: isSameImage ? s.future : []
+      };
+    }),
+
+  setMainImageEl: (el) => set({ mainImageEl: el }),
+  setImageExportFormat: (f) => set({ imageExportFormat: f }),
+  setImageExportScale: (s) => set({ imageExportScale: s }),
+
   setRecording: (r, fileUrl, webcamFileUrl) =>
     set((s) => {
       const isSameRecording = s.recording?.filePath === r.filePath;
@@ -628,7 +681,9 @@ export const useEditor = create<EditorState>((set, get) => ({
         s.cropRegion.height !== 1;
 
       return {
+        mediaType: 'video',
         recording: r,
+        imageMeta: null,
         fileUrl,
         webcamFileUrl: webcamFileUrl ?? null,
         durationMs: r.durationMs,
@@ -922,6 +977,17 @@ export const useEditor = create<EditorState>((set, get) => ({
       exportFormat: data.exportFormat,
       exportQuality: data.exportQuality,
       exportEncoder: data.exportEncoder ?? 'builtin',
+      imageExportFormat: data.imageExportFormat ?? 'png',
+      imageExportScale: data.imageExportScale ?? 2,
+      mediaType: data.mediaType ?? (data.imageMeta ? 'image' : 'video'),
+      imageMeta: data.imageMeta ?? null,
+      ...(data.mediaType === 'image' && data.imageMeta
+        ? {
+            fileUrl: data.imageMeta.fileUrl,
+            videoIntrinsicSize: { width: data.imageMeta.width, height: data.imageMeta.height },
+            durationMs: 0
+          }
+        : {}),
       items: data.items,
       cursorFx: { ...DEFAULT_CURSOR_FX, ...(data.cursorFx ?? {}) },
       videoVolume: data.videoVolume ?? 1,
@@ -954,6 +1020,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       exportFormat: snap.exportFormat,
       exportQuality: snap.exportQuality,
       exportEncoder: snap.exportEncoder ?? 'builtin',
+      imageExportFormat: snap.imageExportFormat ?? s.imageExportFormat,
+      imageExportScale: snap.imageExportScale ?? s.imageExportScale,
+      mediaType: snap.mediaType ?? s.mediaType,
+      imageMeta: snap.imageMeta ?? s.imageMeta,
       items: snap.items,
       cursorFx: snap.cursorFx ?? s.cursorFx,
       videoVolume: snap.videoVolume ?? s.videoVolume,

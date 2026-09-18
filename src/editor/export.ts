@@ -1288,12 +1288,18 @@ function cursorToOutput(
  * frame — and PNG rather than JPEG because a screenshot of text should not
  * carry block artefacts.
  */
-export async function captureStill(state: EditorState): Promise<{ data: ArrayBuffer; width: number; height: number } | null> {
-  const v = state.mainVideoEl;
-  if (!v) return null;
-  const wc = (state as unknown as { webcamVideoEl?: HTMLVideoElement | null }).webcamVideoEl ?? null;
+export async function captureStill(
+  state: EditorState,
+  options?: { scale?: number; format?: 'png' | 'jpeg' | 'webp' }
+): Promise<{ data: ArrayBuffer; width: number; height: number; format: string } | null> {
+  const isImg = state.mediaType === 'image';
+  const media = isImg ? state.mainImageEl : state.mainVideoEl;
+  if (!media) return null;
+  const wc = isImg ? null : (state as unknown as { webcamVideoEl?: HTMLVideoElement | null }).webcamVideoEl ?? null;
 
-  const intrinsic = { w: v.videoWidth || 1920, h: v.videoHeight || 1080 };
+  const mw = isImg ? (media as HTMLImageElement).naturalWidth : (media as HTMLVideoElement).videoWidth;
+  const mh = isImg ? (media as HTMLImageElement).naturalHeight : (media as HTMLVideoElement).videoHeight;
+  const intrinsic = { w: mw || 1920, h: mh || 1080 };
   const ratio =
     state.aspect === 'auto' ? intrinsic.w / intrinsic.h : ASPECT_RATIOS[state.aspect] ?? intrinsic.w / intrinsic.h;
   const crop = state.cropRegion;
@@ -1301,14 +1307,16 @@ export async function captureStill(state: EditorState): Promise<{ data: ArrayBuf
   const cropH = Math.max(1, crop.height * intrinsic.h);
   const innerScale = state.fullBleed ? 1 : 1 - (state.effects.paddingPct / 100) * 0.5;
   // Same rule the exporter uses: size the frame so the recording never has to
-  // scale DOWN, then cap it. A still is the one output where there is no
-  // bitrate to protect, so the cap is the highest preset rather than the
-  // project's export quality.
+  // scale DOWN, then cap it.
   const needH = Math.max(cropH / innerScale, cropW / (ratio * innerScale));
   const maxH = Math.max(...Object.values(QUALITY_PRESETS).map((q) => q.maxHeight));
-  let outH = Math.min(Math.max(intrinsic.h, needH), maxH);
-  outH = Math.max(2, Math.floor(outH / 2) * 2);
-  let outW = Math.max(2, Math.floor(Math.floor(outH * ratio) / 2) * 2);
+  let baseH = Math.min(Math.max(intrinsic.h, needH), maxH);
+  baseH = Math.max(2, Math.floor(baseH / 2) * 2);
+  let baseW = Math.max(2, Math.floor(Math.floor(baseH * ratio) / 2) * 2);
+
+  const scale = options?.scale ?? 1;
+  const outW = Math.round(baseW * scale);
+  const outH = Math.round(baseH * scale);
 
   let bgImage: HTMLImageElement | null = null;
   if (state.background.mode === 'image' && state.background.value) {
@@ -1323,7 +1331,8 @@ export async function captureStill(state: EditorState): Promise<{ data: ArrayBuf
   if (!ctx) return null;
   ctx.imageSmoothingQuality = 'high';
 
-  drawFrame(ctx, outW, outH, v, wc, state.currentMs, {
+  const ms = isImg ? 0 : state.currentMs;
+  drawFrame(ctx, outW, outH, media, wc, ms, {
     items: state.items,
     background: state.background,
     effects: state.effects,
@@ -1344,9 +1353,11 @@ export async function captureStill(state: EditorState): Promise<{ data: ArrayBuf
     cursorFx: state.cursorFx
   });
 
-  const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+  const format = options?.format ?? 'png';
+  const mime = format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
+  const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, mime, 0.95));
   if (!blob) return null;
-  return { data: await blob.arrayBuffer(), width: outW, height: outH };
+  return { data: await blob.arrayBuffer(), width: outW, height: outH, format };
 }
 
 /** Capture the frame at the playhead and write it to the OS pictures folder. */
@@ -1355,6 +1366,29 @@ export async function saveStillNow(): Promise<string | null> {
   if (!shot) return null;
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const res = await window.api.saveStill({ name: `reframe-${stamp}`, data: shot.data });
+  return res?.saved && res.path ? res.path : null;
+}
+
+/** Copy the composited frame/image directly to the OS clipboard. */
+export async function copyImageToClipboardNow(scale: number = 2): Promise<boolean> {
+  const shot = await captureStill(useEditor.getState(), { scale, format: 'png' });
+  if (!shot) return false;
+  const res = await window.api.copyImageToClipboard(shot.data);
+  return !!res?.ok;
+}
+
+/** Export the edited image to disk with format and scale. */
+export async function exportImageNow(format: 'png' | 'jpeg' | 'webp' = 'png', scale: number = 2): Promise<string | null> {
+  const st = useEditor.getState();
+  const shot = await captureStill(st, { scale, format });
+  if (!shot) return null;
+  const baseName = st.imageMeta?.name?.replace(/\.[^.]+$/, '') || 'reframe-image';
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const res = await window.api.saveImageExport({
+    name: `${baseName}-${stamp}`,
+    data: shot.data,
+    format
+  });
   return res?.saved && res.path ? res.path : null;
 }
 

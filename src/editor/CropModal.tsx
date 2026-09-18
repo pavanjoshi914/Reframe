@@ -33,8 +33,10 @@ export function CropModal({ onClose }: { onClose: () => void }) {
   const storeCrop = useEditor((s) => s.cropRegion);
   const setCropRegion = useEditor((s) => s.setCropRegion);
 
-  // Live reference to the editor's already-primed <video> element.
+  // Live reference to the editor's already-primed media elements.
+  const mediaType = useEditor((s) => s.mediaType);
   const mainVideo = useEditor((s) => s.mainVideoEl);
+  const mainImage = useEditor((s) => s.mainImageEl);
 
   // Modal-local working copy. Cancel = throw away; Done = commit.
   const [crop, setCrop] = useState<CropRegion>(storeCrop);
@@ -48,40 +50,63 @@ export function CropModal({ onClose }: { onClose: () => void }) {
   const [containerSize, setContainerSize] = useState<{ w: number; h: number } | null>(null);
   const [intrinsic, setIntrinsic] = useState<{ w: number; h: number } | null>(null);
 
-  // Drive the preview canvas at rAF cadence from the editor's main video.
+  // Drive the preview canvas from the editor's media (video or image).
   useEffect(() => {
-    if (!mainVideo) return;
+    const isImg = mediaType === 'image';
+    const media = isImg ? mainImage : mainVideo;
+    if (!media) return;
+
     let raf = 0;
     const draw = () => {
       const c = canvasRef.current;
-      const v = mainVideo;
-      if (c && v.videoWidth > 0) {
-        if (c.width !== v.videoWidth) c.width = v.videoWidth;
-        if (c.height !== v.videoHeight) c.height = v.videoHeight;
+      const mw = isImg ? (media as HTMLImageElement).naturalWidth : (media as HTMLVideoElement).videoWidth;
+      const mh = isImg ? (media as HTMLImageElement).naturalHeight : (media as HTMLVideoElement).videoHeight;
+      if (c && mw > 0) {
+        if (c.width !== mw) c.width = mw;
+        if (c.height !== mh) c.height = mh;
         const ctx = c.getContext('2d');
         if (ctx) {
           try {
-            ctx.drawImage(v, 0, 0);
+            ctx.drawImage(media, 0, 0);
           } catch {
             /* black frame OK */
           }
         }
       }
-      raf = requestAnimationFrame(draw);
+      if (!isImg) {
+        raf = requestAnimationFrame(draw);
+      }
     };
-    raf = requestAnimationFrame(draw);
-    if (mainVideo.videoWidth > 0) {
-      setIntrinsic({ w: mainVideo.videoWidth, h: mainVideo.videoHeight });
+
+    if (isImg) {
+      const img = media as HTMLImageElement;
+      if (img.naturalWidth > 0) {
+        setIntrinsic({ w: img.naturalWidth, h: img.naturalHeight });
+        draw();
+      } else {
+        const onLoad = () => {
+          setIntrinsic({ w: img.naturalWidth, h: img.naturalHeight });
+          draw();
+        };
+        img.addEventListener('load', onLoad, { once: true });
+        return () => img.removeEventListener('load', onLoad);
+      }
     } else {
-      const onMeta = () => setIntrinsic({ w: mainVideo.videoWidth, h: mainVideo.videoHeight });
-      mainVideo.addEventListener('loadedmetadata', onMeta, { once: true });
-      return () => {
-        cancelAnimationFrame(raf);
-        mainVideo.removeEventListener('loadedmetadata', onMeta);
-      };
+      raf = requestAnimationFrame(draw);
+      const v = media as HTMLVideoElement;
+      if (v.videoWidth > 0) {
+        setIntrinsic({ w: v.videoWidth, h: v.videoHeight });
+      } else {
+        const onMeta = () => setIntrinsic({ w: v.videoWidth, h: v.videoHeight });
+        v.addEventListener('loadedmetadata', onMeta, { once: true });
+        return () => {
+          cancelAnimationFrame(raf);
+          v.removeEventListener('loadedmetadata', onMeta);
+        };
+      }
     }
     return () => cancelAnimationFrame(raf);
-  }, [mainVideo]);
+  }, [mediaType, mainVideo, mainImage]);
 
   const handleCommit = () => {
     setCropRegion(crop);

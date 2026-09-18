@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight, Camera, Crosshair, LayoutTemplate, Palette, MousePointer2, Music, Play, Pause, Scissors, ExternalLink, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight, Camera, Crosshair, LayoutTemplate, Palette, MousePointer2, Music, Play, Pause, Scissors, ExternalLink, Copy, Check, type LucideIcon } from 'lucide-react';
 import { BORDER_IDS, BORDER_LABELS, BORDER_COLORS, BORDER_DEFAULTS, type BorderId } from './borders';
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem, type CursorStyle } from './store';
-import { runExport, cancelExport, saveStillNow } from './export';
+import { runExport, cancelExport, saveStillNow, copyImageToClipboardNow, exportImageNow } from './export';
 import { SCENE_GROUPS, DEFAULT_SCENE_SETTINGS, sceneInstances } from './scenes';
 import { SHADER_IDS, SHADER_LABELS, SHADER_FALLBACK, renderShaderBackground, MESH_PRESETS, meshPreset, renderMeshBackground, FIELD_PRESETS, FIELD_VARIANTS, FIELD_VARIANT_LABELS, fieldStyleOf, renderFieldBackground, bgClockMs, type ShaderId, type FieldVariant } from './shaders';
 import { CURSOR_GLYPHS, CURSOR_STYLE_IDS } from './cursorGlyphs';
@@ -18,6 +18,8 @@ const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 3, 5];
 
 export function Sidebar() {
   const [tab, setTab] = useState('canvas');
+  const mediaType = useEditor((s) => s.mediaType);
+  const isImage = mediaType === 'image';
   const selectedItem = useEditor((s) => s.items.find((it) => it.id === s.selectedItemId) ?? null);
   const showSelection = selectedItem && (
     selectedItem.kind === 'zoom' ||
@@ -32,18 +34,17 @@ export function Sidebar() {
 
   // One panel at a time behind an icon rail, instead of every section stacked
   // in one scrolling column.
-  //
-  // The reference comp does not fit more controls on screen — it splits them.
-  // Six sections stacked meant the panel always scrolled and you never saw a
-  // whole group at once; tabbed, each group fits and the scrollbar is the
-  // exception rather than the rule.
   const TABS: { id: string; label: string; icon: LucideIcon }[] = [
     ...(showSelection ? [{ id: 'selection', label: 'Select', icon: Crosshair }] : []),
     { id: 'canvas', label: 'Canvas', icon: LayoutTemplate },
     { id: 'style', label: 'Style', icon: Palette },
     { id: 'border', label: 'Border', icon: Square },
-    { id: 'cursor', label: 'Cursor', icon: MousePointer2 },
-    { id: 'audio', label: 'Audio', icon: Music }
+    ...(isImage
+      ? [{ id: 'annotate', label: 'Annotate', icon: Type }]
+      : [
+          { id: 'cursor', label: 'Cursor', icon: MousePointer2 },
+          { id: 'audio', label: 'Audio', icon: Music }
+        ])
   ];
   // A selection appears and disappears as you click regions, so the tab it adds
   // must not strand you on a tab that no longer exists.
@@ -52,11 +53,6 @@ export function Sidebar() {
   return (
     // TWO panels, not one split down the middle — the rail floats beside the
     // inspector the way the reference has it, with the page showing between.
-    //
-    // `shrink-0` on both is load-bearing: this sits in a flex row next to the
-    // preview, and a flex item with a width but no shrink-0 is still allowed to
-    // compress. Narrow the window and the 380px sidebar was quietly squeezing,
-    // which re-wrapped the wallpaper grid and shuffled every row under it.
     <div className="flex h-full shrink-0 gap-3">
       <div className="flex w-[58px] shrink-0 flex-col gap-1 overflow-hidden rounded-xl bg-[var(--panel)] p-1.5">
         {TABS.map((x) => {
@@ -90,11 +86,12 @@ export function Sidebar() {
           {activeTab === 'style' && (
             <div className="space-y-4">
               <StyleSection />
-              <VideoEffectsSection />
+              {!isImage && <VideoEffectsSection />}
             </div>
           )}
           {activeTab === 'border' && <BorderSection />}
           {activeTab === 'audio' && <AudioSection />}
+          {activeTab === 'annotate' && <AnnotateSection />}
         </div>
         <ExportSection />
       </div>
@@ -750,6 +747,9 @@ function DeleteBtn({ onClick, label }: { onClick: () => void; label: string }) {
 
 function CompositionSection() {
   const t = useT();
+  const mediaType = useEditor((s) => s.mediaType);
+  const isImage = mediaType === 'image';
+  const imageMeta = useEditor((s) => s.imageMeta);
   const layoutPreset = useEditor((s) => s.layoutPreset);
   const setLayoutPreset = useEditor((s) => s.setLayoutPreset);
   const webcam = useEditor((s) => s.webcam);
@@ -772,11 +772,13 @@ function CompositionSection() {
     if (res) setBackground({ mode: 'image', value: res.dataUrl });
   }
 
+  const dims = isImage ? imageMeta : videoIntrinsicSize;
+
   return (
     <div className="space-y-4">
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <Label>{t('side.videoFraming')}</Label>
+          <Label>{isImage ? t('side.image') : t('side.videoFraming')}</Label>
           {cropActive && (
             <span className="rounded bg-[var(--accent-dim)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent)]">
               {t('side.cropped')}
@@ -789,7 +791,7 @@ function CompositionSection() {
             disabled={!fileUrl}
             className="flex flex-1 items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs font-medium hover:bg-[var(--panel-3)] disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Crop size={14} /> {cropActive ? t('side.editCrop') : t('side.cropVideo')}
+            <Crop size={14} /> {cropActive ? t('side.editCrop') : (isImage ? t('side.cropImage') : t('side.cropVideo'))}
           </button>
           {cropActive && (
             <button
@@ -801,11 +803,11 @@ function CompositionSection() {
             </button>
           )}
         </div>
-        {videoIntrinsicSize && (
+        {dims && (
           <div className="mt-1.5 flex items-center justify-between text-[11px] text-[var(--faint)]">
             <span>
-              {Math.round(cropRegion.width * videoIntrinsicSize.width)} ×{' '}
-              {Math.round(cropRegion.height * videoIntrinsicSize.height)} px
+              {Math.round(cropRegion.width * dims.width)} ×{' '}
+              {Math.round(cropRegion.height * dims.height)} px
             </span>
             <span>
               {cropActive
@@ -817,40 +819,44 @@ function CompositionSection() {
         {cropOpen && <CropModal onClose={() => setCropOpen(false)} />}
       </div>
 
-      <div>
-        <Label>{t('side.layout')}</Label>
-        <select
-          value={layoutPreset}
-          onChange={(e) => setLayoutPreset(e.target.value as any)}
-          className="w-full rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2 py-1.5 text-sm"
-        >
-          <option value="pip-bottom-right">{t('side.pipBottomRight')}</option>
-          <option value="pip-bottom-left">{t('side.pipBottomLeft')}</option>
-          <option value="pip-top-right">{t('side.pipTopRight')}</option>
-          <option value="pip-top-left">{t('side.pipTopLeft')}</option>
-          <option value="side-by-side">{t('side.sideBySide')}</option>
-        </select>
-      </div>
-
-      <div>
-        <Label>{t('side.webcam')}</Label>
-        <ToggleRow label={t('side.enable')} checked={webcam.enabled} onChange={(v) => setWebcam({ enabled: v })} />
-        <RangeRow label={t('side.size')} value={webcam.size} min={0.08} max={0.6} step={0.01} onChange={(v) => setWebcam({ size: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
-        <div className="mt-2">
-          <Label>{t('side.shape')}</Label>
-          <div className="grid grid-cols-3 gap-1.5">
-            <ShapeBtn active={webcam.shape === 'rectangle'} onClick={() => setWebcam({ shape: 'rectangle' })} label={t('side.rectangle')}>
-              <RectangleHorizontal size={14} />
-            </ShapeBtn>
-            <ShapeBtn active={webcam.shape === 'square'} onClick={() => setWebcam({ shape: 'square' })} label={t('side.square')}>
-              <Square size={14} />
-            </ShapeBtn>
-            <ShapeBtn active={webcam.shape === 'circle'} onClick={() => setWebcam({ shape: 'circle' })} label={t('side.circle')}>
-              <Circle size={14} />
-            </ShapeBtn>
+      {!isImage && (
+        <>
+          <div>
+            <Label>{t('side.layout')}</Label>
+            <select
+              value={layoutPreset}
+              onChange={(e) => setLayoutPreset(e.target.value as any)}
+              className="w-full rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2 py-1.5 text-sm"
+            >
+              <option value="pip-bottom-right">{t('side.pipBottomRight')}</option>
+              <option value="pip-bottom-left">{t('side.pipBottomLeft')}</option>
+              <option value="pip-top-right">{t('side.pipTopRight')}</option>
+              <option value="pip-top-left">{t('side.pipTopLeft')}</option>
+              <option value="side-by-side">{t('side.sideBySide')}</option>
+            </select>
           </div>
-        </div>
-      </div>
+
+          <div>
+            <Label>{t('side.webcam')}</Label>
+            <ToggleRow label={t('side.enable')} checked={webcam.enabled} onChange={(v) => setWebcam({ enabled: v })} />
+            <RangeRow label={t('side.size')} value={webcam.size} min={0.08} max={0.6} step={0.01} onChange={(v) => setWebcam({ size: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
+            <div className="mt-2">
+              <Label>{t('side.shape')}</Label>
+              <div className="grid grid-cols-3 gap-1.5">
+                <ShapeBtn active={webcam.shape === 'rectangle'} onClick={() => setWebcam({ shape: 'rectangle' })} label={t('side.rectangle')}>
+                  <RectangleHorizontal size={14} />
+                </ShapeBtn>
+                <ShapeBtn active={webcam.shape === 'square'} onClick={() => setWebcam({ shape: 'square' })} label={t('side.square')}>
+                  <Square size={14} />
+                </ShapeBtn>
+                <ShapeBtn active={webcam.shape === 'circle'} onClick={() => setWebcam({ shape: 'circle' })} label={t('side.circle')}>
+                  <Circle size={14} />
+                </ShapeBtn>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       <div>
         <Label>{t('side.background')}</Label>
@@ -1445,20 +1451,115 @@ function CursorStyleBtn({ active, onClick, label }: { active: boolean; onClick: 
   );
 }
 
+function AnnotateSection() {
+  const t = useT();
+  const items = useEditor((s) => s.items.filter((it) => it.kind === 'annotation' || it.kind === 'blur'));
+  const selectedItemId = useEditor((s) => s.selectedItemId);
+  const addItem = useEditor((s) => s.addItem);
+  const selectItem = useEditor((s) => s.selectItem);
+  const removeItem = useEditor((s) => s.removeItem);
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <Label>{t('side.addAnnotation')}</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => addItem('annotation', 0)}
+            className="flex items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-3)] transition"
+          >
+            <Type size={14} className="text-[var(--accent)]" />
+            <span>{t('side.addText')}</span>
+          </button>
+          <button
+            onClick={() => addItem('blur', 0)}
+            className="flex items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-3)] transition"
+          >
+            <RectangleHorizontal size={14} className="text-amber-400" />
+            <span>{t('side.addBlur')}</span>
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <Label>{t('side.layers')}</Label>
+          <span className="text-[10px] text-[var(--faint)]">{items.length}</span>
+        </div>
+        {items.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-[var(--line)] p-4 text-center text-xs text-[var(--faint)]">
+            No annotations or blur regions yet.
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {items.map((it) => {
+              const isSelected = it.id === selectedItemId;
+              return (
+                <div
+                  key={it.id}
+                  onClick={() => selectItem(it.id)}
+                  className={
+                    'flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-xs cursor-pointer transition ' +
+                    (isSelected
+                      ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                      : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--text)] hover:bg-[var(--panel-3)]')
+                  }
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {it.kind === 'annotation' ? (
+                      <Type size={13} className="shrink-0 text-[var(--accent)]" />
+                    ) : (
+                      <RectangleHorizontal size={13} className="shrink-0 text-amber-400" />
+                    )}
+                    <span className="truncate">
+                      {it.kind === 'annotation'
+                        ? (it.text?.trim() || t('tl.annotationPlaceholder'))
+                        : t('side.blurRegion')}
+                    </span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeItem(it.id);
+                      if (isSelected) selectItem(null);
+                    }}
+                    title={t('editor.deleteSelected')}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--faint)] hover:bg-[var(--panel-3)] hover:text-red-400"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ExportSection() {
   const t = useT();
+  const mediaType = useEditor((s) => s.mediaType);
+  const isImage = mediaType === 'image';
   const fmt = useEditor((s) => s.exportFormat);
   const setFmt = useEditor((s) => s.setExportFormat);
   const q = useEditor((s) => s.exportQuality);
   const setQ = useEditor((s) => s.setExportQuality);
   const enc = useEditor((s) => s.exportEncoder);
   const setEnc = useEditor((s) => s.setExportEncoder);
+  const imgFmt = useEditor((s) => s.imageExportFormat);
+  const setImgFmt = useEditor((s) => s.setImageExportFormat);
+  const imgScale = useEditor((s) => s.imageExportScale);
+  const setImgScale = useEditor((s) => s.setImageExportScale);
   const fileUrl = useEditor((s) => s.fileUrl);
   const [busy, setBusy] = useState<null | BusyState>(null);
   const [askSupport, setAskSupport] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shotBusy, setShotBusy] = useState(false);
   const [shotPath, setShotPath] = useState<string | null>(null);
+  const [copyFlash, setCopyFlash] = useState(false);
+  const [exportFlash, setExportFlash] = useState(false);
 
   async function handleCaptureStill() {
     setShotBusy(true);
@@ -1499,6 +1600,93 @@ function ExportSection() {
     } finally {
       setBusy(null);
     }
+  }
+
+  if (isImage) {
+    return (
+      <div className="shrink-0 border-t border-[var(--line)] bg-[var(--panel)]">
+        <button
+          onClick={() => setSettingsOpen((v) => !v)}
+          className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold text-[var(--muted)] hover:text-[var(--text)]"
+        >
+          <span>
+            {t('side.imageExport')}
+            <span className="ml-2 font-normal text-[var(--faint)]">
+              {imgFmt.toUpperCase()} · {imgScale}x
+            </span>
+          </span>
+          <ChevronDown size={13} className={'transition-transform ' + (settingsOpen ? '' : '-rotate-90')} />
+        </button>
+
+        {settingsOpen && (
+          <div className="space-y-1.5 px-3 pb-2">
+            <InlineChoice
+              label={t('side.format')}
+              value={imgFmt}
+              options={[['png', 'PNG'], ['jpeg', 'JPEG'], ['webp', 'WebP']]}
+              onPick={(v) => setImgFmt(v as typeof imgFmt)}
+            />
+            <InlineChoice
+              label={t('side.scale')}
+              value={String(imgScale)}
+              options={[['1', '1x'], ['2', '2x (Retina)'], ['3', '3x (HD)']]}
+              onPick={(v) => setImgScale(Number(v) as 1 | 2 | 3)}
+            />
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 px-3 pb-3 pt-1">
+          <button
+            onClick={async () => {
+              if (shotBusy) return;
+              setShotBusy(true);
+              try {
+                const saved = await exportImageNow(imgFmt, imgScale);
+                if (saved) {
+                  setShotPath(saved);
+                  setExportFlash(true);
+                  setTimeout(() => setExportFlash(false), 2000);
+                }
+              } catch (err) {
+                console.error('image export failed', err);
+                alert(t('editor.exportFailed', { msg: (err as Error).message }));
+              } finally {
+                setShotBusy(false);
+              }
+            }}
+            disabled={!fileUrl || shotBusy}
+            className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-[var(--accent)] text-sm font-semibold text-[var(--accent-fg)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {shotBusy ? <Loader2 size={15} className="animate-spin" /> : exportFlash ? <Check size={15} /> : <Download size={15} />}
+            <span>{exportFlash ? t('editor.saved') : t('side.exportImage')}</span>
+          </button>
+          <button
+            onClick={async () => {
+              const ok = await copyImageToClipboardNow(imgScale);
+              if (ok) {
+                setCopyFlash(true);
+                setTimeout(() => setCopyFlash(false), 1500);
+              }
+            }}
+            disabled={!fileUrl}
+            title={t('editor.copyImage')}
+            aria-label={t('editor.copyImage')}
+            className="glass glass-hover flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {copyFlash ? <Check size={15} className="text-[var(--accent)]" /> : <Copy size={15} />}
+          </button>
+        </div>
+        {shotPath && (
+          <button
+            onClick={() => window.api.openStillsFolder()}
+            className="w-full truncate px-3 pb-2 text-left text-[11px] text-[var(--accent)] hover:brightness-110"
+            title={shotPath}
+          >
+            {t('side.savedTo')} {shotPath.split(/[\\/]/).pop()}
+          </button>
+        )}
+      </div>
+    );
   }
 
   return (

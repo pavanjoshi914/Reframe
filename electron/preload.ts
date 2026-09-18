@@ -40,6 +40,12 @@ const api: Api = {
   getLastLoadedProject: () => ipcRenderer.invoke('project:lastLoaded'),
   openExportsFolder: () => ipcRenderer.invoke('exports:openFolder'),
   pickImageFile: () => ipcRenderer.invoke('image:pick'),
+  pickImageForEditing: () => ipcRenderer.invoke('image:pickForEditing'),
+  importImageBuffer: (data, name) => ipcRenderer.invoke('image:importBuffer', data, name),
+  copyImageToClipboard: (pngData) => ipcRenderer.invoke('clipboard:writeImage', pngData),
+  saveImageExport: (req) => ipcRenderer.invoke('image:saveExport', req),
+  openEditorForImage: (image) => ipcRenderer.invoke('editor:openForImage', image),
+  getLastLoadedImage: () => ipcRenderer.invoke('image:lastLoaded'),
   pickAudioFile: () => ipcRenderer.invoke('audio:pick'),
   openExternal: (url) => ipcRenderer.invoke('external:open', url),
   saveExport: (req) => ipcRenderer.invoke('export:save', req),
@@ -63,7 +69,7 @@ const api: Api = {
 
 contextBridge.exposeInMainWorld('api', api);
 
-// allow editor to listen for recording opened + projects opened from HUD picker
+// allow editor to listen for recording opened + projects opened from HUD picker + images opened
 contextBridge.exposeInMainWorld('apiEvents', {
   onRecordingOpened: (cb: (r: RecordingMeta) => void) => {
     const handler = (_e: unknown, r: RecordingMeta) => cb(r);
@@ -79,6 +85,11 @@ contextBridge.exposeInMainWorld('apiEvents', {
     ) => cb(p);
     ipcRenderer.on('project:opened', handler);
     return () => ipcRenderer.off('project:opened', handler);
+  },
+  onImageOpened: (cb: (img: import('../src/shared/ipc.js').ImageMeta) => void) => {
+    const handler = (_e: unknown, img: import('../src/shared/ipc.js').ImageMeta) => cb(img);
+    ipcRenderer.on('image:opened', handler);
+    return () => ipcRenderer.off('image:opened', handler);
   }
 });
 

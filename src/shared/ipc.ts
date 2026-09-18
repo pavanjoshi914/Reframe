@@ -90,9 +90,19 @@ export type RegionSelection = {
   region: Region;
 };
 
+export type ImageMeta = {
+  filePath: string;
+  fileUrl: string;
+  name: string;
+  width: number;
+  height: number;
+};
+
 export type ProjectFile = {
   version: 1;
   recording: RecordingMeta | null;
+  image?: ImageMeta | null;
+  mediaType?: 'video' | 'image';
   state: unknown;
 };
 
@@ -153,10 +163,16 @@ export type Api = {
   renameProject: (oldPath: string, newName: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
   // Fetch a project parked by openProjectFromPicker — consumed by the editor
   // on first mount to hydrate state. Single-use.
-  getLastLoadedProject: () => Promise<{ state: unknown; path: string; recording: RecordingMeta } | null>;
+  getLastLoadedProject: () => Promise<{ state: unknown; path: string; recording: RecordingMeta | null; image?: ImageMeta | null; mediaType?: 'video' | 'image' } | null>;
   // Browse exports (user-visible MP4/GIF/WebM files).
   openExportsFolder: () => Promise<void>;
   pickImageFile: () => Promise<{ dataUrl: string; name: string } | null>;
+  pickImageForEditing: () => Promise<ImageMeta | null>;
+  importImageBuffer: (data: ArrayBuffer, name: string) => Promise<ImageMeta>;
+  copyImageToClipboard: (pngData: ArrayBuffer) => Promise<{ ok: boolean; error?: string }>;
+  saveImageExport: (req: { name: string; data: ArrayBuffer; format: 'png' | 'jpeg' | 'webp' }) => Promise<{ saved: boolean; path?: string; error?: string }>;
+  openEditorForImage: (image: ImageMeta) => Promise<void>;
+  getLastLoadedImage: () => Promise<ImageMeta | null>;
   pickAudioFile: () => Promise<{ url: string; name: string; filePath: string } | null>;
   openExternal: (url: string) => Promise<void>;
   saveExport: (req: ExportRequest) => Promise<{ saved: boolean; path?: string }>;

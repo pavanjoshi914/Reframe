@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut, session } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, clipboard, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
@@ -258,6 +258,8 @@ function createPicker() {
 
 function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
   lastRecording = recording;
+  lastLoadedImage = null;
+  lastLoadedProject = null;
   // Already on screen? Focus it. A second window on the same project would put
   // two auto-savers on one file, and the later write would quietly undo the
   // earlier one.
@@ -305,14 +307,74 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
     if (isFirst) win.maximize();
     win.show();
   });
+  win.webContents.on('did-finish-load', () => {
+    win.webContents.send('recording:opened', recording);
+  });
   loadHtml(win, 'editor.html');
   win.on('closed', () => {
     editorWindows.delete(win);
     if (lastFocusedEditor === win) lastFocusedEditor = null;
-    // No cleanup needed on close — the editor auto-saves a project file the
-    // moment a recording is loaded, so every recording is already "kept" via
-    // its .reframe.json. Orphan temp recordings (e.g. from a crash or from a
-    // project the user manually deleted) are swept on next app launch.
+  });
+}
+
+function createEditorForImage(image: import('../src/shared/ipc.js').ImageMeta) {
+  lastLoadedImage = image;
+  lastRecording = null;
+  lastLoadedProject = null;
+  const already = editorShowing(image.filePath);
+  if (already) {
+    already.focus();
+    already.webContents.send('image:opened', image);
+    return;
+  }
+
+  // If there's an existing editor window with no recording/image currently loaded, reuse it!
+  const emptyWin = Array.from(editorWindows).find((w) => !w.isDestroyed() && !editorRecordings.get(w));
+  if (emptyWin) {
+    editorRecordings.set(emptyWin, image.filePath);
+    emptyWin.focus();
+    emptyWin.setTitle(`${image.name} — Reframe`);
+    emptyWin.webContents.send('image:opened', image);
+    return;
+  }
+
+  const offset = editorWindows.size * 28;
+  const win = new BrowserWindow({
+    width: 1280,
+    height: 820,
+    x: offset ? 60 + offset : undefined,
+    y: offset ? 60 + offset : undefined,
+    minWidth: 960,
+    minHeight: 600,
+    backgroundColor: '#0e0f12',
+    show: false,
+    icon: APP_ICON,
+    title: `${image.name} — Reframe`,
+    webPreferences: {
+      preload: PRELOAD,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      webSecurity: true
+    }
+  });
+  editorWindows.add(win);
+  editorRecordings.set(win, image.filePath);
+  lastFocusedEditor = win;
+  win.on('focus', () => { lastFocusedEditor = win; });
+  win.on('page-title-updated', (e) => e.preventDefault());
+  const isFirst = editorWindows.size === 1;
+  win.once('ready-to-show', () => {
+    if (isFirst) win.maximize();
+    win.show();
+  });
+  win.webContents.on('did-finish-load', () => {
+    win.webContents.send('image:opened', image);
+  });
+  loadHtml(win, 'editor.html');
+  win.on('closed', () => {
+    editorWindows.delete(win);
+    if (lastFocusedEditor === win) lastFocusedEditor = null;
   });
 }
 
@@ -637,11 +699,18 @@ ipcMain.handle('editor:open', (_evt, recording) => {
   createEditor(recording);
 });
 
+ipcMain.handle('editor:openForImage', (_evt, image: import('../src/shared/ipc.js').ImageMeta) => {
+  createEditorForImage(image);
+});
+
 ipcMain.handle('recording:meta', () => lastRecording);
+
+let lastLoadedImage: import('../src/shared/ipc.js').ImageMeta | null = null;
+ipcMain.handle('image:lastLoaded', () => lastLoadedImage);
 
 // A project loaded via the HUD's "Open Project" button is parked here so the
 // editor can pick it up on mount. Single-use — read once, then cleared.
-let lastLoadedProject: { state: unknown; path: string; recording: import('../src/shared/ipc.js').RecordingMeta } | null = null;
+let lastLoadedProject: { state: unknown; path: string; recording: import('../src/shared/ipc.js').RecordingMeta | null; image?: import('../src/shared/ipc.js').ImageMeta | null; mediaType?: 'video' | 'image' } | null = null;
 ipcMain.handle('project:lastLoaded', () => {
   const p = lastLoadedProject;
   lastLoadedProject = null;
@@ -1732,7 +1801,7 @@ ipcMain.handle('project:findForRecording', async (_evt, recordingPath: string) =
       const full = path.join(projectsDir, f);
       try {
         const parsed = JSON.parse(await fs.promises.readFile(full, 'utf-8'));
-        const rp = parsed?.recording?.filePath;
+        const rp = parsed?.recording?.filePath || parsed?.image?.filePath;
         if (rp && path.resolve(rp) === want) {
           const mtime = (await fs.promises.stat(full)).mtimeMs;
           if (!best || mtime > best.mtime) best = { p: full, mtime };
@@ -1913,6 +1982,89 @@ ipcMain.handle('image:pick', async (evt) => {
     ext === 'webp' ? 'image/webp' :
     'image/png';
   return { dataUrl: `data:${mime};base64,${buf.toString('base64')}`, name: path.basename(filePath) };
+});
+
+function processImageFile(srcPath: string): import('../src/shared/ipc.js').ImageMeta {
+  const baseName = path.basename(srcPath);
+  const imagesDir = path.join(recordingsTempDir, 'images');
+  fs.mkdirSync(imagesDir, { recursive: true });
+  const destPath = path.join(imagesDir, `${Date.now()}-${baseName}`);
+  fs.copyFileSync(srcPath, destPath);
+  const url = `media://local${pathToFileURL(destPath).pathname}`;
+  const nImg = nativeImage.createFromPath(destPath);
+  const size = nImg.getSize();
+  return {
+    filePath: destPath,
+    fileUrl: url,
+    name: baseName,
+    width: size.width || 1920,
+    height: size.height || 1080
+  };
+}
+
+ipcMain.handle('image:pickForEditing', async (evt) => {
+  const win = BrowserWindow.fromWebContents(evt.sender) ?? liveEditor() ?? undefined;
+  const res = await dialog.showOpenDialog(win!, {
+    title: 'Open Image for Editing',
+    filters: [
+      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif', 'bmp', 'avif'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  });
+  if (res.canceled || res.filePaths.length === 0) return null;
+  return processImageFile(res.filePaths[0]);
+});
+
+ipcMain.handle('image:importBuffer', async (_evt, data: ArrayBuffer, name: string) => {
+  const baseName = (name || `image-${Date.now()}.png`).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const imagesDir = path.join(recordingsTempDir, 'images');
+  fs.mkdirSync(imagesDir, { recursive: true });
+  const destPath = path.join(imagesDir, `${Date.now()}-${baseName}`);
+  fs.writeFileSync(destPath, Buffer.from(data));
+  const url = `media://local${pathToFileURL(destPath).pathname}`;
+  const nImg = nativeImage.createFromBuffer(Buffer.from(data));
+  const size = nImg.getSize();
+  return {
+    filePath: destPath,
+    fileUrl: url,
+    name: baseName,
+    width: size.width || 1920,
+    height: size.height || 1080
+  };
+});
+
+ipcMain.handle('clipboard:writeImage', async (_evt, pngData: ArrayBuffer) => {
+  try {
+    const img = nativeImage.createFromBuffer(Buffer.from(pngData));
+    clipboard.writeImage(img);
+    return { ok: true };
+  } catch (err) {
+    console.error('[main] clipboard:writeImage error', err);
+    return { ok: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('image:saveExport', async (evt, req: { name: string; data: ArrayBuffer; format: 'png' | 'jpeg' | 'webp' }) => {
+  const win = BrowserWindow.fromWebContents(evt.sender) ?? liveEditor() ?? undefined;
+  const ext = req.format === 'jpeg' ? 'jpg' : req.format;
+  const picturesDir = app.getPath('pictures') || app.getPath('downloads');
+  const res = await dialog.showSaveDialog(win!, {
+    title: 'Export Image',
+    defaultPath: path.join(picturesDir, `${req.name}.${ext}`),
+    filters: [
+      { name: req.format.toUpperCase(), extensions: [ext] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+  if (res.canceled || !res.filePath) return { saved: false };
+  try {
+    fs.writeFileSync(res.filePath, Buffer.from(req.data));
+    return { saved: true, path: res.filePath };
+  } catch (err) {
+    console.error('[main] image:saveExport error', err);
+    return { saved: false, error: String(err) };
+  }
 });
 
 ipcMain.handle('audio:pick', async (evt) => {
@@ -2195,6 +2347,13 @@ app.whenReady().then(async () => {
     if (ext === '.ogg') return 'audio/ogg';
     if (ext === '.flac') return 'audio/flac';
     if (ext === '.weba') return 'audio/webm';
+    if (ext === '.png') return 'image/png';
+    if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+    if (ext === '.webp') return 'image/webp';
+    if (ext === '.svg') return 'image/svg+xml';
+    if (ext === '.gif') return 'image/gif';
+    if (ext === '.bmp') return 'image/bmp';
+    if (ext === '.avif') return 'image/avif';
     return 'video/webm';
   };
   protocol.handle('media', async (req) => {

@@ -16,6 +16,7 @@ const aspectMap: Record<string, number | null> = {
 
 export function Preview() {
   const t = useT();
+  const mediaType = useEditor((s) => s.mediaType);
   const fileUrl = useEditor((s) => s.fileUrl);
   const webcamFileUrl = useEditor((s) => s.webcamFileUrl);
   const aspect = useEditor((s) => s.aspect);
@@ -57,6 +58,7 @@ export function Preview() {
   const backgroundAudio = useEditor((s) => s.backgroundAudio);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const webcamRef = useRef<HTMLVideoElement>(null);
   const bgAudioRef = useRef<HTMLAudioElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -73,6 +75,14 @@ export function Preview() {
   // sitting there costs nothing — which matters now that several can be open at
   // once, each with its own loop.
   const dirtyRef = useRef(true);
+
+  const onImageLoaded = () => {
+    const img = imageRef.current;
+    if (img && img.naturalWidth && img.naturalHeight) {
+      setVideoIntrinsicSize({ width: img.naturalWidth, height: img.naturalHeight });
+      dirtyRef.current = true;
+    }
+  };
 
   // Play / pause for the main video. Webcam play/pause + drift correction is
   // handled by the dedicated webcam-sync effect below — one effect owns the
@@ -95,13 +105,16 @@ export function Preview() {
     }
   }, [playing, setPlaying]);
 
-  // Publish the live <video> ref into the store so overlays (CropModal,
+  // Publish the live media refs into the store so overlays (CropModal,
   // future thumbnail extractors) can read frames from the same already-primed
-  // element the editor is using. Re-runs whenever videoRef target changes
-  // (layout swap between side-by-side and standard re-mounts the element).
+  // elements the editor is using.
   useEffect(() => {
     useEditor.getState().setMainVideoEl(videoRef.current);
-    return () => { useEditor.getState().setMainVideoEl(null); };
+    useEditor.getState().setMainImageEl(imageRef.current);
+    return () => {
+      useEditor.getState().setMainVideoEl(null);
+      useEditor.getState().setMainImageEl(null);
+    };
   });
 
   // Mirror the user's volume/mute preference onto the main video element.
@@ -431,11 +444,14 @@ export function Preview() {
       // Resizing a canvas resets its context, so this is re-asserted each frame.
       // It matches what the export does, so a zoom looks the same in both.
       wctx.imageSmoothingQuality = 'high';
-      if (!st.fileUrl || !v) { ctx.clearRect(0, 0, bw, bh); return; }
-      const ms = v.currentTime * 1000;
+      const isImg = st.mediaType === 'image';
+      const img = imageRef.current;
+      if (!st.fileUrl || (!isImg && !v) || (isImg && !img)) { ctx.clearRect(0, 0, bw, bh); return; }
+      const ms = isImg ? 0 : v!.currentTime * 1000;
+      const srcMedia = isImg ? img! : v!;
       const itemsNoAnno = st.items.filter((it) => it.kind !== 'annotation');
-      const webcamSrc = st.webcam.enabled && st.webcamFileUrl ? webcamRef.current : null;
-      drawFrame(wctx, bw, bh, v, webcamSrc, ms, {
+      const webcamSrc = !isImg && st.webcam.enabled && st.webcamFileUrl ? webcamRef.current : null;
+      drawFrame(wctx, bw, bh, srcMedia, webcamSrc, ms, {
         items: itemsNoAnno,
         background: st.background,
         effects: st.effects,
@@ -480,8 +496,8 @@ export function Preview() {
   // The annotation is the one overlay still drawn in the DOM (so it stays
   // directly editable/draggable); everything else is composited on the canvas.
   const activeAnnotation = useMemo(() => {
-    return items.find((it) => it.kind === 'annotation' && currentMs >= it.startMs && currentMs <= it.endMs);
-  }, [items, currentMs]);
+    return items.find((it) => it.kind === 'annotation' && (mediaType === 'image' || (currentMs >= it.startMs && currentMs <= it.endMs)));
+  }, [items, currentMs, mediaType]);
 
   const ratio = useMemo(() => {
     if (aspect === 'auto') {
@@ -734,15 +750,25 @@ export function Preview() {
         }}
       >
         {/* Hidden decode sources. Kept in the DOM (opacity 0) so they keep
-            decoding; the main <video> still drives playback/audio/timing while
+            decoding; the main media still drives playback/audio/timing while
             the canvas composites its frames. */}
-        <video
-          ref={videoRef}
-          src={fileUrl ?? undefined}
-          className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
-          playsInline
-          muted={false}
-        />
+        {mediaType === 'image' ? (
+          <img
+            ref={imageRef}
+            src={fileUrl ?? undefined}
+            onLoad={onImageLoaded}
+            className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+            alt="Source"
+          />
+        ) : (
+          <video
+            ref={videoRef}
+            src={fileUrl ?? undefined}
+            className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+            playsInline
+            muted={false}
+          />
+        )}
         {webcamFileUrl && (
           <video
             ref={webcamRef}
