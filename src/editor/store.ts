@@ -402,6 +402,7 @@ export type SerializedProject = {
   imageExportScale?: EditorState['imageExportScale'];
   mediaType?: EditorState['mediaType'];
   imageMeta?: EditorState['imageMeta'];
+  durationMs?: number;
   items: LaneItem[];
   cursorFx?: EditorState['cursorFx'];
   videoVolume?: number;
@@ -502,6 +503,7 @@ function docOf(s: EditorState): SerializedProject {
     imageExportScale: s.imageExportScale,
     mediaType: s.mediaType,
     imageMeta: s.imageMeta,
+    durationMs: s.durationMs,
     items: s.items,
     cursorFx: s.cursorFx,
     videoVolume: s.videoVolume,
@@ -655,7 +657,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         recording: null,
         fileUrl: image.fileUrl,
         webcamFileUrl: null,
-        durationMs: 0,
+        durationMs: isSameImage && s.durationMs > 0 ? s.durationMs : 5000,
         currentMs: 0,
         playing: false,
         videoIntrinsicSize: { width: image.width, height: image.height },
@@ -950,7 +952,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   serialize: () => docOf(get()),
   hydrate: (data) =>
-    set({
+    set((s) => ({
       aspect: data.aspect,
       cropRegion: data.cropRegion ?? DEFAULT_CROP_REGION,
       background: data.background,
@@ -981,11 +983,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       imageExportScale: data.imageExportScale ?? 2,
       mediaType: data.mediaType ?? (data.imageMeta ? 'image' : 'video'),
       imageMeta: data.imageMeta ?? null,
-      ...(data.mediaType === 'image' && data.imageMeta
+      durationMs: data.durationMs ?? (data.mediaType === 'image' || data.imageMeta ? 5000 : s.durationMs),
+      ...((data.mediaType === 'image' || (!data.mediaType && data.imageMeta)) && data.imageMeta
         ? {
             fileUrl: data.imageMeta.fileUrl,
-            videoIntrinsicSize: { width: data.imageMeta.width, height: data.imageMeta.height },
-            durationMs: 0
+            videoIntrinsicSize: { width: data.imageMeta.width, height: data.imageMeta.height }
           }
         : {}),
       items: data.items,
@@ -997,7 +999,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       // Loading a project is a fresh document → reset undo history.
       past: [],
       future: []
-    }),
+    })),
 
   // ---- Undo / redo -------------------------------------------------------
   // Restore a document snapshot without touching transient state (playhead,

@@ -105,6 +105,48 @@ export function Preview() {
     }
   }, [playing, setPlaying]);
 
+  // Play / pause for an imported image (studio animation with 3D tilts, zooms, shaders, audio).
+  useEffect(() => {
+    if (mediaType !== 'image') return;
+    if (!playing) return;
+
+    const { currentMs, durationMs, setCurrent } = useEditor.getState();
+    if (durationMs > 0 && currentMs >= durationMs - 50) {
+      setCurrent(0);
+    }
+
+    let lastTime = performance.now();
+    let frameId: number;
+
+    const tick = (now: number) => {
+      const dt = now - lastTime;
+      lastTime = now;
+
+      const state = useEditor.getState();
+      if (!state.playing) return;
+
+      const dur = state.durationMs || 5000;
+      const speed = state.items.find(
+        (it) => it.kind === 'speed' && state.currentMs >= it.startMs && state.currentMs <= it.endMs
+      );
+      const speedFactor = speed?.speed ?? 1;
+      const nextMs = state.currentMs + dt * speedFactor;
+
+      if (nextMs >= dur) {
+        state.setCurrent(dur);
+        state.setPlaying(false);
+        dirtyRef.current = true;
+      } else {
+        state.setCurrent(nextMs);
+        dirtyRef.current = true;
+        frameId = requestAnimationFrame(tick);
+      }
+    };
+
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [playing, mediaType]);
+
   // Publish the live media refs into the store so overlays (CropModal,
   // future thumbnail extractors) can read frames from the same already-primed
   // elements the editor is using.
@@ -410,13 +452,15 @@ export function Preview() {
     const render = () => {
       raf = requestAnimationFrame(render);
       const st = useEditor.getState();
+      const isImg = st.mediaType === 'image';
+      const img = imageRef.current;
       const v = videoRef.current;
       // Repaint only when there is a reason to. While playing every frame
       // differs, so it always repaints; paused and untouched, it does nothing.
       // Compositing a full frame 60 times a second to redraw pixels that did
       // not change is what made two open editors stutter the whole desktop on
       // software GL.
-      const t = v ? v.currentTime : -1;
+      const t = isImg ? st.currentMs : (v ? v.currentTime : -1);
       if (t !== lastT || dirtyRef.current) settle = 8;
       // An animated background is scenery: it moves on its own clock whether or
       // not the video is playing, so a paused editor still has a reason to
@@ -444,10 +488,11 @@ export function Preview() {
       // Resizing a canvas resets its context, so this is re-asserted each frame.
       // It matches what the export does, so a zoom looks the same in both.
       wctx.imageSmoothingQuality = 'high';
-      const isImg = st.mediaType === 'image';
-      const img = imageRef.current;
-      if (!st.fileUrl || (!isImg && !v) || (isImg && !img)) { ctx.clearRect(0, 0, bw, bh); return; }
-      const ms = isImg ? 0 : v!.currentTime * 1000;
+      if (!st.fileUrl || (!isImg && !v) || (isImg && (!img || !img.complete || !img.naturalWidth))) {
+        ctx.clearRect(0, 0, bw, bh);
+        return;
+      }
+      const ms = isImg ? st.currentMs : v!.currentTime * 1000;
       const srcMedia = isImg ? img! : v!;
       const itemsNoAnno = st.items.filter((it) => it.kind !== 'annotation');
       const webcamSrc = !isImg && st.webcam.enabled && st.webcamFileUrl ? webcamRef.current : null;
@@ -496,7 +541,7 @@ export function Preview() {
   // The annotation is the one overlay still drawn in the DOM (so it stays
   // directly editable/draggable); everything else is composited on the canvas.
   const activeAnnotation = useMemo(() => {
-    return items.find((it) => it.kind === 'annotation' && (mediaType === 'image' || (currentMs >= it.startMs && currentMs <= it.endMs)));
+    return items.find((it) => it.kind === 'annotation' && currentMs >= it.startMs && currentMs <= it.endMs);
   }, [items, currentMs, mediaType]);
 
   const ratio = useMemo(() => {

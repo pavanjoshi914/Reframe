@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight, Camera, Crosshair, LayoutTemplate, Palette, MousePointer2, Music, Play, Pause, Scissors, ExternalLink, Copy, Check, type LucideIcon } from 'lucide-react';
 import { BORDER_IDS, BORDER_LABELS, BORDER_COLORS, BORDER_DEFAULTS, type BorderId } from './borders';
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem, type CursorStyle } from './store';
-import { runExport, cancelExport, saveStillNow, copyImageToClipboardNow, exportImageNow } from './export';
+import { runExport, cancelExport, saveStillNow, copyImageToClipboardNow } from './export';
 import { SCENE_GROUPS, DEFAULT_SCENE_SETTINGS, sceneInstances } from './scenes';
-import { SHADER_IDS, SHADER_LABELS, SHADER_FALLBACK, renderShaderBackground, MESH_PRESETS, meshPreset, renderMeshBackground, FIELD_PRESETS, FIELD_VARIANTS, FIELD_VARIANT_LABELS, fieldStyleOf, renderFieldBackground, bgClockMs, type ShaderId, type FieldVariant } from './shaders';
+import { MESH_PRESETS, meshPreset, renderMeshBackground, FIELD_PRESETS, FIELD_VARIANTS, FIELD_VARIANT_LABELS, fieldStyleOf, renderFieldBackground, bgClockMs, type FieldVariant } from './shaders';
 import { CURSOR_GLYPHS, CURSOR_STYLE_IDS } from './cursorGlyphs';
 import type { SceneInstance } from './card3d';
 import { SupportDialog, shouldPromptAfterExport } from './SupportDialog';
@@ -18,8 +18,6 @@ const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 3, 5];
 
 export function Sidebar() {
   const [tab, setTab] = useState('canvas');
-  const mediaType = useEditor((s) => s.mediaType);
-  const isImage = mediaType === 'image';
   const selectedItem = useEditor((s) => s.items.find((it) => it.id === s.selectedItemId) ?? null);
   const showSelection = selectedItem && (
     selectedItem.kind === 'zoom' ||
@@ -39,12 +37,8 @@ export function Sidebar() {
     { id: 'canvas', label: 'Canvas', icon: LayoutTemplate },
     { id: 'style', label: 'Style', icon: Palette },
     { id: 'border', label: 'Border', icon: Square },
-    ...(isImage
-      ? [{ id: 'annotate', label: 'Annotate', icon: Type }]
-      : [
-          { id: 'cursor', label: 'Cursor', icon: MousePointer2 },
-          { id: 'audio', label: 'Audio', icon: Music }
-        ])
+    { id: 'cursor', label: 'Cursor', icon: MousePointer2 },
+    { id: 'audio', label: 'Audio', icon: Music }
   ];
   // A selection appears and disappears as you click regions, so the tab it adds
   // must not strand you on a tab that no longer exists.
@@ -86,12 +80,11 @@ export function Sidebar() {
           {activeTab === 'style' && (
             <div className="space-y-4">
               <StyleSection />
-              {!isImage && <VideoEffectsSection />}
+              <VideoEffectsSection />
             </div>
           )}
           {activeTab === 'border' && <BorderSection />}
           {activeTab === 'audio' && <AudioSection />}
-          {activeTab === 'annotate' && <AnnotateSection />}
         </div>
         <ExportSection />
       </div>
@@ -871,10 +864,9 @@ function CompositionSection() {
           <BgTab active={background.mode === 'color'} onClick={() => setBackground({ mode: 'color', value: background.mode === 'color' ? background.value : '#1a1d23' })}>{t('side.color')}</BgTab>
           <BgTab active={background.mode === 'gradient'} onClick={() => setBackground({ mode: 'gradient', value: background.mode === 'gradient' ? background.value : 'linear-gradient(135deg,#fb923c,#ec4899)' })}>{t('side.gradient')}</BgTab>
           <BgTab active={background.mode === 'mesh'} onClick={() => setBackground({ mode: 'mesh', value: background.mode === 'mesh' ? background.value : MESH_PRESETS[0].id })}>{t('side.mesh')}</BgTab>
-          <BgTab active={background.mode === 'shader'} onClick={() => setBackground({ mode: 'shader', value: background.mode === 'shader' ? background.value : 'aurora' })}>{t('side.shader')}</BgTab>
-          <BgTab active={background.mode === 'field'} onClick={() => setBackground({ mode: 'field', value: background.mode === 'field' ? background.value : FIELD_PRESETS[0].id })}>{t('side.field')}</BgTab>
+          <BgTab active={background.mode === 'field' || background.mode === 'shader'} onClick={() => setBackground({ mode: 'field', value: background.mode === 'field' ? background.value : FIELD_PRESETS[0].id })}>{t('side.field')}</BgTab>
         </div>
-        {background.mode === 'field' && <FieldPanel />}
+        {(background.mode === 'field' || background.mode === 'shader') && <FieldPanel />}
         {background.mode === 'mesh' && (
           <div className="space-y-2">
             <div className="grid grid-cols-4 gap-1.5">
@@ -896,30 +888,6 @@ function CompositionSection() {
               ))}
             </div>
             <p className="text-[11px] leading-snug text-[var(--faint)]">{t('side.meshHint')}</p>
-          </div>
-        )}
-        {background.mode === 'shader' && (
-          <div className="space-y-2">
-            <div className="grid grid-cols-3 gap-1.5">
-              {SHADER_IDS.map((id) => (
-                <button
-                  key={id}
-                  aria-label={SHADER_LABELS[id]}
-                  title={SHADER_LABELS[id]}
-                  onClick={() => setBackground({ mode: 'shader', value: id })}
-                  className={
-                    'overflow-hidden rounded transition ' +
-                    (background.value === id
-                      ? 'ring-2 ring-[var(--accent)]'
-                      : 'ring-1 ring-[var(--line)] hover:ring-white/30')
-                  }
-                >
-                  <ShaderThumb id={id} />
-                  <div className="truncate px-1 py-1 text-[10px] text-[var(--muted)]">{SHADER_LABELS[id]}</div>
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] leading-snug text-[var(--faint)]">{t('side.motionHint')}</p>
           </div>
         )}
         {background.mode === 'color' && (
@@ -1451,93 +1419,6 @@ function CursorStyleBtn({ active, onClick, label }: { active: boolean; onClick: 
   );
 }
 
-function AnnotateSection() {
-  const t = useT();
-  const items = useEditor((s) => s.items.filter((it) => it.kind === 'annotation' || it.kind === 'blur'));
-  const selectedItemId = useEditor((s) => s.selectedItemId);
-  const addItem = useEditor((s) => s.addItem);
-  const selectItem = useEditor((s) => s.selectItem);
-  const removeItem = useEditor((s) => s.removeItem);
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <Label>{t('side.addAnnotation')}</Label>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => addItem('annotation', 0)}
-            className="flex items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-3)] transition"
-          >
-            <Type size={14} className="text-[var(--accent)]" />
-            <span>{t('side.addText')}</span>
-          </button>
-          <button
-            onClick={() => addItem('blur', 0)}
-            className="flex items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs font-medium text-[var(--text)] hover:bg-[var(--panel-3)] transition"
-          >
-            <RectangleHorizontal size={14} className="text-amber-400" />
-            <span>{t('side.addBlur')}</span>
-          </button>
-        </div>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <Label>{t('side.layers')}</Label>
-          <span className="text-[10px] text-[var(--faint)]">{items.length}</span>
-        </div>
-        {items.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-[var(--line)] p-4 text-center text-xs text-[var(--faint)]">
-            No annotations or blur regions yet.
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {items.map((it) => {
-              const isSelected = it.id === selectedItemId;
-              return (
-                <div
-                  key={it.id}
-                  onClick={() => selectItem(it.id)}
-                  className={
-                    'flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-xs cursor-pointer transition ' +
-                    (isSelected
-                      ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
-                      : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--text)] hover:bg-[var(--panel-3)]')
-                  }
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    {it.kind === 'annotation' ? (
-                      <Type size={13} className="shrink-0 text-[var(--accent)]" />
-                    ) : (
-                      <RectangleHorizontal size={13} className="shrink-0 text-amber-400" />
-                    )}
-                    <span className="truncate">
-                      {it.kind === 'annotation'
-                        ? (it.text?.trim() || t('tl.annotationPlaceholder'))
-                        : t('side.blurRegion')}
-                    </span>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeItem(it.id);
-                      if (isSelected) selectItem(null);
-                    }}
-                    title={t('editor.deleteSelected')}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--faint)] hover:bg-[var(--panel-3)] hover:text-red-400"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function ExportSection() {
   const t = useT();
   const mediaType = useEditor((s) => s.mediaType);
@@ -1548,10 +1429,6 @@ function ExportSection() {
   const setQ = useEditor((s) => s.setExportQuality);
   const enc = useEditor((s) => s.exportEncoder);
   const setEnc = useEditor((s) => s.setExportEncoder);
-  const imgFmt = useEditor((s) => s.imageExportFormat);
-  const setImgFmt = useEditor((s) => s.setImageExportFormat);
-  const imgScale = useEditor((s) => s.imageExportScale);
-  const setImgScale = useEditor((s) => s.setImageExportScale);
   const fileUrl = useEditor((s) => s.fileUrl);
   const [busy, setBusy] = useState<null | BusyState>(null);
   const [askSupport, setAskSupport] = useState(false);
@@ -1562,10 +1439,15 @@ function ExportSection() {
   const [exportFlash, setExportFlash] = useState(false);
 
   async function handleCaptureStill() {
+    if (shotBusy) return;
     setShotBusy(true);
     try {
       const saved = await saveStillNow();
-      if (saved) setShotPath(saved);
+      if (saved) {
+        setShotPath(saved);
+        setExportFlash(true);
+        setTimeout(() => setExportFlash(false), 2000);
+      }
     } finally {
       setShotBusy(false);
     }
@@ -1574,6 +1456,10 @@ function ExportSection() {
   async function handleExport() {
     if (!fileUrl) {
       alert(t('editor.noRecording'));
+      return;
+    }
+    if (isImage) {
+      await handleCaptureStill();
       return;
     }
     if (busy) return;
@@ -1600,93 +1486,6 @@ function ExportSection() {
     } finally {
       setBusy(null);
     }
-  }
-
-  if (isImage) {
-    return (
-      <div className="shrink-0 border-t border-[var(--line)] bg-[var(--panel)]">
-        <button
-          onClick={() => setSettingsOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold text-[var(--muted)] hover:text-[var(--text)]"
-        >
-          <span>
-            {t('side.imageExport')}
-            <span className="ml-2 font-normal text-[var(--faint)]">
-              {imgFmt.toUpperCase()} · {imgScale}x
-            </span>
-          </span>
-          <ChevronDown size={13} className={'transition-transform ' + (settingsOpen ? '' : '-rotate-90')} />
-        </button>
-
-        {settingsOpen && (
-          <div className="space-y-1.5 px-3 pb-2">
-            <InlineChoice
-              label={t('side.format')}
-              value={imgFmt}
-              options={[['png', 'PNG'], ['jpeg', 'JPEG'], ['webp', 'WebP']]}
-              onPick={(v) => setImgFmt(v as typeof imgFmt)}
-            />
-            <InlineChoice
-              label={t('side.scale')}
-              value={String(imgScale)}
-              options={[['1', '1x'], ['2', '2x (Retina)'], ['3', '3x (HD)']]}
-              onPick={(v) => setImgScale(Number(v) as 1 | 2 | 3)}
-            />
-          </div>
-        )}
-
-        <div className="flex items-center gap-2 px-3 pb-3 pt-1">
-          <button
-            onClick={async () => {
-              if (shotBusy) return;
-              setShotBusy(true);
-              try {
-                const saved = await exportImageNow(imgFmt, imgScale);
-                if (saved) {
-                  setShotPath(saved);
-                  setExportFlash(true);
-                  setTimeout(() => setExportFlash(false), 2000);
-                }
-              } catch (err) {
-                console.error('image export failed', err);
-                alert(t('editor.exportFailed', { msg: (err as Error).message }));
-              } finally {
-                setShotBusy(false);
-              }
-            }}
-            disabled={!fileUrl || shotBusy}
-            className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-[var(--accent)] text-sm font-semibold text-[var(--accent-fg)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {shotBusy ? <Loader2 size={15} className="animate-spin" /> : exportFlash ? <Check size={15} /> : <Download size={15} />}
-            <span>{exportFlash ? t('editor.saved') : t('side.exportImage')}</span>
-          </button>
-          <button
-            onClick={async () => {
-              const ok = await copyImageToClipboardNow(imgScale);
-              if (ok) {
-                setCopyFlash(true);
-                setTimeout(() => setCopyFlash(false), 1500);
-              }
-            }}
-            disabled={!fileUrl}
-            title={t('editor.copyImage')}
-            aria-label={t('editor.copyImage')}
-            className="glass glass-hover flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {copyFlash ? <Check size={15} className="text-[var(--accent)]" /> : <Copy size={15} />}
-          </button>
-        </div>
-        {shotPath && (
-          <button
-            onClick={() => window.api.openStillsFolder()}
-            className="w-full truncate px-3 pb-2 text-left text-[11px] text-[var(--accent)] hover:brightness-110"
-            title={shotPath}
-          >
-            {t('side.savedTo')} {shotPath.split(/[\\/]/).pop()}
-          </button>
-        )}
-      </div>
-    );
   }
 
   return (
@@ -1731,11 +1530,17 @@ function ExportSection() {
       <div className="flex items-center gap-2 px-3 pb-3 pt-1">
         <button
           onClick={handleExport}
-          disabled={!!busy || !fileUrl}
+          disabled={!!busy || !fileUrl || (isImage && shotBusy)}
           className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-[var(--accent)] text-sm font-semibold text-[var(--accent-fg)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-          {busy ? `${Math.round(busy.pct)}%` : t('side.exportVideo')}
+          {busy || (isImage && shotBusy) ? (
+            <Loader2 size={15} className="animate-spin" />
+          ) : exportFlash ? (
+            <Check size={15} />
+          ) : (
+            <Download size={15} />
+          )}
+          {busy ? `${Math.round(busy.pct)}%` : exportFlash ? t('editor.saved') : (isImage ? t('side.exportImage') : t('side.exportVideo'))}
         </button>
         <button
           onClick={handleCaptureStill}
@@ -1745,6 +1550,21 @@ function ExportSection() {
           className="glass glass-hover flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {shotBusy ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
+        </button>
+        <button
+          onClick={async () => {
+            const ok = await copyImageToClipboardNow();
+            if (ok) {
+              setCopyFlash(true);
+              setTimeout(() => setCopyFlash(false), 1500);
+            }
+          }}
+          disabled={!!busy || !fileUrl}
+          title={t('editor.copyImage')}
+          aria-label={t('editor.copyImage')}
+          className="glass glass-hover flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {copyFlash ? <Check size={15} className="text-[var(--accent)]" /> : <Copy size={15} />}
         </button>
       </div>
       {shotPath && (
@@ -2450,17 +2270,7 @@ function ShapeBtn({
   );
 }
 
-// Picker thumbnails come from the real shader, not a shipped PNG, so editing a
-// shader can never leave a stale picture in the sidebar.
-//
-// One frame on mount, and it animates only while hovered — and then at 10fps,
-// not 60. renderShaderBackground resizes ONE shared GL canvas per call, so a
-// thumbnail redrawing next to the main preview makes that canvas bounce between
-// 96px and 1280px every frame. At 10fps for one hovered tile that is free; six
-// tiles running permanently at 60fps would be a genuinely expensive sidebar.
-const THUMB_MS = 4200;   // far enough in that every preset has something to show
-
-// Field: a variant filter, a grid of starting points, and the colour controls.
+// Shaders: a variant filter, a grid of starting points, and the colour controls.
 //
 // Presets alone can't cover this. The source site has ~290 Grain shaders and
 // they differ almost entirely in HUE — shipping three of them and calling it
@@ -2572,38 +2382,6 @@ function MeshThumb({ id }: { id: string }) {
     else { ctx.fillStyle = meshPreset(id).colors[3]; ctx.fillRect(0, 0, cv.width, cv.height); }
   }, [id]);
   return <canvas ref={ref} width={72} height={48} className="block h-auto w-full" />;
-}
-
-function ShaderThumb({ id }: { id: ShaderId }) {
-  const ref = useRef<HTMLCanvasElement | null>(null);
-  const [hover, setHover] = useState(false);
-
-  useEffect(() => {
-    const cv = ref.current;
-    const ctx = cv?.getContext('2d');
-    if (!cv || !ctx) return;
-    const draw = (ms: number) => {
-      const src = renderShaderBackground(id, ms, cv.width, cv.height);
-      if (src) ctx.drawImage(src as CanvasImageSource, 0, 0, cv.width, cv.height);
-      else { ctx.fillStyle = SHADER_FALLBACK[id]; ctx.fillRect(0, 0, cv.width, cv.height); }
-    };
-    draw(THUMB_MS);
-    if (!hover) return;
-    const t0 = performance.now();
-    const timer = window.setInterval(() => draw(THUMB_MS + (performance.now() - t0)), 100);
-    return () => window.clearInterval(timer);
-  }, [id, hover]);
-
-  return (
-    <canvas
-      ref={ref}
-      width={96}
-      height={54}
-      className="block h-auto w-full"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    />
-  );
 }
 
 function BgTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {

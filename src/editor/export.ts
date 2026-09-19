@@ -1293,7 +1293,15 @@ export async function captureStill(
   options?: { scale?: number; format?: 'png' | 'jpeg' | 'webp' }
 ): Promise<{ data: ArrayBuffer; width: number; height: number; format: string } | null> {
   const isImg = state.mediaType === 'image';
-  const media = isImg ? state.mainImageEl : state.mainVideoEl;
+  let media: HTMLImageElement | HTMLVideoElement | null = isImg ? state.mainImageEl : state.mainVideoEl;
+  if (isImg && (!media || !(media as HTMLImageElement).naturalWidth)) {
+    if (state.fileUrl) {
+      const tempImg = new Image();
+      tempImg.src = state.fileUrl;
+      await new Promise((res) => { tempImg.onload = res; tempImg.onerror = res; });
+      if (tempImg.naturalWidth > 0) media = tempImg;
+    }
+  }
   if (!media) return null;
   const wc = isImg ? null : (state as unknown as { webcamVideoEl?: HTMLVideoElement | null }).webcamVideoEl ?? null;
 
@@ -1331,7 +1339,7 @@ export async function captureStill(
   if (!ctx) return null;
   ctx.imageSmoothingQuality = 'high';
 
-  const ms = isImg ? 0 : state.currentMs;
+  const ms = state.currentMs;
   drawFrame(ctx, outW, outH, media, wc, ms, {
     items: state.items,
     background: state.background,

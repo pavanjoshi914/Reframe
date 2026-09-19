@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart, Sun, Moon, ChevronUp, ChevronDown, Camera, Check, Crop, Copy, Download, Image as ImageIcon } from 'lucide-react';
+import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart, Sun, Moon, ChevronUp, ChevronDown, Camera, Check, Crop, Copy, Image as ImageIcon } from 'lucide-react';
 import { SPONSOR_URL } from '@shared/sponsor';
 import { Preview } from './Preview';
 import { Sidebar } from './Sidebar';
@@ -8,7 +8,7 @@ import { CropModal } from './CropModal';
 import { useEditor, type SerializedProject } from './store';
 import { isTextEntry } from './textEntry';
 import type { ProjectFile } from '@shared/ipc';
-import { saveStillNow, copyImageToClipboardNow, exportImageNow } from './export';
+import { saveStillNow, copyImageToClipboardNow } from './export';
 import wordmarkUrl from '../../assets/logo-wordmark-transparent.png';
 import { useT } from '../i18n';
 import { LanguageSelector } from '../i18n/LanguageSelector';
@@ -28,13 +28,11 @@ declare global {
 export function EditorApp() {
   const [shotFlash, setShotFlash] = useState(false);
   const [copyFlash, setCopyFlash] = useState(false);
-  const [exportFlash, setExportFlash] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [timelineCollapsed, setTimelineCollapsed] = useState(false);
   const theme = useEditor((s) => s.theme);
   const setTheme = useEditor((s) => s.setTheme);
   const setRecording = useEditor((s) => s.setRecording);
-  const mediaType = useEditor((s) => s.mediaType);
   const playing = useEditor((s) => s.playing);
   const setPlaying = useEditor((s) => s.setPlaying);
   const currentMs = useEditor((s) => s.currentMs);
@@ -46,10 +44,6 @@ export function EditorApp() {
   const videoMuted = useEditor((s) => s.videoMuted);
   const setVideoVolume = useEditor((s) => s.setVideoVolume);
   const setVideoMuted = useEditor((s) => s.setVideoMuted);
-  const imageMeta = useEditor((s) => s.imageMeta);
-  const imageExportFormat = useEditor((s) => s.imageExportFormat);
-  const imageExportScale = useEditor((s) => s.imageExportScale);
-  const isImage = mediaType === 'image';
   const currentProjectPath = useEditor((s) => s.currentProjectPath);
   const canUndo = useEditor((s) => s.past.length > 0);
   const canRedo = useEditor((s) => s.future.length > 0);
@@ -58,6 +52,28 @@ export function EditorApp() {
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const isCropped =
     cropRegion.x !== 0 || cropRegion.y !== 0 || cropRegion.width !== 1 || cropRegion.height !== 1;
+
+  async function hydrateForImage(img: import('@shared/ipc').ImageMeta) {
+    if (!img) return;
+    const fileUrl = img.filePath ? (await window.api.getRecordingFileUrl(img.filePath).catch(() => img.fileUrl)) : img.fileUrl;
+    const resolved = { ...img, fileUrl: fileUrl || img.fileUrl };
+    useEditor.getState().setImage(resolved);
+    try {
+      const existing = await window.api.findProjectForRecording(img.filePath);
+      if (existing) {
+        const loaded = await window.api.loadProjectAt(existing);
+        if (loaded) {
+          useEditor.getState().hydrate(loaded.state as SerializedProject);
+          useEditor.getState().setCurrentProjectPath(existing);
+          return;
+        }
+      }
+      const projectPath = await window.api.initialProjectPath(img.filePath);
+      useEditor.getState().setCurrentProjectPath(projectPath);
+    } catch (err) {
+      console.warn('[editor] failed to find project for image', err);
+    }
+  }
 
   // Load recording/image on first mount + listen for new recordings, opened
   // images & opened projects.
@@ -68,26 +84,6 @@ export function EditorApp() {
       useEditor.getState().setCursorSamples(data?.samples ?? []);
       useEditor.getState().setCursorClicks(data?.clicks ?? []);
       useEditor.getState().setCursorKinds(data?.kinds ?? []);
-    }
-
-    async function hydrateForImage(img: import('@shared/ipc').ImageMeta) {
-      if (!img) return;
-      useEditor.getState().setImage(img);
-      try {
-        const existing = await window.api.findProjectForRecording(img.filePath);
-        if (existing) {
-          const loaded = await window.api.loadProjectAt(existing);
-          if (loaded) {
-            useEditor.getState().hydrate(loaded.state as SerializedProject);
-            useEditor.getState().setCurrentProjectPath(existing);
-            return;
-          }
-        }
-        const projectPath = await window.api.initialProjectPath(img.filePath);
-        useEditor.getState().setCurrentProjectPath(projectPath);
-      } catch (err) {
-        console.warn('[editor] failed to find project for image', err);
-      }
     }
 
     async function hydrateForRecording(rec: import('@shared/ipc').RecordingMeta) {
@@ -117,8 +113,12 @@ export function EditorApp() {
 
     async function hydrateForProject(p: { state: unknown; path: string; recording: import('@shared/ipc').RecordingMeta | null; image?: import('@shared/ipc').ImageMeta | null; mediaType?: 'video' | 'image' }) {
       if (!p) return;
-      if (p.image || p.mediaType === 'image') {
-        if (p.image) useEditor.getState().setImage(p.image);
+      const stateObj = p.state as SerializedProject | undefined;
+      const img = p.image ?? stateObj?.imageMeta ?? null;
+      const isImg = p.mediaType === 'image' || (!p.recording && !!img);
+      if (isImg && img) {
+        const fileUrl = img.filePath ? (await window.api.getRecordingFileUrl(img.filePath).catch(() => img.fileUrl)) : img.fileUrl;
+        useEditor.getState().setImage({ ...img, fileUrl: fileUrl || img.fileUrl });
       } else if (p.recording) {
         const url = await window.api.getRecordingFileUrl(p.recording.filePath);
         const webcamUrl = p.recording.webcamFilePath ? await window.api.getRecordingFileUrl(p.recording.webcamFilePath) : null;
@@ -133,7 +133,7 @@ export function EditorApp() {
 
     async function init() {
       const parked = await window.api.getLastLoadedProject();
-      if (parked && (parked.recording || parked.image)) {
+      if (parked && (parked.recording || parked.image || (parked.state as any)?.imageMeta)) {
         await hydrateForProject(parked);
         return;
       }
@@ -179,9 +179,7 @@ export function EditorApp() {
         const buf = await file.arrayBuffer();
         const imgMeta = await window.api.importImageBuffer(buf, file.name);
         if (imgMeta) {
-          useEditor.getState().setImage(imgMeta);
-          const projectPath = await window.api.initialProjectPath(imgMeta.filePath);
-          useEditor.getState().setCurrentProjectPath(projectPath);
+          await hydrateForImage(imgMeta);
         }
       }
     };
@@ -196,9 +194,7 @@ export function EditorApp() {
             const buf = await file.arrayBuffer();
             const imgMeta = await window.api.importImageBuffer(buf, `pasted-${Date.now()}.png`);
             if (imgMeta) {
-              useEditor.getState().setImage(imgMeta);
-              const projectPath = await window.api.initialProjectPath(imgMeta.filePath);
-              useEditor.getState().setCurrentProjectPath(projectPath);
+              await hydrateForImage(imgMeta);
             }
           }
           break;
@@ -352,7 +348,7 @@ export function EditorApp() {
         if (useEditor.getState().fileUrl) setCropModalOpen((v) => !v);
         return;
       }
-      if (e.key === ' ' && useEditor.getState().mediaType !== 'image') {
+      if (e.key === ' ') {
         e.preventDefault();
         setPlaying(!useEditor.getState().playing);
       }
@@ -373,9 +369,7 @@ export function EditorApp() {
   async function handleOpenImage() {
     const img = await window.api.pickImageForEditing();
     if (img) {
-      useEditor.getState().setImage(img);
-      const projectPath = await window.api.initialProjectPath(img.filePath);
-      useEditor.getState().setCurrentProjectPath(projectPath);
+      await hydrateForImage(img);
     }
   }
 
@@ -395,8 +389,12 @@ export function EditorApp() {
   async function handleLoadProject() {
     const result = await window.api.loadProject();
     if (!result || !result.state) return;
-    if (result.image || result.mediaType === 'image') {
-      if (result.image) useEditor.getState().setImage(result.image);
+    const stateObj = result.state as SerializedProject | undefined;
+    const img = result.image ?? stateObj?.imageMeta ?? null;
+    const isImg = result.mediaType === 'image' || (!result.recording && !!img);
+    if (isImg && img) {
+      const fileUrl = img.filePath ? (await window.api.getRecordingFileUrl(img.filePath).catch(() => img.fileUrl)) : img.fileUrl;
+      useEditor.getState().setImage({ ...img, fileUrl: fileUrl || img.fileUrl });
     } else if (result.recording) {
       const rec = result.recording;
       const url = await window.api.getRecordingFileUrl(rec.filePath);
@@ -516,181 +514,118 @@ export function EditorApp() {
             </div>
             {/* playback strip — kept inside the fullscreen wrapper so play /
                 scrub / exit remain reachable when the preview is fullscreened. */}
-            {isImage ? (
-              <div className="flex h-10 shrink-0 items-center justify-between border-t border-[var(--line)] bg-[var(--panel)] px-4 text-xs">
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1.5 rounded bg-[var(--panel-2)] px-2 py-0.5 font-mono text-[11px] text-[var(--muted)]">
-                    <ImageIcon size={12} />
-                    {imageMeta ? `${imageMeta.width} × ${imageMeta.height}` : 'Image'}
-                  </span>
-                  <button
-                    onClick={() => setCropModalOpen(true)}
-                    disabled={!fileUrl}
-                    title={t('editor.cropShortcut')}
-                    aria-label={t('editor.crop')}
-                    className={
-                      'relative flex items-center gap-1.5 rounded-full px-2.5 py-1 transition ' +
-                      (isCropped
-                        ? 'bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)]'
-                        : 'bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]') +
-                      ' disabled:cursor-not-allowed disabled:opacity-30'
-                    }
-                  >
-                    <Crop size={13} />
-                    <span>{t('editor.crop')}</span>
-                    {isCropped && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
-                    )}
-                  </button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={async () => {
-                      const ok = await copyImageToClipboardNow(imageExportScale);
-                      if (ok) {
-                        setCopyFlash(true);
-                        setTimeout(() => setCopyFlash(false), 1500);
-                      }
-                    }}
-                    className="flex items-center gap-1.5 rounded-full bg-[var(--fill)] px-2.5 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--fill-hover)] transition"
-                    title={t('editor.copyImage')}
-                  >
-                    {copyFlash ? <Check size={13} className="text-[var(--accent)]" /> : <Copy size={13} />}
-                    <span>{copyFlash ? t('editor.copied') : t('editor.copyImage')}</span>
-                  </button>
-                  <button
-                    onClick={async () => {
-                      const p = await exportImageNow(imageExportFormat, imageExportScale);
-                      if (p) {
-                        setExportFlash(true);
-                        setTimeout(() => setExportFlash(false), 1500);
-                      }
-                    }}
-                    className="flex items-center gap-1.5 rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-medium text-[var(--accent-fg)] hover:opacity-90 transition shadow-sm"
-                    title={t('editor.exportImage')}
-                  >
-                    {exportFlash ? <Check size={13} /> : <Download size={13} />}
-                    <span>{t('editor.exportImage')}</span>
-                  </button>
-                  <Divider />
-                  <button
-                    onClick={handleFullscreen}
-                    className="flex h-7 w-7 items-center justify-center rounded hover:bg-[var(--panel-3)] text-[var(--muted)] hover:text-[var(--text)]"
-                    aria-label={isFullscreen ? t('editor.exitFullscreen') : t('editor.fullscreen')}
-                    title={isFullscreen ? 'Exit fullscreen (Esc)' : t('editor.fullscreen')}
-                  >
-                    {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex h-10 shrink-0 items-center gap-3 border-t border-[var(--line)] bg-[var(--panel)] px-4 text-xs">
+            <div className="flex h-10 shrink-0 items-center gap-3 border-t border-[var(--line)] bg-[var(--panel)] px-4 text-xs">
+              <button
+                onClick={() => setPlaying(!playing)}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--panel-3)] hover:bg-white/20"
+                aria-label={playing ? t('editor.pause') : t('editor.play')}
+                title={playing ? t('editor.pause') : t('editor.play')}
+              >
+                {playing ? <Pause size={14} /> : <Play size={14} />}
+              </button>
+              <span className="font-mono text-[var(--muted)]">
+                {fmt(currentMs)} / {fmt(durationMs)}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(1, durationMs)}
+                value={currentMs}
+                onChange={(e) => useEditor.getState().setCurrent(Number(e.target.value))}
+                className="flex-1 accent-[var(--accent)]"
+                aria-label={t('editor.scrubber')}
+              />
+              <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => setPlaying(!playing)}
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--panel-3)] hover:bg-white/20"
-                  aria-label={playing ? t('editor.pause') : t('editor.play')}
-                  title={playing ? t('editor.pause') : t('editor.play')}
+                  onClick={() => setVideoMuted(!videoMuted)}
+                  className="flex h-7 w-7 items-center justify-center rounded hover:bg-[var(--panel-3)]"
+                  aria-label={videoMuted ? t('editor.unmute') : t('editor.mute')}
+                  title={videoMuted ? t('editor.unmuteHint') : t('editor.muteHint')}
                 >
-                  {playing ? <Pause size={14} /> : <Play size={14} />}
+                  {videoMuted || videoVolume === 0 ? (
+                    <VolumeX size={14} className="text-[var(--muted)]" />
+                  ) : (
+                    <Volume2 size={14} />
+                  )}
                 </button>
-                <span className="font-mono text-[var(--muted)]">
-                  {fmt(currentMs)} / {fmt(durationMs)}
-                </span>
                 <input
                   type="range"
                   min={0}
-                  max={Math.max(1, durationMs)}
-                  value={currentMs}
-                  onChange={(e) => useEditor.getState().setCurrent(Number(e.target.value))}
-                  className="flex-1 accent-[var(--accent)]"
-                  aria-label={t('editor.scrubber')}
-                />
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setVideoMuted(!videoMuted)}
-                    className="flex h-7 w-7 items-center justify-center rounded hover:bg-[var(--panel-3)]"
-                    aria-label={videoMuted ? t('editor.unmute') : t('editor.mute')}
-                    title={videoMuted ? t('editor.unmuteHint') : t('editor.muteHint')}
-                  >
-                    {videoMuted || videoVolume === 0 ? (
-                      <VolumeX size={14} className="text-[var(--muted)]" />
-                    ) : (
-                      <Volume2 size={14} />
-                    )}
-                  </button>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={Math.round((videoMuted ? 0 : videoVolume) * 100)}
-                    onChange={(e) => {
-                      const v = Number(e.target.value) / 100;
-                      setVideoVolume(v);
-                      if (v > 0 && videoMuted) setVideoMuted(false);
-                      if (v === 0 && !videoMuted) setVideoMuted(true);
-                    }}
-                    className="h-1 w-20 cursor-pointer accent-[var(--accent)]"
-                    aria-label={t('editor.volume')}
-                    title={t('editor.volume')}
-                  />
-                </div>
-                <button
-                  onClick={handleFullscreen}
-                  className="flex h-7 w-7 items-center justify-center rounded hover:bg-[var(--panel-3)]"
-                  aria-label={isFullscreen ? t('editor.exitFullscreen') : t('editor.fullscreen')}
-                  title={isFullscreen ? 'Exit fullscreen (Esc)' : t('editor.fullscreen')}
-                >
-                  {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                </button>
-                {/* Collapse the lanes. The transport row above stays put, so the
-                    playhead and scrubber are still reachable with the timeline
-                    hidden — hiding both is what makes a collapsed timeline
-                    useless. */}
-                {/* Crop video tool */}
-                <button
-                  onClick={() => setCropModalOpen(true)}
-                  disabled={!fileUrl}
-                  title={t('editor.cropShortcut')}
-                  aria-label={t('editor.crop')}
-                  className={
-                    'relative flex h-7 w-7 items-center justify-center rounded-full transition ' +
-                    (isCropped
-                      ? 'bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)]'
-                      : 'bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]') +
-                    ' disabled:cursor-not-allowed disabled:opacity-30'
-                  }
-                >
-                  <Crop size={14} />
-                  {isCropped && (
-                    <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[var(--accent)] ring-2 ring-[var(--panel)]" />
-                  )}
-                </button>
-                {/* Capture the current frame. It lives here as well as in the
-                    sidebar because this row is where the playhead is — and as an
-                    icon buried beside Export it was effectively hidden. */}
-                <button
-                  onClick={async () => {
-                    const p = await saveStillNow();
-                    if (p) { setShotFlash(true); window.setTimeout(() => setShotFlash(false), 1400); }
+                  max={100}
+                  value={Math.round((videoMuted ? 0 : videoVolume) * 100)}
+                  onChange={(e) => {
+                    const v = Number(e.target.value) / 100;
+                    setVideoVolume(v);
+                    if (v > 0 && videoMuted) setVideoMuted(false);
+                    if (v === 0 && !videoMuted) setVideoMuted(true);
                   }}
-                  title={t('side.captureFrameHint')}
-                  aria-label={t('side.captureFrame')}
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]"
-                >
-                  {shotFlash ? <Check size={14} className="text-[var(--accent)]" /> : <Camera size={14} />}
-                </button>
-                <button
-                  onClick={() => setTimelineCollapsed((v) => !v)}
-                  title={timelineCollapsed ? 'Show timeline' : 'Hide timeline'}
-                  aria-expanded={!timelineCollapsed}
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]"
-                >
-                  {timelineCollapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                </button>
+                  className="h-1 w-20 cursor-pointer accent-[var(--accent)]"
+                  aria-label={t('editor.volume')}
+                  title={t('editor.volume')}
+                />
               </div>
-            )}
+              <button
+                onClick={handleFullscreen}
+                className="flex h-7 w-7 items-center justify-center rounded hover:bg-[var(--panel-3)]"
+                aria-label={isFullscreen ? t('editor.exitFullscreen') : t('editor.fullscreen')}
+                title={isFullscreen ? 'Exit fullscreen (Esc)' : t('editor.fullscreen')}
+              >
+                {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              </button>
+              {/* Crop tool */}
+              <button
+                onClick={() => setCropModalOpen(true)}
+                disabled={!fileUrl}
+                title={t('editor.cropShortcut')}
+                aria-label={t('editor.crop')}
+                className={
+                  'relative flex h-7 w-7 items-center justify-center rounded-full transition ' +
+                  (isCropped
+                    ? 'bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)]'
+                    : 'bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]') +
+                  ' disabled:cursor-not-allowed disabled:opacity-30'
+                }
+              >
+                <Crop size={14} />
+                {isCropped && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[var(--accent)] ring-2 ring-[var(--panel)]" />
+                )}
+              </button>
+              {/* Capture the current frame as still image */}
+              <button
+                onClick={async () => {
+                  const p = await saveStillNow();
+                  if (p) { setShotFlash(true); window.setTimeout(() => setShotFlash(false), 1400); }
+                }}
+                title={t('side.captureFrameHint')}
+                aria-label={t('side.captureFrame')}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]"
+              >
+                {shotFlash ? <Check size={14} className="text-[var(--accent)]" /> : <Camera size={14} />}
+              </button>
+              {/* Quick copy frame to clipboard */}
+              <button
+                onClick={async () => {
+                  const ok = await copyImageToClipboardNow();
+                  if (ok) { setCopyFlash(true); window.setTimeout(() => setCopyFlash(false), 1400); }
+                }}
+                title={t('editor.copyImage')}
+                aria-label={t('editor.copyImage')}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]"
+              >
+                {copyFlash ? <Check size={14} className="text-[var(--accent)]" /> : <Copy size={14} />}
+              </button>
+              <button
+                onClick={() => setTimelineCollapsed((v) => !v)}
+                title={timelineCollapsed ? 'Show timeline' : 'Hide timeline'}
+                aria-expanded={!timelineCollapsed}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--fill)] text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]"
+              >
+                {timelineCollapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+            </div>
           </div>
-          {!isImage && !timelineCollapsed && <Timeline />}
+          {!timelineCollapsed && <Timeline />}
         </div>
         <Sidebar />
       </div>

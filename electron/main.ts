@@ -259,14 +259,18 @@ function createPicker() {
 function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
   lastRecording = recording;
   lastLoadedImage = null;
-  lastLoadedProject = null;
   // Already on screen? Focus it. A second window on the same project would put
   // two auto-savers on one file, and the later write would quietly undo the
   // earlier one.
   const already = editorShowing(recording.filePath);
   if (already) {
     already.focus();
-    already.webContents.send('recording:opened', recording);
+    if (lastLoadedProject) {
+      already.webContents.send('project:opened', lastLoadedProject);
+      lastLoadedProject = null;
+    } else {
+      already.webContents.send('recording:opened', recording);
+    }
     return;
   }
   // Cascade each new editor off the last so a stack of them stays separable
@@ -308,6 +312,9 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
     win.show();
   });
   win.webContents.on('did-finish-load', () => {
+    if (lastLoadedProject) {
+      win.webContents.send('project:opened', lastLoadedProject);
+    }
     win.webContents.send('recording:opened', recording);
   });
   loadHtml(win, 'editor.html');
@@ -320,11 +327,15 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
 function createEditorForImage(image: import('../src/shared/ipc.js').ImageMeta) {
   lastLoadedImage = image;
   lastRecording = null;
-  lastLoadedProject = null;
   const already = editorShowing(image.filePath);
   if (already) {
     already.focus();
-    already.webContents.send('image:opened', image);
+    if (lastLoadedProject) {
+      already.webContents.send('project:opened', lastLoadedProject);
+      lastLoadedProject = null;
+    } else {
+      already.webContents.send('image:opened', image);
+    }
     return;
   }
 
@@ -334,7 +345,12 @@ function createEditorForImage(image: import('../src/shared/ipc.js').ImageMeta) {
     editorRecordings.set(emptyWin, image.filePath);
     emptyWin.focus();
     emptyWin.setTitle(`${image.name} — Reframe`);
-    emptyWin.webContents.send('image:opened', image);
+    if (lastLoadedProject) {
+      emptyWin.webContents.send('project:opened', lastLoadedProject);
+      lastLoadedProject = null;
+    } else {
+      emptyWin.webContents.send('image:opened', image);
+    }
     return;
   }
 
@@ -369,6 +385,9 @@ function createEditorForImage(image: import('../src/shared/ipc.js').ImageMeta) {
     win.show();
   });
   win.webContents.on('did-finish-load', () => {
+    if (lastLoadedProject) {
+      win.webContents.send('project:opened', lastLoadedProject);
+    }
     win.webContents.send('image:opened', image);
   });
   loadHtml(win, 'editor.html');
@@ -1847,13 +1866,13 @@ ipcMain.handle('project:save', async (evt, project) => {
 });
 
 // Read a project file by path, silently (no dialog). Used by the editor to
-// reopen the existing project for a recording. Fenced to the projects dir.
+// reopen the existing project for a recording or image. Fenced to the projects dir.
 ipcMain.handle('project:loadAt', async (_evt, filePath: string) => {
   try {
     const resolved = path.resolve(filePath);
     if (!projectsDir || !resolved.startsWith(projectsDir + path.sep)) return null;
     const project = JSON.parse(await fs.promises.readFile(resolved, 'utf-8'));
-    if (!project?.recording) return null;
+    if (!project?.recording && !project?.image && !project?.state?.imageMeta) return null;
     return { ...project, _path: resolved };
   } catch {
     return null;
@@ -1895,21 +1914,37 @@ ipcMain.handle('project:openFromPicker', async (evt) => {
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
     const project = JSON.parse(raw);
-    if (!project?.recording) return { opened: false };
-    lastRecording = project.recording;
-    lastLoadedProject = { state: project.state, path: filePath, recording: project.recording };
-    // Already open somewhere? Focus that window and re-hydrate it in place —
-    // opening a second window on the same project would have two auto-savers
-    // writing one file. Otherwise this project gets its own window, alongside
-    // whatever else is already open.
-    const already = editorShowing(project.recording.filePath);
+    const hasRecording = !!project?.recording;
+    const hasImage = !!(project?.image || project?.state?.imageMeta);
+    if (!hasRecording && !hasImage) return { opened: false };
+
+    const recording = project.recording ?? null;
+    const image = project.image ?? project.state?.imageMeta ?? null;
+    const mediaType = project.mediaType ?? (image && !recording ? 'image' : 'video');
+
+    lastRecording = recording;
+    lastLoadedImage = image;
+    lastLoadedProject = {
+      state: project.state,
+      path: filePath,
+      recording,
+      image,
+      mediaType
+    };
+
+    const mediaPath = recording?.filePath || image?.filePath;
+    const already = mediaPath ? editorShowing(mediaPath) : null;
     if (already) {
       already.focus();
       already.webContents.send('project:opened', lastLoadedProject);
       // Consumed by the live editor — clear so a subsequent mount doesn't re-hydrate.
       lastLoadedProject = null;
     } else {
-      createEditor(project.recording);
+      if (recording) {
+        createEditor(recording);
+      } else if (image) {
+        createEditorForImage(image);
+      }
     }
     return { opened: true, path: filePath };
   } catch (err) {
@@ -2479,10 +2514,23 @@ app.whenReady().then(async () => {
   if (openProject) {
     try {
       const project = JSON.parse(fs.readFileSync(openProject, 'utf-8'));
-      if (project?.recording) {
-        lastRecording = project.recording;
-        lastLoadedProject = { state: project.state, path: openProject, recording: project.recording };
-        createEditor(project.recording);
+      const recording = project?.recording ?? null;
+      const image = project?.image ?? project?.state?.imageMeta ?? null;
+      if (recording || image) {
+        lastRecording = recording;
+        lastLoadedImage = image;
+        lastLoadedProject = {
+          state: project.state,
+          path: openProject,
+          recording,
+          image,
+          mediaType: project.mediaType ?? (image && !recording ? 'image' : 'video')
+        };
+        if (recording) {
+          createEditor(recording);
+        } else if (image) {
+          createEditorForImage(image);
+        }
       }
     } catch (err) {
       console.warn('[main] REFRAME_OPEN_PROJECT failed', err);
@@ -2490,10 +2538,10 @@ app.whenReady().then(async () => {
   }
 });
 
-// The mirror of sweepOrphanRecordings: a project whose recording no longer
-// exists can never be opened (the editor needs the video), so it's dead weight
+// The mirror of sweepOrphanRecordings: a project whose recording/image no longer
+// exists can never be opened (the editor needs the media), so it's dead weight
 // in the Projects folder. Remove those. Never touches a project whose
-// recording is present — that's user data.
+// media is present — that's user data.
 async function sweepOrphanProjects() {
   try {
     let deleted = 0;
@@ -2503,8 +2551,12 @@ async function sweepOrphanProjects() {
       try {
         const parsed = JSON.parse(await fs.promises.readFile(full, 'utf-8'));
         const rp = parsed?.recording?.filePath;
-        // Only act on a well-formed project that names a recording which is gone.
+        const ip = parsed?.image?.filePath ?? parsed?.state?.imageMeta?.filePath;
+        // Only act on a well-formed project that names a media file which is gone.
         if (typeof rp === 'string' && rp && !fs.existsSync(rp)) {
+          await fs.promises.rm(full, { force: true });
+          deleted++;
+        } else if (!rp && typeof ip === 'string' && ip && !fs.existsSync(ip)) {
           await fs.promises.rm(full, { force: true });
           deleted++;
         }
@@ -2531,6 +2583,8 @@ async function sweepOrphanRecordings() {
         if (rec?.filePath) referenced.add(path.resolve(rec.filePath));
         if (rec?.webcamFilePath) referenced.add(path.resolve(rec.webcamFilePath));
         if (rec?.cursorFilePath) referenced.add(path.resolve(rec.cursorFilePath));
+        const img = (parsed?.image ?? parsed?.state?.imageMeta) as { filePath?: string } | undefined;
+        if (img?.filePath) referenced.add(path.resolve(img.filePath));
       } catch {
         // Malformed project file — ignore, don't crash startup.
       }
