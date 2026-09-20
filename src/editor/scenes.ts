@@ -20,11 +20,35 @@ import type { SceneInstance } from './card3d';
 const TAU = Math.PI * 2;
 
 // Smooth easing curves
-const easeOutSine = (t: number) => Math.sin((Math.max(0, Math.min(1, t)) * Math.PI) / 2);
 const easeInCubic = (t: number) => Math.pow(Math.max(0, Math.min(1, t)), 3);
 const easeInOutCubic = (t: number) => {
   const c = Math.max(0, Math.min(1, t));
   return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2;
+};
+
+// For entrance animations: smoothly decelerate to an exact rest landing at p = 0.85.
+// For the remaining 15% (p in [0.85, 1.0]), it rests stably flat at center (0,0,0, s=1).
+// This guarantees that before the timeline region ends, the window has ALREADY landed
+// with zero velocity, so there is never any shuffle or snap at the boundary.
+const landProgress = (p: number) => {
+  const u = Math.min(1, Math.max(0, p) / 0.85);
+  return 1 - Math.pow(1 - u, 3);
+};
+
+// Smooth bell curve that starts at 0, smoothly peaks at 1 in the middle,
+// and softly settles to exactly 0 by p = 0.88 (resting flat for the final 12%).
+// This guarantees that sweeps and zoom-tilts always start flat at center,
+// sweep dynamically in 3D, and land smoothly flat at center with zero jerk.
+const sweepBell = (p: number) => {
+  const u = Math.max(0, Math.min(1, p / 0.88));
+  if (u >= 1) return 0;
+  const s = Math.sin(u * Math.PI);
+  return s * s;
+};
+
+const sweepPhase = (p: number) => {
+  const u = Math.max(0, Math.min(1, p / 0.88));
+  return easeInOutCubic(u);
 };
 
 type Gen = (p: number) => SceneInstance[];
@@ -38,7 +62,7 @@ export const SCENES: Record<string, Gen> = {
   // ── ENTRANCES (INTROS) ──
   // Dramatic depth entrance: flies in from depth with pitch and soft deceleration, smoothly landing flat at center.
   heroFlyIn: (p) => {
-    const t = easeOutSine(p);
+    const t = landProgress(p);
     const rev = 1 - t;
     return [inst({
       ox: 0,
@@ -53,7 +77,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Floating high above canvas at an isometric tilt, gracefully landing flat at center.
   elevateLand: (p) => {
-    const t = easeOutSine(p);
+    const t = landProgress(p);
     const rev = 1 - t;
     return [inst({
       ox: rev * 0.04,
@@ -68,7 +92,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Sweeping entrance from the left with yaw rotation, smoothly landing flat at center.
   glideInL: (p) => {
-    const t = easeOutSine(p);
+    const t = landProgress(p);
     const rev = 1 - t;
     return [inst({
       ox: -rev * 0.65,
@@ -83,7 +107,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Sweeping entrance from the right with yaw rotation, smoothly landing flat at center.
   glideInR: (p) => {
-    const t = easeOutSine(p);
+    const t = landProgress(p);
     const rev = 1 - t;
     return [inst({
       ox: rev * 0.65,
@@ -98,7 +122,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Diagonal swoop from top-left corner directly and smoothly landing flat at center.
   cornerSwoop: (p) => {
-    const t = easeOutSine(p);
+    const t = landProgress(p);
     const rev = 1 - t;
     return [inst({
       ox: -rev * 0.52,
@@ -113,7 +137,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Snappy scale pop-in with subtle tilt, smoothly settling flat at center.
   springPop: (p) => {
-    const t = easeOutSine(p);
+    const t = landProgress(p);
     const rev = 1 - t;
     return [inst({
       ox: 0,
@@ -128,7 +152,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Rises up from bottom horizon, smoothly straightening flat into center.
   riseTilt: (p) => {
-    const t = easeOutSine(p);
+    const t = landProgress(p);
     const rev = 1 - t;
     return [inst({
       ox: 0,
@@ -142,161 +166,165 @@ export const SCENES: Record<string, Gen> = {
   },
 
   // ── CAMERA SWEEPS & ORBITS ──
-  // Smooth cinematic dolly arc across the window from Left to Right.
+  // Smooth cinematic dolly arc across the window from Left to Right, starting and landing flat at center.
   orbitLR: (p) => {
-    const t = easeInOutCubic(p);
-    const arc = Math.sin(t * Math.PI);
+    const w = sweepBell(p);
+    const sp = sweepPhase(p);
     return [inst({
-      ox: -0.06 + t * 0.12,
+      ox: (-0.08 + sp * 0.16) * w,
       oy: 0,
-      oz: arc * 0.12,
-      rx: 10 + arc * 3,
-      ry: -26 + t * 52,
-      rz: -arc * 2,
-      s: 0.98 + arc * 0.04
+      oz: 0.16 * w,
+      rx: (10 + Math.sin(sp * Math.PI) * 4) * w,
+      ry: (-28 + sp * 56) * w,
+      rz: (-Math.sin(sp * Math.PI * 2) * 2.5) * w,
+      s: 1.0 + (0.02 * Math.sin(sp * Math.PI)) * w
     })];
   },
 
-  // Smooth cinematic dolly arc across the window from Right to Left.
+  // Smooth cinematic dolly arc across the window from Right to Left, starting and landing flat at center.
   orbitRL: (p) => {
-    const t = easeInOutCubic(p);
-    const arc = Math.sin(t * Math.PI);
+    const w = sweepBell(p);
+    const sp = sweepPhase(p);
     return [inst({
-      ox: 0.06 - t * 0.12,
+      ox: (0.08 - sp * 0.16) * w,
       oy: 0,
-      oz: arc * 0.12,
-      rx: 10 + arc * 3,
-      ry: 26 - t * 52,
-      rz: arc * 2,
-      s: 0.98 + arc * 0.04
+      oz: 0.16 * w,
+      rx: (10 + Math.sin(sp * Math.PI) * 4) * w,
+      ry: (28 - sp * 56) * w,
+      rz: (Math.sin(sp * Math.PI * 2) * 2.5) * w,
+      s: 1.0 + (0.02 * Math.sin(sp * Math.PI)) * w
     })];
   },
 
-  // Majestic 3D turntable slow inspection arc.
+  // Majestic 3D turntable slow inspection arc, starting and landing flat at center.
   turntable3D: (p) => {
-    const t = easeInOutCubic(p);
+    const w = sweepBell(p);
+    const sp = sweepPhase(p);
     return [inst({
-      ox: Math.sin((t - 0.5) * Math.PI) * 0.08,
+      ox: Math.sin((sp - 0.5) * Math.PI) * 0.08 * w,
       oy: 0,
-      oz: 0.05,
-      rx: 18,
-      ry: -32 + t * 64,
-      rz: -2 + Math.sin(t * Math.PI) * 4,
-      s: 0.96
+      oz: 0.08 * w,
+      rx: 18 * w,
+      ry: (-32 + sp * 64) * w,
+      rz: Math.sin(sp * Math.PI) * 3 * w,
+      s: 1.0 - 0.04 * w
     })];
   },
 
-  // Lateral camera tracking shot held at an elegant isometric angle.
+  // Lateral camera tracking shot held at an elegant isometric angle, starting and landing flat at center.
   isometricPan: (p) => {
-    const t = easeInOutCubic(p);
+    const w = sweepBell(p);
+    const sp = sweepPhase(p);
     return [inst({
-      ox: -0.12 + t * 0.24,
-      oy: 0.06 - t * 0.12,
-      oz: 0.02,
-      rx: 26,
-      ry: 36,
-      rz: -10,
-      s: 0.92
+      ox: (-0.12 + sp * 0.24) * w,
+      oy: (0.04 - sp * 0.08) * w,
+      oz: 0.06 * w,
+      rx: 24 * w,
+      ry: 34 * w,
+      rz: -8 * w,
+      s: 1.0 - 0.06 * w
     })];
   },
 
-  // Coordinated dual-axis sweep keeping the recording sleek and modern.
+  // Coordinated dual-axis sweep keeping the recording sleek and modern, starting and landing flat at center.
   dynamicPerspective: (p) => {
-    const ph = p * TAU;
+    const w = sweepBell(p);
+    const sp = sweepPhase(p);
     return [inst({
-      ox: Math.sin(ph) * 0.05,
-      oy: Math.cos(ph) * 0.03,
-      oz: 0.04,
-      rx: 14 * Math.cos(p * Math.PI),
-      ry: 24 * Math.sin(p * Math.PI - 0.5),
-      rz: Math.sin(ph) * 3,
-      s: 0.98
+      ox: Math.sin(sp * TAU) * 0.06 * w,
+      oy: Math.cos(sp * TAU) * 0.03 * w,
+      oz: 0.08 * w,
+      rx: 16 * Math.sin(sp * Math.PI) * w,
+      ry: 26 * Math.cos(sp * Math.PI) * w,
+      rz: Math.sin(sp * TAU) * 3 * w,
+      s: 1.0 - 0.02 * w
     })];
   },
 
-  // Modern diagonal product teaser angle sweeping smoothly.
+  // Modern diagonal product teaser angle sweeping smoothly, starting and landing flat at center.
   dutchSweep: (p) => {
-    const t = easeInOutCubic(p);
+    const w = sweepBell(p);
+    const sp = sweepPhase(p);
     return [inst({
-      ox: -0.08 + t * 0.16,
+      ox: (-0.08 + sp * 0.16) * w,
       oy: 0,
-      oz: 0.03,
-      rx: 8,
-      ry: -14 + t * 28,
-      rz: -10 + t * 20,
-      s: 0.98
+      oz: 0.05 * w,
+      rx: 10 * w,
+      ry: (-16 + sp * 32) * w,
+      rz: (-10 + sp * 20) * w,
+      s: 1.0 - 0.02 * w
     })];
   },
 
   // ── FOCUS & ZOOM-TILTS ──
-  // Zooms into top-left while pitching the opposite edge away into depth (CleanShot style).
+  // Zooms into top-left while pitching into depth, smoothly returning flat to center.
   zoomTiltTL: (p) => {
-    const t = easeInOutCubic(p);
+    const w = sweepBell(p);
     return [inst({
-      ox: t * 0.18,
-      oy: -t * 0.14,
-      oz: t * 0.35,
-      rx: -t * 14,
-      ry: t * 18,
-      rz: -t * 2,
-      s: 1.0 + t * 0.15
+      ox: 0.18 * w,
+      oy: -0.14 * w,
+      oz: 0.32 * w,
+      rx: -14 * w,
+      ry: 18 * w,
+      rz: -2 * w,
+      s: 1.0 + 0.15 * w
     })];
   },
 
-  // Zooms into top-right with dynamic depth tilt.
+  // Zooms into top-right with dynamic depth tilt, smoothly returning flat to center.
   zoomTiltTR: (p) => {
-    const t = easeInOutCubic(p);
+    const w = sweepBell(p);
     return [inst({
-      ox: -t * 0.18,
-      oy: -t * 0.14,
-      oz: t * 0.35,
-      rx: -t * 14,
-      ry: -t * 18,
-      rz: t * 2,
-      s: 1.0 + t * 0.15
+      ox: -0.18 * w,
+      oy: -0.14 * w,
+      oz: 0.32 * w,
+      rx: -14 * w,
+      ry: -18 * w,
+      rz: 2 * w,
+      s: 1.0 + 0.15 * w
     })];
   },
 
-  // Deep forward camera push with perspective compression.
+  // Deep forward camera push with perspective compression, smoothly returning flat to center.
   centerDive: (p) => {
-    const t = easeInOutCubic(p);
-    const arc = Math.sin(p * Math.PI);
+    const w = sweepBell(p);
+    const sp = sweepPhase(p);
     return [inst({
       ox: 0,
       oy: 0,
-      oz: t * 0.45,
-      rx: arc * 6,
+      oz: 0.42 * w,
+      rx: Math.sin(sp * Math.PI) * 6 * w,
       ry: 0,
       rz: 0,
-      s: 1.0 + t * 0.12
+      s: 1.0 + 0.14 * w
     })];
   },
 
-  // Leans on a 3D display stand angle highlighting primary action area.
+  // Leans on a 3D display stand angle highlighting primary action area, smoothly returning flat to center.
   cornerSpotlight: (p) => {
-    const t = easeInOutCubic(p);
+    const w = sweepBell(p);
     return [inst({
-      ox: -0.04,
-      oy: 0.02,
-      oz: 0.15 + t * 0.05,
-      rx: 20,
-      ry: -24 + t * 4,
-      rz: 4,
-      s: 0.95
+      ox: -0.05 * w,
+      oy: 0.02 * w,
+      oz: 0.18 * w,
+      rx: 20 * w,
+      ry: -22 * w,
+      rz: 4 * w,
+      s: 1.0 - 0.04 * w
     })];
   },
 
-  // Gentle forward dolly with subtle directional tilt for detail inspection.
+  // Gentle forward dolly with subtle directional tilt for detail inspection, smoothly returning flat to center.
   detailFocus: (p) => {
-    const t = easeInOutCubic(p);
+    const w = sweepBell(p);
     return [inst({
       ox: 0,
-      oy: -t * 0.06,
-      oz: t * 0.28,
-      rx: -t * 8,
-      ry: t * 6,
+      oy: -0.06 * w,
+      oz: 0.28 * w,
+      rx: -8 * w,
+      ry: 6 * w,
       rz: 0,
-      s: 1.0 + t * 0.18
+      s: 1.0 + 0.16 * w
     })];
   },
 
@@ -553,9 +581,11 @@ const ONE_SHOT = new Set([
 export function sceneInstances(id: string, p: number, st: SceneSettings = DEFAULT_SCENE_SETTINGS, tSec = p * CYCLE_SEC): SceneInstance[] | null {
   const gen = SCENES[id];
   if (!gen) return null;
+  const spd = Math.max(0.1, st.speed ?? 1);
+  const pNorm = Math.max(0, Math.min(1, p));
   const phase = ONE_SHOT.has(id)
-    ? Math.min(1, p * st.speed)
-    : ((tSec * st.speed) / CYCLE_SEC) % 1;
+    ? (spd >= 1 ? Math.min(1, pNorm * spd) : Math.pow(pNorm, 1 / spd))
+    : ((tSec * spd) / CYCLE_SEC) % 1;
   const raw = gen(Math.max(0, Math.min(1, phase)));
   const gx = (st.tiltX * Math.PI) / 180, gy = (st.tiltY * Math.PI) / 180;
   const cx = Math.cos(gx), sx = Math.sin(gx), cy = Math.cos(gy), sy = Math.sin(gy);

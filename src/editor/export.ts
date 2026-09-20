@@ -228,6 +228,9 @@ const ENTRANCE_PRESETS = new Set([
 const EXIT_PRESETS = new Set([
   'fallbackOut', 'swoopOut', 'glideOutL', 'glideOutR', 'horizonFade'
 ]);
+const DECK_PRESETS = new Set([
+  'keynoteStack', 'isometricTrio', 'presentationFan'
+]);
 
 // Animation preset active at `ms` with smooth transition envelope.
 // Entrance presets start with their dynamic intro from depth/off-screen and ease smoothly into flat rest.
@@ -254,10 +257,10 @@ function computeScene(items: ReturnType<typeof useEditor.getState>['items'], ms:
     ? easeInOutCubic((ms - it.startMs) / transT)
     : 1;
 
-  // Sweeps, focus, ambient, and decks ease smoothly back to flat rest before the region ends.
-  // Entrance presets do not get artificial secondary envOut crushing because their own curve lands them softly at (0,0,0) at p=1.
+  // Ambient, decks, and custom-shaped layouts ease smoothly back to flat rest before the region ends.
+  // Entrance and sweep presets already land softly and flat at (0,0,0) with s=1 by p=0.85-0.88.
   // Exit presets animate away off-screen.
-  const envOut = (!isEnt && !isExt && ms > it.endMs - transT)
+  const envOut = (!isExt && ms > it.endMs - transT)
     ? easeInOutCubic(Math.max(0, it.endMs - ms) / transT)
     : 1;
 
@@ -265,7 +268,11 @@ function computeScene(items: ReturnType<typeof useEditor.getState>['items'], ms:
   if (env <= 0.0001) return null;
 
   const d = DEFAULT_SCENE_SETTINGS;
-  const rawShape = it.sceneShape ?? d.shape;
+  let rawShape = it.sceneShape ?? d.shape;
+  // Migrate legacy '1:1' default on single-card presets to 'auto' to preserve the original window aspect ratio
+  if (rawShape === '1:1' && !DECK_PRESETS.has(id)) {
+    rawShape = 'auto';
+  }
   const settings: SceneSettings = {
     speed: it.sceneSpeed ?? d.speed, zoom: it.sceneZoom ?? d.zoom,
     tiltX: it.sceneTiltX ?? d.tiltX, tiltY: it.sceneTiltY ?? d.tiltY,
