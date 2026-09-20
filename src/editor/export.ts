@@ -19,7 +19,7 @@ import { renderShaderBackground, normalizeShader, SHADER_FALLBACK, renderMeshBac
 import { useEditor, type CropRegion, type EditorState, ANNOTATION_DEFAULTS } from './store';
 import type { CursorSample, ClickSample, CursorKindSample } from '@shared/ipc';
 import { renderCard3D, renderScene3D, projectCardPoint, type CardXform } from './card3d';
-import { sceneInstances, heroIndex, DEFAULT_SCENE_SETTINGS, SCENE_SHAPE_RATIO, type SceneSettings } from './scenes';
+import { sceneInstances, heroIndex, DEFAULT_SCENE_SETTINGS, SCENE_SHAPE_RATIO, type SceneSettings, type SceneShape } from './scenes';
 import { CURSOR_GLYPHS, KIND_GLYPHS, CURSOR_IDLE_MS, CURSOR_IDLE_FADE_MS, CURSOR_MOVE_EPS_SQ } from './cursorGlyphs';
 
 // Export pipeline — frame-accurate, NOT real-time.
@@ -162,6 +162,7 @@ export const hasRotation = (r?: Rotation | null): r is Rotation =>
   !!r && (Math.abs(r.tiltX) > 1e-6 || Math.abs(r.tiltY) > 1e-6 || Math.abs(r.spinZ) > 1e-6 ||
           Math.abs(r.slideX ?? 0) > 1e-6 || Math.abs(r.slideY ?? 0) > 1e-6);
 
+type ActiveScene = { id: string; p: number; tSec: number; settings: SceneSettings; env?: number };
 type ZoomItem = {
   startMs: number; endMs: number; zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number;
   // Per-frame rotation from the rotation LANE, attached here so drawVideoBox /
@@ -169,7 +170,7 @@ type ZoomItem = {
   rotation?: Rotation;
   // Multi-card scene from the rotation lane (preset id + linear progress).
   // When set it replaces the single-card rotation render entirely.
-  scene?: { id: string; p: number; tSec: number; settings: SceneSettings };
+  scene?: ActiveScene;
 };
 
 // Consecutive zoom regions this close (ms) are treated as ONE continuous zoom:
@@ -220,24 +221,60 @@ function activeRotItem(items: ReturnType<typeof useEditor.getState>['items'], ms
   return regs[0]?.it ?? null;
 }
 
-// Multi-card scene active at `ms` — linear progress, no edge easing (a scene
-// exists only inside its region; the arrangement itself carries the motion).
-function computeScene(items: ReturnType<typeof useEditor.getState>['items'], ms: number): { id: string; p: number; tSec: number; settings: SceneSettings } | null {
+const ANIM_TRANSITION_MS = 350;
+const ENTRANCE_PRESETS = new Set([
+  'heroFlyIn', 'elevateLand', 'glideInL', 'glideInR', 'cornerSwoop', 'springPop', 'riseTilt'
+]);
+const EXIT_PRESETS = new Set([
+  'fallbackOut', 'swoopOut', 'glideOutL', 'glideOutR', 'horizonFade'
+]);
+
+// Animation preset active at `ms` with smooth transition envelope.
+// Entrance presets start with their dynamic intro from depth/off-screen and ease smoothly into flat rest.
+// Exit presets ease from flat rest and animate away off-screen.
+// Sweeps, ambient, decks, and focus presets smoothly ease in and out so they never snap.
+function computeScene(items: ReturnType<typeof useEditor.getState>['items'], ms: number): { id: string; p: number; tSec: number; settings: SceneSettings; env: number } | null {
   const regs = items
     .map((raw, i) => ({ it: raw as unknown as RotItem & { kind: string }, i }))
-    .filter(({ it }) => (it.kind === 'scene' || (it.kind === 'rotation' && it.scene)) && ms >= it.startMs && ms <= it.endMs)
+    .filter(({ it }) => (it.kind === 'scene' || (it.kind === 'rotation' && it.scene)))
+    .filter(({ it }) => ms >= it.startMs && ms <= it.endMs)
     .sort((a, b) => (b.it.startMs - a.it.startMs) || (b.i - a.i));
   const it = regs[0]?.it;
   if (!it) return null;
+
+  const id = it.scene ?? 'heroFlyIn';
+  const isEnt = ENTRANCE_PRESETS.has(id);
+  const isExt = EXIT_PRESETS.has(id);
+  const regDur = Math.max(1, it.endMs - it.startMs);
+  const transT = Math.min(ANIM_TRANSITION_MS, Math.max(80, regDur * 0.28));
+
+  // Entrance presets start in dynamic motion from off-screen / depth;
+  // sweeps, focus, ambient, and exit presets ease in smoothly from flat rest.
+  const envIn = (!isEnt && ms < it.startMs + transT)
+    ? easeInOutCubic((ms - it.startMs) / transT)
+    : 1;
+
+  // Sweeps, focus, ambient, and decks ease smoothly back to flat rest before the region ends.
+  // Entrance presets do not get artificial secondary envOut crushing because their own curve lands them softly at (0,0,0) at p=1.
+  // Exit presets animate away off-screen.
+  const envOut = (!isEnt && !isExt && ms > it.endMs - transT)
+    ? easeInOutCubic(Math.max(0, it.endMs - ms) / transT)
+    : 1;
+
+  const env = Math.max(0, Math.min(1, Math.min(envIn, envOut)));
+  if (env <= 0.0001) return null;
+
   const d = DEFAULT_SCENE_SETTINGS;
+  const rawShape = it.sceneShape ?? d.shape;
   const settings: SceneSettings = {
     speed: it.sceneSpeed ?? d.speed, zoom: it.sceneZoom ?? d.zoom,
     tiltX: it.sceneTiltX ?? d.tiltX, tiltY: it.sceneTiltY ?? d.tiltY,
     depth: it.sceneDepth ?? d.depth, spacing: it.sceneSpacing ?? d.spacing,
-    radius: it.sceneRadius ?? d.radius, shape: it.sceneShape ?? d.shape,
+    radius: it.sceneRadius ?? d.radius,
+    shape: (rawShape as SceneShape) || 'auto',
     posX: it.scenePosX ?? d.posX, posY: it.scenePosY ?? d.posY
   };
-  return { id: it.scene ?? 'orbit', p: clamp01n((ms - it.startMs) / Math.max(1, it.endMs - it.startMs)), tSec: Math.max(0, ms - it.startMs) / 1000, settings };
+  return { id, p: clamp01n((ms - it.startMs) / regDur), tSec: Math.max(0, ms - it.startMs) / 1000, settings, env };
 }
 
 function computeRotation(items: ReturnType<typeof useEditor.getState>['items'], ms: number): Rotation | null {
@@ -1218,7 +1255,7 @@ function cursorToOutput(
   srcW: number, srcH: number,
   crop: CropRegion,
   bx: number, by: number, bw: number, bh: number,
-  zoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number; rotation?: Rotation; scene?: { id: string; p: number; tSec: number; settings: SceneSettings } },
+  zoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number; rotation?: Rotation; scene?: ActiveScene },
   outWForCursor = 0, outHForCursor = 0
 ): { x: number; y: number } | null {
   if (!srcW || !srcH) return null;
@@ -1247,9 +1284,20 @@ function cursorToOutput(
   const scn = zoom?.scene;
   if (scn && outWForCursor > 0) {
     // Multi-card scene: glue the cursor to the card fronting the arrangement.
-    const cards = sceneInstances(scn.id, scn.p, scn.settings, scn.tSec);
-    if (cards?.length) {
-      const [cbx, cby, cbw, cbh] = sceneCardBox(bx, by, bw, bh, scn.settings, outWForCursor, outHForCursor);
+    const rawCards = sceneInstances(scn.id, scn.p, scn.settings, scn.tSec);
+    if (rawCards?.length) {
+      const env = scn.env ?? 1;
+      const cards = env < 1 ? rawCards.map((c) => ({
+        ...c,
+        ox: c.ox * env,
+        oy: c.oy * env,
+        oz: c.oz * env,
+        rx: c.rx * env,
+        ry: c.ry * env,
+        rz: c.rz * env,
+        s: 1 + (c.s - 1) * env
+      })) : rawCards;
+      const [cbx, cby, cbw, cbh] = sceneCardBox(bx, by, bw, bh, scn.settings, outWForCursor, outHForCursor, env);
       const xf: CardXform = { outW: outWForCursor, outH: outHForCursor, bx: cbx, by: cby, bw: cbw, bh: cbh, zoom: z, zoomTx: tx, zoomTy: ty, rot: NO_ROTATION };
       return projectCardPoint(xf, u, v, cards[heroIndex(cards)]);
     }
@@ -1839,14 +1887,22 @@ function scratchCanvasB(w: number, h: number) {
 let _cardCanvas: OffscreenCanvas | HTMLCanvasElement | null = null;
 // The unit card for a scene: the largest box of the chosen aspect that fits
 // inside the video box, centred. '16:9'-ish shapes keep the full box.
-function sceneCardBox(x: number, y: number, w: number, h: number, st: SceneSettings, outW: number, outH: number): [number, number, number, number] {
-  const r = SCENE_SHAPE_RATIO[st.shape];
-  const cw = Math.min(w, h * r);
-  const ch = cw / r;
-  // Position moves the whole arrangement: its centre lands at (posX, posY) of
-  // the frame instead of the frame centre.
+function sceneCardBox(x: number, y: number, w: number, h: number, st: SceneSettings, outW: number, outH: number, env = 1): [number, number, number, number] {
   const dx = (st.posX - 0.5) * outW, dy = (st.posY - 0.5) * outH;
-  return [x + (w - cw) / 2 + dx, y + (h - ch) / 2 + dy, cw, ch];
+  if (!st.shape || st.shape === 'auto') {
+    return [x + dx * env, y + dy * env, w, h];
+  }
+  const r = (SCENE_SHAPE_RATIO as Record<string, number>)[st.shape] ?? (w / Math.max(1, h));
+  const targetCw = Math.min(w, h * r);
+  const targetCh = targetCw / r;
+  const targetX = x + (w - targetCw) / 2 + dx;
+  const targetY = y + (h - targetCh) / 2 + dy;
+  return [
+    x + (targetX - x) * env,
+    y + (targetY - y) * env,
+    w + (targetCw - w) * env,
+    h + (targetCh - h) * env
+  ];
 }
 
 // Its own scratch rather than a shared one: this is consumed inside
@@ -1935,7 +1991,7 @@ function drawVideoBox(
   h: number,
   roundness: number,
   crop: CropRegion,
-  activeZoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number; rotation?: Rotation; scene?: { id: string; p: number; tSec: number; settings: SceneSettings } },
+  activeZoom?: { zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number; rotation?: Rotation; scene?: ActiveScene },
   shadowPct = 0,
   outH = 1080,
   border: BorderId = 'default',
@@ -1973,12 +2029,23 @@ function drawVideoBox(
   // existing project renders byte-for-byte as before.
   const rot = activeZoom?.rotation;
   const scene = activeZoom?.scene;
-  const sceneCards = scene ? sceneInstances(scene.id, scene.p, scene.settings, scene.tSec) : null;
+  const env = scene?.env ?? 1;
+  const rawSceneCards = scene ? sceneInstances(scene.id, scene.p, scene.settings, scene.tSec) : null;
+  const sceneCards = rawSceneCards && env < 1 ? rawSceneCards.map((c) => ({
+    ...c,
+    ox: c.ox * env,
+    oy: c.oy * env,
+    oz: c.oz * env,
+    rx: c.rx * env,
+    ry: c.ry * env,
+    rz: c.rz * env,
+    s: 1 + (c.s - 1) * env
+  })) : rawSceneCards;
   if (hasRotation(rot) || sceneCards) {
     const outW = ctx.canvas.width;
     // A scene can re-crop the card to a chosen shape (1:1, 9:16…); the unit
     // card the instances are laid out around is then that smaller box.
-    const [cx0, cy0, cw, ch] = scene ? sceneCardBox(x, y, w, h, scene.settings, outW, outH) : [x, y, w, h];
+    const [cx0, cy0, cw, ch] = scene ? sceneCardBox(x, y, w, h, scene.settings, outW, outH, env) : [x, y, w, h];
     const xf: CardXform = { outW, outH, bx: cx0, by: cy0, bw: cw, bh: ch, zoom: z, zoomTx: tx, zoomTy: ty, rot: rot ?? NO_ROTATION };
 
     // Supersample the texture by the zoom.

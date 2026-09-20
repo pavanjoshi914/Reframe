@@ -105,7 +105,7 @@ export type LaneItem = {
   sceneDepth?: number;    // multiplies depth offsets
   sceneSpacing?: number;  // multiplies in-plane spread
   sceneRadius?: number;   // multiplies all offsets (ring radius)
-  sceneShape?: '1:1' | '4:3' | '3:2' | '16:9' | '9:16'; // card crop
+  sceneShape?: 'auto' | '1:1' | '4:3' | '3:2' | '16:9' | '9:16'; // card crop
   scenePosX?: number;     // where the arrangement's centre sits in the frame (0..1)
   scenePosY?: number;
   text?: string;
@@ -865,8 +865,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       ...(kind === 'annotation' ? { text: '' } : {}),
       // A new rotation starts with a visible lean so it reads immediately.
       ...(kind === 'rotation' ? { tiltX: 0, tiltY: 20, spinZ: 0 } : {}),
-      // A new scene starts on Orbit so something moves immediately.
-      ...(kind === 'scene' ? { scene: 'orbit' } : {}),
+      // A new animation starts on Hero Fly-In so a cinematic move previews immediately.
+      ...(kind === 'scene' ? { scene: 'heroFlyIn', sceneShape: 'auto' as const } : {}),
       ...(kind === 'blur'
         ? { rectX: 0.34, rectY: 0.4, rectW: 0.32, rectH: 0.14, blurStyle: 'blur' as const, blurStrength: 0.5, blurFeather: 0.5, progressive: false }
         : {})

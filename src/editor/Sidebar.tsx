@@ -2018,7 +2018,10 @@ function SceneSection({ item }: { item: LaneItem }) {
   }, [item.id]);
 
   const pick = (id: string) => {
-    updateItem(item.id, { scene: id });
+    updateItem(item.id, {
+      scene: id,
+      sceneShape: item.sceneShape === '1:1' ? 'auto' : (item.sceneShape ?? 'auto')
+    });
     // A scene is only legible in motion — play it through from the start.
     setCurrent(item.startMs);
     setPlaying(true);
@@ -2058,9 +2061,11 @@ function SceneSection({ item }: { item: LaneItem }) {
           ) : null}
         </div>
         <Label>{t('side.sceneShape')}</Label>
-        <div className="grid grid-cols-5 gap-1">
-          {(['1:1', '4:3', '3:2', '16:9', '9:16'] as const).map((sh) => (
-            <ChipBtn key={sh} active={shape === sh} onClick={() => updateItem(item.id, { sceneShape: sh })}>{sh}</ChipBtn>
+        <div className="grid grid-cols-6 gap-1">
+          {(['auto', '1:1', '4:3', '3:2', '16:9', '9:16'] as const).map((sh) => (
+            <ChipBtn key={sh} active={shape === sh} onClick={() => updateItem(item.id, { sceneShape: sh })}>
+              {sh === 'auto' ? t('side.sceneShapeAuto') : sh}
+            </ChipBtn>
           ))}
         </div>
         <RangeRow label={t('side.sceneSpeed')} value={item.sceneSpeed ?? d.speed} min={0.25} max={3} step={0.25} fmt={(v) => `${num(v)}×`} onChange={(v) => updateItem(item.id, { sceneSpeed: v })} />
@@ -2115,18 +2120,22 @@ function ScenePositionPad({ x, y, onChange }: { x: number; y: number; onChange: 
 // with CSS 3D. Unit card = 30px wide; GL's +y-up flips to CSS y-down, and the
 // rotation signs mirror card3d's conventions (same mapping as the rotation
 // preset thumbnails).
-const THUMB_UNIT = 30;
+const THUMB_UNIT = 38;
 const thumbCache = new Map<string, SceneInstance[]>();
 function thumbInstances(id: string): SceneInstance[] {
   let v = thumbCache.get(id);
   if (!v) {
-    v = (sceneInstances(id, 0.3) ?? []).slice().sort((a, b) => a.oz - b.oz);
+    const isExit = id.toLowerCase().includes('exit') || id.toLowerCase().includes('out') || id === 'fallbackOut' || id === 'horizonFade';
+    const isEntrance = id.toLowerCase().includes('in') || id.toLowerCase().includes('land') || id.toLowerCase().includes('swoop') || id.toLowerCase().includes('pop') || id.toLowerCase().includes('rise');
+    const p = isExit ? 0.5 : (isEntrance ? 0.35 : 0.4);
+    v = (sceneInstances(id, p) ?? []).slice().sort((a, b) => a.oz - b.oz);
     thumbCache.set(id, v);
   }
   return v;
 }
 function SceneThumb({ id, label, active, onPick }: { id: string; label: string; active: boolean; onPick: () => void }) {
   const cards = thumbInstances(id);
+  const isOneShot = !['ambientHover', 'pendulumFloat', 'horizonWave', 'subtleDrift', 'keynoteStack', 'isometricTrio', 'presentationFan'].includes(id);
   return (
     <button
       type="button"
@@ -2138,25 +2147,36 @@ function SceneThumb({ id, label, active, onPick }: { id: string; label: string; 
       }
     >
       <span
-        className="relative block h-14 w-full overflow-hidden rounded bg-[var(--panel-2)]"
+        className="relative flex h-14 w-full items-center justify-center overflow-hidden rounded bg-[var(--panel-2)]"
         style={{ perspective: '160px', perspectiveOrigin: '50% 50%' }}
       >
+        {isOneShot ? (
+          <span
+            aria-hidden="true"
+            className="absolute h-[22px] w-[38px] rounded-[3px] border border-white/10"
+          />
+        ) : null}
         <span className="absolute left-1/2 top-1/2 block" style={{ transformStyle: 'preserve-3d' }}>
           {cards.map((c, i) => (
             <span
               key={i}
               aria-hidden="true"
-              className="absolute block rounded-[2px] bg-gradient-to-br from-emerald-300/90 to-emerald-600/70"
+              className="absolute block rounded-[3px] bg-gradient-to-br from-emerald-300/90 to-emerald-600/80 shadow-md border border-white/20"
               style={{
                 width: THUMB_UNIT,
-                height: THUMB_UNIT * 9 / 16,
+                height: Math.round(THUMB_UNIT * 9 / 16),
                 left: -THUMB_UNIT / 2,
-                top: -(THUMB_UNIT * 9 / 16) / 2,
+                top: -Math.round(THUMB_UNIT * 9 / 16) / 2,
                 transform: `translate3d(${c.ox * THUMB_UNIT}px, ${-c.oy * THUMB_UNIT * 9 / 16}px, ${c.oz * THUMB_UNIT}px) rotateX(${-c.rx}deg) rotateY(${c.ry}deg) rotateZ(${-c.rz}deg) scale(${c.s})`
               }}
-            />
+            >
+              <span className="mx-1 mt-0.5 block h-0.5 w-3 rounded-full bg-white/40" />
+            </span>
           ))}
         </span>
+        {isOneShot ? (
+          <span className="absolute bottom-0.5 right-1 font-mono text-[9px] text-[var(--accent)]/80">⇢</span>
+        ) : null}
       </span>
       <span className={'w-full truncate text-center text-[10px] leading-tight ' + (active ? 'font-semibold text-[var(--accent)]' : 'text-[var(--muted)] group-hover:text-[var(--text)]')}>
         {label}
