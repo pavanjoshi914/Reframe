@@ -19,7 +19,12 @@ import { renderShaderBackground, normalizeShader, SHADER_FALLBACK, renderMeshBac
 import { useEditor, type CropRegion, type EditorState, ANNOTATION_DEFAULTS } from './store';
 import type { CursorSample, ClickSample, CursorKindSample } from '@shared/ipc';
 import { renderCard3D, renderScene3D, projectCardPoint, type CardXform } from './card3d';
-import { sceneInstances, heroIndex, DEFAULT_SCENE_SETTINGS, SCENE_SHAPE_RATIO, type SceneSettings, type SceneShape } from './scenes';
+import {
+  sceneInstances, heroIndex, DEFAULT_SCENE_SETTINGS, SCENE_SHAPE_RATIO,
+  ENTRANCE_PRESETS, SWEEPS_AND_FOCUS, EXIT_PRESETS, DECK_PRESETS,
+  easeOutGlide, sweepBell,
+  type SceneSettings, type SceneShape
+} from './scenes';
 import { CURSOR_GLYPHS, KIND_GLYPHS, CURSOR_IDLE_MS, CURSOR_IDLE_FADE_MS, CURSOR_MOVE_EPS_SQ } from './cursorGlyphs';
 
 // Export pipeline — frame-accurate, NOT real-time.
@@ -126,6 +131,9 @@ const LAYOUT_COORDS: Record<
 //                reads as "snappy" and theirs reads as "expensive".
 export type ZoomStyle = 'snappy' | 'cinematic';
 
+function easeInCubic(t: number): number {
+  return Math.pow(Math.max(0, Math.min(1, t)), 3);
+}
 function easeInOutCubic(t: number): number {
   const x = Math.max(0, Math.min(1, t));
   return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
@@ -162,7 +170,7 @@ export const hasRotation = (r?: Rotation | null): r is Rotation =>
   !!r && (Math.abs(r.tiltX) > 1e-6 || Math.abs(r.tiltY) > 1e-6 || Math.abs(r.spinZ) > 1e-6 ||
           Math.abs(r.slideX ?? 0) > 1e-6 || Math.abs(r.slideY ?? 0) > 1e-6);
 
-type ActiveScene = { id: string; p: number; tSec: number; settings: SceneSettings; env?: number };
+type ActiveScene = { id: string; p: number; tSec: number; settings: SceneSettings; env?: number; mod?: number };
 type ZoomItem = {
   startMs: number; endMs: number; zoomLevel?: number; zoomTargetX?: number; zoomTargetY?: number;
   // Per-frame rotation from the rotation LANE, attached here so drawVideoBox /
@@ -222,25 +230,12 @@ function activeRotItem(items: ReturnType<typeof useEditor.getState>['items'], ms
 }
 
 const ANIM_TRANSITION_MS = 350;
-const ENTRANCE_PRESETS = new Set([
-  'heroFlyIn', 'elevateLand', 'glideInL', 'glideInR', 'cornerSwoop', 'springPop', 'riseTilt'
-]);
-const SWEEPS_AND_FOCUS = new Set([
-  'orbitLR', 'orbitRL', 'turntable3D', 'isometricPan', 'dynamicPerspective', 'dutchSweep',
-  'zoomTiltTL', 'zoomTiltTR', 'centerDive', 'cornerSpotlight', 'detailFocus'
-]);
-const EXIT_PRESETS = new Set([
-  'fallbackOut', 'swoopOut', 'glideOutL', 'glideOutR', 'horizonFade'
-]);
-const DECK_PRESETS = new Set([
-  'keynoteStack', 'isometricTrio', 'presentationFan'
-]);
 
 // Animation preset active at `ms` with smooth transition envelope.
 // Entrance presets start with their dynamic intro from depth/off-screen and ease smoothly into flat rest.
 // Exit presets ease from flat rest and animate away off-screen.
 // Sweeps, ambient, decks, and focus presets smoothly ease in and out so they never snap.
-function computeScene(items: ReturnType<typeof useEditor.getState>['items'], ms: number): { id: string; p: number; tSec: number; settings: SceneSettings; env: number } | null {
+function computeScene(items: ReturnType<typeof useEditor.getState>['items'], ms: number): { id: string; p: number; tSec: number; settings: SceneSettings; env: number; mod: number } | null {
   const regs = items
     .map((raw, i) => ({ it: raw as unknown as RotItem & { kind: string }, i }))
     .filter(({ it }) => (it.kind === 'scene' || (it.kind === 'rotation' && it.scene)))
@@ -271,6 +266,11 @@ function computeScene(items: ReturnType<typeof useEditor.getState>['items'], ms:
   const env = Math.max(0, Math.min(1, Math.min(envIn, envOut)));
   if (env <= 0.0001) return null;
 
+  const pNorm = clamp01n((ms - it.startMs) / regDur);
+  const mod = isEnt
+    ? Math.max(0, 1 - easeOutGlide(pNorm))
+    : (SWEEPS_AND_FOCUS.has(id) ? sweepBell(pNorm) : (isExt ? Math.min(1, easeInCubic(pNorm)) : 1));
+
   const d = DEFAULT_SCENE_SETTINGS;
   let rawShape = it.sceneShape ?? d.shape;
   // Unless it is a 3-card deck preset, ALWAYS use 'auto' so the recording
@@ -286,7 +286,7 @@ function computeScene(items: ReturnType<typeof useEditor.getState>['items'], ms:
     shape: (rawShape as SceneShape) || 'auto',
     posX: it.scenePosX ?? d.posX, posY: it.scenePosY ?? d.posY
   };
-  return { id, p: clamp01n((ms - it.startMs) / regDur), tSec: Math.max(0, ms - it.startMs) / 1000, settings, env };
+  return { id, p: pNorm, tSec: Math.max(0, ms - it.startMs) / 1000, settings, env, mod };
 }
 
 function computeRotation(items: ReturnType<typeof useEditor.getState>['items'], ms: number): Rotation | null {
@@ -1309,7 +1309,7 @@ function cursorToOutput(
         rz: c.rz * env,
         s: 1 + (c.s - 1) * env
       })) : rawCards;
-      const [cbx, cby, cbw, cbh] = sceneCardBox(bx, by, bw, bh, scn.settings, outWForCursor, outHForCursor, env);
+      const [cbx, cby, cbw, cbh] = sceneCardBox(bx, by, bw, bh, scn.settings, outWForCursor, outHForCursor, env, scn.mod ?? 1);
       const xf: CardXform = { outW: outWForCursor, outH: outHForCursor, bx: cbx, by: cby, bw: cbw, bh: cbh, zoom: z, zoomTx: tx, zoomTy: ty, rot: NO_ROTATION };
       return projectCardPoint(xf, u, v, cards[heroIndex(cards)]);
     }
@@ -1897,10 +1897,13 @@ function scratchCanvasB(w: number, h: number) {
 // Reused across frames (resized when the box size changes) so the preview
 // doesn't allocate a 1440x810 canvas 60 times a second.
 let _cardCanvas: OffscreenCanvas | HTMLCanvasElement | null = null;
-// The unit card for a scene: the largest box of the chosen aspect that fits
-// inside the video box, centred. '16:9'-ish shapes keep the full box.
-function sceneCardBox(x: number, y: number, w: number, h: number, st: SceneSettings, outW: number, outH: number, env = 1): [number, number, number, number] {
-  const dx = (st.posX - 0.5) * outW, dy = (st.posY - 0.5) * outH;
+function sceneCardBox(
+  x: number, y: number, w: number, h: number,
+  st: SceneSettings, outW: number, outH: number,
+  env = 1, mod = 1
+): [number, number, number, number] {
+  const dx = (st.posX - 0.5) * outW * mod;
+  const dy = (st.posY - 0.5) * outH * mod;
   if (!st.shape || st.shape === 'auto') {
     return [x + dx * env, y + dy * env, w, h];
   }
@@ -2057,7 +2060,7 @@ function drawVideoBox(
     const outW = ctx.canvas.width;
     // A scene can re-crop the card to a chosen shape (1:1, 9:16…); the unit
     // card the instances are laid out around is then that smaller box.
-    const [cx0, cy0, cw, ch] = scene ? sceneCardBox(x, y, w, h, scene.settings, outW, outH, env) : [x, y, w, h];
+    const [cx0, cy0, cw, ch] = scene ? sceneCardBox(x, y, w, h, scene.settings, outW, outH, env, scene.mod ?? 1) : [x, y, w, h];
     const xf: CardXform = { outW, outH, bx: cx0, by: cy0, bw: cw, bh: ch, zoom: z, zoomTx: tx, zoomTy: ty, rot: rot ?? NO_ROTATION };
 
     // Supersample the texture by the zoom.

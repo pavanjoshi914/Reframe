@@ -2020,7 +2020,13 @@ function SceneSection({ item }: { item: LaneItem }) {
   const pick = (id: string) => {
     updateItem(item.id, {
       scene: id,
-      sceneShape: item.sceneShape === '1:1' ? 'auto' : (item.sceneShape ?? 'auto')
+      sceneShape: 'auto',
+      scenePosX: undefined,
+      scenePosY: undefined,
+      sceneTiltX: undefined,
+      sceneTiltY: undefined,
+      sceneZoom: undefined,
+      sceneSpeed: undefined
     });
     // A scene is only legible in motion — play it through from the start.
     setCurrent(item.startMs);

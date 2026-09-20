@@ -26,16 +26,20 @@ const easeInOutCubic = (t: number) => {
   return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2;
 };
 
-// Smooth continuous cinematic ease-out across the entire duration p in [0, 1].
-// Starts with dynamic fluid 3D flight, continuously and smoothly curves and decelerates,
-// and touches down flat at center (0,0,0, s=1) precisely at p = 1.0 with zero velocity.
-// No premature stop, no frozen pause, and no sudden snap.
-const easeOutSine = (p: number) => Math.sin((Math.max(0, Math.min(1, p)) * Math.PI) / 2);
+// Fluid cinematic ease-out that continuously glides without stalling or plateauing,
+// softly touching down flat at center precisely at p = 1.0 with zero velocity.
+// Keeps legible, continuous motion all the way into touchdown so it never appears prematurely paused.
+export const easeOutGlide = (p: number) => {
+  const u = Math.max(0, Math.min(1, p));
+  const quad = u * (2 - u);
+  const sine = Math.sin((u * Math.PI) / 2);
+  return 0.6 * quad + 0.4 * sine;
+};
 
 // Smooth symmetric bell curve across p in [0, 1] for camera sweeps and focus tilts.
 // Starts flat at center (p=0), sweeps dynamically through 3D space,
 // and returns smoothly to touch down flat at center (p=1) with zero velocity.
-const sweepBell = (p: number) => {
+export const sweepBell = (p: number) => {
   const u = Math.max(0, Math.min(1, p));
   const s = Math.sin(u * Math.PI);
   return s * s;
@@ -54,7 +58,7 @@ export const SCENES: Record<string, Gen> = {
   // ── ENTRANCES (INTROS) ──
   // Dramatic depth entrance: flies in from depth with pitch and soft deceleration, smoothly landing flat at center.
   heroFlyIn: (p) => {
-    const t = easeOutSine(p);
+    const t = easeOutGlide(p);
     const rev = 1 - t;
     return [inst({
       ox: 0,
@@ -69,11 +73,11 @@ export const SCENES: Record<string, Gen> = {
 
   // Floating high above canvas at an isometric tilt, gracefully landing flat at center.
   elevateLand: (p) => {
-    const t = easeOutSine(p);
+    const t = easeOutGlide(p);
     const rev = 1 - t;
     return [inst({
       ox: rev * 0.04,
-      oy: -rev * 0.3,
+      oy: rev * 0.3,
       oz: rev * 0.25,
       rx: rev * 24,
       ry: rev * 28,
@@ -84,7 +88,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Sweeping entrance from the left with yaw rotation, smoothly landing flat at center.
   glideInL: (p) => {
-    const t = easeOutSine(p);
+    const t = easeOutGlide(p);
     const rev = 1 - t;
     return [inst({
       ox: -rev * 0.65,
@@ -99,7 +103,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Sweeping entrance from the right with yaw rotation, smoothly landing flat at center.
   glideInR: (p) => {
-    const t = easeOutSine(p);
+    const t = easeOutGlide(p);
     const rev = 1 - t;
     return [inst({
       ox: rev * 0.65,
@@ -114,11 +118,11 @@ export const SCENES: Record<string, Gen> = {
 
   // Diagonal swoop from top-left corner directly and smoothly landing flat at center.
   cornerSwoop: (p) => {
-    const t = easeOutSine(p);
+    const t = easeOutGlide(p);
     const rev = 1 - t;
     return [inst({
       ox: -rev * 0.52,
-      oy: -rev * 0.38,
+      oy: rev * 0.38,
       oz: -rev * 0.35,
       rx: rev * 18,
       ry: -rev * 22,
@@ -129,7 +133,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Snappy scale pop-in with subtle tilt, smoothly settling flat at center.
   springPop: (p) => {
-    const t = easeOutSine(p);
+    const t = easeOutGlide(p);
     const rev = 1 - t;
     return [inst({
       ox: 0,
@@ -144,11 +148,11 @@ export const SCENES: Record<string, Gen> = {
 
   // Rises up from bottom horizon, smoothly straightening flat into center.
   riseTilt: (p) => {
-    const t = easeOutSine(p);
+    const t = easeOutGlide(p);
     const rev = 1 - t;
     return [inst({
       ox: 0,
-      oy: rev * 0.55,
+      oy: -rev * 0.55,
       oz: -rev * 0.22,
       rx: rev * 28,
       ry: 0,
@@ -560,14 +564,27 @@ export const SCENE_SHAPE_RATIO: Record<Exclude<SceneShape, 'auto'>, number> = {
   '1:1': 1, '4:3': 4 / 3, '3:2': 3 / 2, '16:9': 16 / 9, '9:16': 9 / 16
 };
 
+export const ENTRANCE_PRESETS = new Set([
+  'heroFlyIn', 'elevateLand', 'glideInL', 'glideInR', 'cornerSwoop', 'springPop', 'riseTilt'
+]);
+export const SWEEPS_AND_FOCUS = new Set([
+  'orbitLR', 'orbitRL', 'turntable3D', 'isometricPan', 'dynamicPerspective', 'dutchSweep',
+  'zoomTiltTL', 'zoomTiltTR', 'centerDive', 'cornerSpotlight', 'detailFocus'
+]);
+export const EXIT_PRESETS = new Set([
+  'fallbackOut', 'swoopOut', 'glideOutL', 'glideOutR', 'horizonFade'
+]);
+export const DECK_PRESETS = new Set([
+  'keynoteStack', 'isometricTrio', 'presentationFan'
+]);
+
 // Presets that execute one-shot across the region (p ∈ [0, 1]) rather than cycling endlessly.
 // Entrances arrive at rest; exits leave; sweeps and focus moves span the region once.
 export const CYCLE_SEC = 8;
 const ONE_SHOT = new Set([
-  'heroFlyIn', 'elevateLand', 'glideInL', 'glideInR', 'cornerSwoop', 'springPop', 'riseTilt',
-  'orbitLR', 'orbitRL', 'turntable3D', 'isometricPan', 'dynamicPerspective', 'dutchSweep',
-  'zoomTiltTL', 'zoomTiltTR', 'centerDive', 'cornerSpotlight', 'detailFocus',
-  'fallbackOut', 'swoopOut', 'glideOutL', 'glideOutR', 'horizonFade'
+  ...ENTRANCE_PRESETS,
+  ...SWEEPS_AND_FOCUS,
+  ...EXIT_PRESETS
 ]);
 
 export function sceneInstances(id: string, p: number, st: SceneSettings = DEFAULT_SCENE_SETTINGS, tSec = p * CYCLE_SEC): SceneInstance[] | null {
@@ -575,20 +592,35 @@ export function sceneInstances(id: string, p: number, st: SceneSettings = DEFAUL
   if (!gen) return null;
   const spd = Math.max(0.1, st.speed ?? 1);
   const pNorm = Math.max(0, Math.min(1, p));
+  // Warps time across [0, 1] without prematurely freezing or pausing before the block ends:
   const phase = ONE_SHOT.has(id)
-    ? (spd >= 1 ? Math.min(1, pNorm * spd) : Math.pow(pNorm, 1 / spd))
+    ? Math.pow(pNorm, 1 / spd)
     : ((tSec * spd) / CYCLE_SEC) % 1;
   const raw = gen(Math.max(0, Math.min(1, phase)));
-  const gx = (st.tiltX * Math.PI) / 180, gy = (st.tiltY * Math.PI) / 180;
+
+  const isEnt = ENTRANCE_PRESETS.has(id);
+  const isSweepOrFocus = SWEEPS_AND_FOCUS.has(id);
+  const isExt = EXIT_PRESETS.has(id);
+  // Motion modifiers smoothly decay to neutral (0 tilt, 1.0 zoom) at landing so single-card presets
+  // strictly touch down at the normal flat resting window position with zero snap.
+  const mod = isEnt
+    ? Math.max(0, 1 - easeOutGlide(pNorm))
+    : (isSweepOrFocus ? sweepBell(pNorm) : (isExt ? Math.min(1, easeInCubic(pNorm)) : 1));
+
+  const effTiltX = st.tiltX * mod;
+  const effTiltY = st.tiltY * mod;
+  const effZoom = 1 + (st.zoom - 1) * mod;
+
+  const gx = (effTiltX * Math.PI) / 180, gy = (effTiltY * Math.PI) / 180;
   const cx = Math.cos(gx), sx = Math.sin(gx), cy = Math.cos(gy), sy = Math.sin(gy);
   return raw.map((c) => {
-    let x = c.ox * st.spacing * st.radius * st.zoom;
-    let y = c.oy * st.spacing * st.radius * st.zoom;
-    let z = c.oz * st.depth * st.radius * st.zoom;
+    let x = c.ox * st.spacing * st.radius * effZoom;
+    let y = c.oy * st.spacing * st.radius * effZoom;
+    let z = c.oz * st.depth * st.radius * effZoom;
     // group rotation: about Y, then about X
     let x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
     let y1 = y * cx - z1 * sx, z2 = y * sx + z1 * cx;
-    return { ...c, ox: x1, oy: y1, oz: z2, rx: c.rx + st.tiltX, ry: c.ry + st.tiltY, s: c.s * st.zoom };
+    return { ...c, ox: x1, oy: y1, oz: z2, rx: c.rx + effTiltX, ry: c.ry + effTiltY, s: c.s * effZoom };
   });
 }
 
