@@ -225,6 +225,10 @@ const ANIM_TRANSITION_MS = 350;
 const ENTRANCE_PRESETS = new Set([
   'heroFlyIn', 'elevateLand', 'glideInL', 'glideInR', 'cornerSwoop', 'springPop', 'riseTilt'
 ]);
+const SWEEPS_AND_FOCUS = new Set([
+  'orbitLR', 'orbitRL', 'turntable3D', 'isometricPan', 'dynamicPerspective', 'dutchSweep',
+  'zoomTiltTL', 'zoomTiltTR', 'centerDive', 'cornerSpotlight', 'detailFocus'
+]);
 const EXIT_PRESETS = new Set([
   'fallbackOut', 'swoopOut', 'glideOutL', 'glideOutR', 'horizonFade'
 ]);
@@ -248,19 +252,19 @@ function computeScene(items: ReturnType<typeof useEditor.getState>['items'], ms:
   const id = it.scene ?? 'heroFlyIn';
   const isEnt = ENTRANCE_PRESETS.has(id);
   const isExt = EXIT_PRESETS.has(id);
+  const isSelfContained = isEnt || SWEEPS_AND_FOCUS.has(id);
   const regDur = Math.max(1, it.endMs - it.startMs);
   const transT = Math.min(ANIM_TRANSITION_MS, Math.max(80, regDur * 0.28));
 
-  // Entrance presets start in dynamic motion from off-screen / depth;
-  // sweeps, focus, ambient, and exit presets ease in smoothly from flat rest.
-  const envIn = (!isEnt && ms < it.startMs + transT)
+  // Entrances, sweeps, and focus presets are fully self-contained smooth curves
+  // that start and/or land directly at flat center rest at p=1 with 0 velocity.
+  // Ambient and decks cycle/spread out, so they use envIn and envOut to ease in from flat and ease back to flat.
+  // Exit presets animate away off-screen.
+  const envIn = (!isSelfContained && ms < it.startMs + transT)
     ? easeInOutCubic((ms - it.startMs) / transT)
     : 1;
 
-  // Ambient, decks, and custom-shaped layouts ease smoothly back to flat rest before the region ends.
-  // Entrance and sweep presets already land softly and flat at (0,0,0) with s=1 by p=0.85-0.88.
-  // Exit presets animate away off-screen.
-  const envOut = (!isExt && ms > it.endMs - transT)
+  const envOut = (!isSelfContained && !isExt && ms > it.endMs - transT)
     ? easeInOutCubic(Math.max(0, it.endMs - ms) / transT)
     : 1;
 
@@ -269,8 +273,9 @@ function computeScene(items: ReturnType<typeof useEditor.getState>['items'], ms:
 
   const d = DEFAULT_SCENE_SETTINGS;
   let rawShape = it.sceneShape ?? d.shape;
-  // Migrate legacy '1:1' default on single-card presets to 'auto' to preserve the original window aspect ratio
-  if (rawShape === '1:1' && !DECK_PRESETS.has(id)) {
+  // Unless it is a 3-card deck preset, ALWAYS use 'auto' so the recording
+  // retains its true native window size and aspect ratio throughout the animation.
+  if (!DECK_PRESETS.has(id)) {
     rawShape = 'auto';
   }
   const settings: SceneSettings = {

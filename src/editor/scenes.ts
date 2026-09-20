@@ -26,30 +26,22 @@ const easeInOutCubic = (t: number) => {
   return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2;
 };
 
-// For entrance animations: smoothly decelerate to an exact rest landing at p = 0.85.
-// For the remaining 15% (p in [0.85, 1.0]), it rests stably flat at center (0,0,0, s=1).
-// This guarantees that before the timeline region ends, the window has ALREADY landed
-// with zero velocity, so there is never any shuffle or snap at the boundary.
-const landProgress = (p: number) => {
-  const u = Math.min(1, Math.max(0, p) / 0.85);
-  return 1 - Math.pow(1 - u, 3);
-};
+// Smooth continuous cinematic ease-out across the entire duration p in [0, 1].
+// Starts with dynamic fluid 3D flight, continuously and smoothly curves and decelerates,
+// and touches down flat at center (0,0,0, s=1) precisely at p = 1.0 with zero velocity.
+// No premature stop, no frozen pause, and no sudden snap.
+const easeOutSine = (p: number) => Math.sin((Math.max(0, Math.min(1, p)) * Math.PI) / 2);
 
-// Smooth bell curve that starts at 0, smoothly peaks at 1 in the middle,
-// and softly settles to exactly 0 by p = 0.88 (resting flat for the final 12%).
-// This guarantees that sweeps and zoom-tilts always start flat at center,
-// sweep dynamically in 3D, and land smoothly flat at center with zero jerk.
+// Smooth symmetric bell curve across p in [0, 1] for camera sweeps and focus tilts.
+// Starts flat at center (p=0), sweeps dynamically through 3D space,
+// and returns smoothly to touch down flat at center (p=1) with zero velocity.
 const sweepBell = (p: number) => {
-  const u = Math.max(0, Math.min(1, p / 0.88));
-  if (u >= 1) return 0;
+  const u = Math.max(0, Math.min(1, p));
   const s = Math.sin(u * Math.PI);
   return s * s;
 };
 
-const sweepPhase = (p: number) => {
-  const u = Math.max(0, Math.min(1, p / 0.88));
-  return easeInOutCubic(u);
-};
+const sweepPhase = (p: number) => easeInOutCubic(Math.max(0, Math.min(1, p)));
 
 type Gen = (p: number) => SceneInstance[];
 
@@ -62,7 +54,7 @@ export const SCENES: Record<string, Gen> = {
   // ── ENTRANCES (INTROS) ──
   // Dramatic depth entrance: flies in from depth with pitch and soft deceleration, smoothly landing flat at center.
   heroFlyIn: (p) => {
-    const t = landProgress(p);
+    const t = easeOutSine(p);
     const rev = 1 - t;
     return [inst({
       ox: 0,
@@ -77,7 +69,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Floating high above canvas at an isometric tilt, gracefully landing flat at center.
   elevateLand: (p) => {
-    const t = landProgress(p);
+    const t = easeOutSine(p);
     const rev = 1 - t;
     return [inst({
       ox: rev * 0.04,
@@ -92,7 +84,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Sweeping entrance from the left with yaw rotation, smoothly landing flat at center.
   glideInL: (p) => {
-    const t = landProgress(p);
+    const t = easeOutSine(p);
     const rev = 1 - t;
     return [inst({
       ox: -rev * 0.65,
@@ -107,7 +99,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Sweeping entrance from the right with yaw rotation, smoothly landing flat at center.
   glideInR: (p) => {
-    const t = landProgress(p);
+    const t = easeOutSine(p);
     const rev = 1 - t;
     return [inst({
       ox: rev * 0.65,
@@ -122,7 +114,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Diagonal swoop from top-left corner directly and smoothly landing flat at center.
   cornerSwoop: (p) => {
-    const t = landProgress(p);
+    const t = easeOutSine(p);
     const rev = 1 - t;
     return [inst({
       ox: -rev * 0.52,
@@ -137,7 +129,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Snappy scale pop-in with subtle tilt, smoothly settling flat at center.
   springPop: (p) => {
-    const t = landProgress(p);
+    const t = easeOutSine(p);
     const rev = 1 - t;
     return [inst({
       ox: 0,
@@ -152,7 +144,7 @@ export const SCENES: Record<string, Gen> = {
 
   // Rises up from bottom horizon, smoothly straightening flat into center.
   riseTilt: (p) => {
-    const t = landProgress(p);
+    const t = easeOutSine(p);
     const rev = 1 - t;
     return [inst({
       ox: 0,
