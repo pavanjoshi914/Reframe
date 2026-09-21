@@ -2,16 +2,16 @@
 
 Grab the file for your system from the
 **[latest release](https://github.com/pavanjoshi914/Reframe/releases/latest)**.
-Filenames below use `0.1.0` — substitute the current version.
+Filenames below use `0.6.0` — substitute the current version.
 
 ---
 
 ## Linux — Ubuntu / Debian (`.deb`)
 
-Download `reframe_0.1.0_amd64.deb`, then:
+Download `reframe_0.6.0_amd64.deb`, then:
 
 ```bash
-sudo apt install ./reframe_0.1.0_amd64.deb
+sudo apt install ./reframe_0.6.0_amd64.deb
 ```
 
 > **Use `apt`, not `sudo dpkg -i`.** `dpkg` installs the app but does **not**
@@ -29,10 +29,10 @@ also resolves the dependencies.
 The Flatpak is **fully self-contained** — it bundles GStreamer and ffmpeg, so
 every feature works with nothing else to install, on any distro.
 
-Download `Reframe-0.1.0-x86_64.flatpak`, then:
+Download `Reframe-0.6.0-x86_64.flatpak`, then:
 
 ```bash
-flatpak install --user Reframe-0.1.0-x86_64.flatpak
+flatpak install --user Reframe-0.6.0-x86_64.flatpak
 flatpak run app.reframe.desktop
 ```
 
@@ -47,8 +47,8 @@ flatpak run app.reframe.desktop
 Download the build for your chip, open the `.dmg`, and drag **Reframe** to
 Applications:
 
-- **Apple Silicon** (M1–M4): `Reframe-0.1.0-arm64.dmg`
-- **Intel**: `Reframe-0.1.0.dmg`
+- **Apple Silicon** (M1–M4): `Reframe-0.6.0-arm64.dmg`
+- **Intel**: `Reframe-0.6.0.dmg`
 
 > The app isn't notarized yet, so on first launch **right-click it → Open**
 > instead of double-clicking. If macOS says it's "damaged", clear the quarantine
@@ -58,7 +58,7 @@ Applications:
 
 ## Windows
 
-Download `Reframe.Setup.0.1.0.exe` and run it.
+Download `Reframe.Setup.0.6.0.exe` and run it.
 
 > Not code-signed yet, so SmartScreen may warn you — click
 > **More info → Run anyway**.

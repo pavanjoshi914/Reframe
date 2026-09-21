@@ -6,6 +6,20 @@
 
 A cross-platform desktop screen recorder + post-recording editor. Record your screen (with optional system audio, mic, and webcam), then re-frame it: backgrounds, layouts, zoom, trim, speed, annotations — and export to MP4. Targets Linux, Windows, macOS.
 
+## Install
+
+[Download for your platform](https://github.com/pavanjoshi914/Reframe/releases/latest) — then follow the [installation guide](INSTALL.md).
+
+| | |
+| --- | --- |
+| **Linux** | `.deb` (Debian/Ubuntu), `.AppImage` (any distro, no install), or `.flatpak` |
+| **Windows** | `Reframe.Setup.0.6.0.exe` |
+| **macOS** | `Reframe-0.6.0-arm64.dmg` (Apple Silicon) or `Reframe-0.6.0.dmg` (Intel) |
+
+Per-platform steps, permissions and troubleshooting are in [INSTALL.md](INSTALL.md), and there are download instructions on the [website](https://getreframe.vercel.app).
+
+Already running Reframe? It will offer this update itself.
+
 ## Stack
 
 Electron + React + TypeScript + Vite + Tailwind + Zustand. Recording via `desktopCapturer` + `MediaRecorder`. Real-time canvas-driven export via `MediaRecorder` (MP4 when Chromium advertises an H.264 encoder; otherwise WebM with a one-shot `ffmpeg` conversion hint).
