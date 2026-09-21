@@ -1,0 +1,58 @@
+name: Attach Release Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'GitHub Actions Run ID to download artifacts from'
+        required: true
+        default: '35594931584'
+      tag:
+        description: 'Release tag to attach to'
+        required: true
+        default: 'v0.6.0'
+
+permissions:
+  contents: write
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts from run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts
+      - name: Prepare and upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          echo "Attaching assets to release $TAG..."
+          mkdir -p staged
+          find artifacts -type f | while read -r f; do
+            fname=$(basename "$f")
+            cp "$f" "staged/$fname"
+          done
+          # Ensure both hyphen and dot variants of setup exe exist for updater & direct download
+          for exe in staged/*Setup*.exe; do
+            [ -f "$exe" ] || continue
+            bname=$(basename "$exe")
+            hyphen_name=$(echo "$bname" | tr ' ' '-')
+            dot_name=$(echo "$bname" | tr ' ' '.')
+            cp "$exe" "staged/$hyphen_name" 2>/dev/null || true
+            cp "$exe" "staged/$dot_name" 2>/dev/null || true
+          done
+          for bm in staged/*Setup*.blockmap; do
+            [ -f "$bm" ] || continue
+            bname=$(basename "$bm")
+            hyphen_name=$(echo "$bname" | tr ' ' '-')
+            dot_name=$(echo "$bname" | tr ' ' '.')
+            cp "$bm" "staged/$hyphen_name" 2>/dev/null || true
+            cp "$bm" "staged/$dot_name" 2>/dev/null || true
+          done
+          ls -lh staged
+          gh release upload "$TAG" staged/* --clobber

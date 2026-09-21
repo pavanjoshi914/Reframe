@@ -185,3 +185,44 @@ jobs:
           path: release/*.dmg
           if-no-files-found: error
           retention-days: 30
+
+  publish-release:
+    needs: [build-linux, build-flatpak, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Attach artifacts to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="v$(node -p "require('./package.json').version")"
+          echo "Attaching assets to release $VERSION..."
+          mkdir -p staged
+          find artifacts -type f | while read -r f; do
+            fname=$(basename "$f")
+            cp "$f" "staged/$fname"
+          done
+          for exe in staged/*Setup*.exe; do
+            [ -f "$exe" ] || continue
+            bname=$(basename "$exe")
+            hyphen_name=$(echo "$bname" | tr ' ' '-')
+            dot_name=$(echo "$bname" | tr ' ' '.')
+            cp "$exe" "staged/$hyphen_name" 2>/dev/null || true
+            cp "$exe" "staged/$dot_name" 2>/dev/null || true
+          done
+          for bm in staged/*Setup*.blockmap; do
+            [ -f "$bm" ] || continue
+            bname=$(basename "$bm")
+            hyphen_name=$(echo "$bname" | tr ' ' '-')
+            dot_name=$(echo "$bname" | tr ' ' '.')
+            cp "$bm" "staged/$hyphen_name" 2>/dev/null || true
+            cp "$bm" "staged/$dot_name" 2>/dev/null || true
+          done
+          ls -lh staged
+          gh release upload "$VERSION" staged/* --clobber
