@@ -851,13 +851,19 @@ export const useEditor = create<EditorState>((set, get) => ({
       backgroundAudio: { ...DEFAULT_BACKGROUND_AUDIO }
     }),
   addItem: (kind, atMs) => {
-    const dur = get().durationMs || 1000;
-    const len = Math.min(2000, Math.max(200, dur - atMs));
+    const dur = Math.max(100, get().durationMs || 1000);
+    const validAt = typeof atMs === 'number' && !isNaN(atMs) ? atMs : 0;
+    const desiredLen = Math.min(2000, dur);
+    // If the playhead is at or near the end of the video, extend backwards from
+    // the end so the element gets its full desired duration instead of collapsing
+    // into a microscopic sliver.
+    const startMs = Math.max(0, Math.min(validAt, dur - desiredLen));
+    const endMs = Math.min(dur, startMs + desiredLen);
     const item: LaneItem = {
       id: crypto.randomUUID(),
       kind,
-      startMs: atMs,
-      endMs: Math.min(dur, atMs + len),
+      startMs,
+      endMs,
       ...(kind === 'zoom' ? { zoomLevel: 1.5, zoomTargetX: 0.5, zoomTargetY: 0.5 } : {}),
       ...(kind === 'speed' ? { speed: 1.5 } : {}),
       // New cursor effects follow the recorded cursor by default.

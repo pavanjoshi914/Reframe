@@ -955,16 +955,34 @@ void main() {
     vec2 uvc = fract((rot * pos) / cell) - 0.5;
     float dot_ = smoothstep(0.52, 0.46, length(uvc) / max(0.001, sqrt(luma(color)) * 0.95));
     color *= 0.12 + 1.25 * dot_;
-  } else if (V > 4.5 && V < 5.5) {  // sparkle: glints on the brightest cells
-    float cell = px * 11.0;
-    vec2 id = floor(pos / cell);
-    vec2 uvc = fract(pos / cell) - 0.5;
-    float seed = hash12(id);
-    float twinkle = 0.5 + 0.5 * sin(uTime * 2.4 + seed * TAU * 3.0);
-    float live = step(0.78, seed) * step(0.22, luma(color)) * twinkle;
-    float star = max(0.0, 1.0 - abs(uvc.x) * 22.0) + max(0.0, 1.0 - abs(uvc.y) * 22.0);
-    star *= max(0.0, 1.0 - length(uvc) * 3.2);
-    color += vec3(star * live * 1.6);
+  } else if (V > 4.5 && V < 5.5) {  // sparkle: OpenShaders 2-layer glints with glowing core & anamorphic cross rays
+    const float uStrength = 0.90;
+    const float uScale = 1.0;
+    const float uSeed = 0.2159176;
+    float lum = luma(color);
+    float presence = smoothstep(0.05, 0.35, lum);
+    vec3 glow = vec3(0.0);
+
+    for (int layer = 0; layer < 2; layer++) {
+      float size = (30.0 - 10.0 * float(layer)) * uScale;
+      vec2 cell = floor(frag / size);
+      vec3 h = hash3(vec3(cell, float(layer) * 31.0 + uSeed * 97.0));
+      vec2 point = (cell + 0.25 + 0.5 * h.xy) * size;
+
+      float twinkle = max(sin(uTime * (0.8 + h.z * 1.2) + h.x * TAU), 0.0);
+      twinkle *= twinkle;
+      twinkle *= twinkle;
+      twinkle *= twinkle;
+
+      vec2 o = frag - point;
+      float core = exp(-dot(o, o) * 0.9);
+      float rays = exp(-abs(o.x) * 1.6 - abs(o.y) * 0.45) + exp(-abs(o.y) * 1.6 - abs(o.x) * 0.45);
+      float glint = (core + 0.25 * rays) * twinkle * presence * (0.35 + 0.65 * step(0.45, h.z));
+
+      vec3 tint = mix(color / max(lum, 1e-3) * 0.6, vec3(1.0), 0.55);
+      glow += tint * (glint * 0.9 * uStrength);
+    }
+    color += glow;
   }
 
   color *= 1.0 - smoothstep(0.5, 1.6, length(pos)) * 0.06;            // vignette
