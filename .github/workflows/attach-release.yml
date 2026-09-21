@@ -55,4 +55,8 @@ jobs:
             cp "$bm" "staged/$dot_name" 2>/dev/null || true
           done
           ls -lh staged
-          gh release upload "$TAG" staged/* --clobber
+          for f in staged/*; do
+            [ -f "$f" ] || continue
+            echo "Uploading $f..."
+            gh release upload "$TAG" "$f" --clobber || echo "Failed to upload $f, continuing..."
+          done
