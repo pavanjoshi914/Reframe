@@ -4,6 +4,7 @@ import { primeVideo } from './videoPrime';
 import { detectBlackBorderFromVideo } from './autoTrim';
 import { drawFrame } from './export';
 import { bgClockMs } from './shaders';
+import { timelineToVideoMs, videoToTimelineMs } from './timeMapping';
 import { useT } from '../i18n';
 
 const aspectMap: Record<string, number | null> = {
@@ -21,7 +22,6 @@ export function Preview() {
   const webcamFileUrl = useEditor((s) => s.webcamFileUrl);
   const aspect = useEditor((s) => s.aspect);
   const playing = useEditor((s) => s.playing);
-  const setCurrent = useEditor((s) => s.setCurrent);
   const setPlaying = useEditor((s) => s.setPlaying);
   const setRecordingDuration = useEditor((s) => s.setRecordingDuration);
   const setVideoIntrinsicSize = useEditor((s) => s.setVideoIntrinsicSize);
@@ -84,27 +84,6 @@ export function Preview() {
     }
   };
 
-  // Play / pause for the main video. Webcam play/pause + drift correction is
-  // handled by the dedicated webcam-sync effect below — one effect owns the
-  // webcam so the various playback paths don't fight each other.
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (playing) {
-      // Replay-from-end: if we hit play with the playhead parked at (or past)
-      // the end, snap back to 0 first. Otherwise the knownDuration guard in
-      // onTime fires on the next tick and pauses us right back.
-      const { currentMs, durationMs, setCurrent } = useEditor.getState();
-      if (durationMs > 0 && currentMs >= durationMs - 50) {
-        v.currentTime = 0;
-        setCurrent(0);
-      }
-      v.play().catch(() => setPlaying(false));
-    } else {
-      v.pause();
-    }
-  }, [playing, setPlaying]);
-
   // Play / pause for an imported image (studio animation with 3D tilts, zooms, shaders, audio).
   useEffect(() => {
     if (mediaType !== 'image') return;
@@ -147,6 +126,140 @@ export function Preview() {
     return () => cancelAnimationFrame(frameId);
   }, [playing, mediaType]);
 
+  // Unified playback driver for video projects:
+  // When playing inside a pausing title card, the video element is paused and this
+  // RAF loop advances currentMs so title card motion animations play smoothly at 60fps.
+  // When the card finishes, it resumes the video element.
+  // When playing normal video, it tracks v.currentTime mapped to the timeline.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (!playing || mediaType === 'image') {
+      v.pause();
+      return;
+    }
+
+    const { currentMs, durationMs, setCurrent } = useEditor.getState();
+    if (durationMs > 0 && currentMs >= durationMs - 50) {
+      setCurrent(0);
+    }
+
+    let frameId: number;
+    let lastTime = performance.now();
+
+    const initialMapping = timelineToVideoMs(useEditor.getState().currentMs, useEditor.getState().items);
+    if (initialMapping.isPaused) {
+      v.pause();
+      const targetSec = initialMapping.videoMs / 1000;
+      if (Math.abs(v.currentTime - targetSec) > 0.05) v.currentTime = targetSec;
+    } else {
+      const targetSec = initialMapping.videoMs / 1000;
+      if (Math.abs(v.currentTime - targetSec) > 0.08) v.currentTime = targetSec;
+      v.play().catch(() => setPlaying(false));
+    }
+
+    const tick = (now: number) => {
+      const dt = now - lastTime;
+      lastTime = now;
+
+      const state = useEditor.getState();
+      if (!state.playing) return;
+
+      const dur = state.durationMs || 5000;
+      if (state.currentMs >= dur) {
+        v.pause();
+        state.setCurrent(dur);
+        state.setPlaying(false);
+        dirtyRef.current = true;
+        return;
+      }
+
+      const mapping = timelineToVideoMs(state.currentMs, state.items);
+      if (mapping.isPaused) {
+        if (!v.paused) v.pause();
+
+        const speed = state.items.find(
+          (it) => it.kind === 'speed' && state.currentMs >= it.startMs && state.currentMs <= it.endMs
+        );
+        const speedFactor = speed?.speed ?? 1;
+        const nextMs = state.currentMs + dt * speedFactor;
+
+        if (nextMs >= dur) {
+          state.setCurrent(dur);
+          state.setPlaying(false);
+          dirtyRef.current = true;
+          return;
+        }
+
+        const nextMapping = timelineToVideoMs(nextMs, state.items);
+        if (!nextMapping.isPaused) {
+          // Exiting the pausing title card! Resume video at the mapped time.
+          v.currentTime = nextMapping.videoMs / 1000;
+          v.play().catch(() => {});
+        }
+        state.setCurrent(nextMs);
+        dirtyRef.current = true;
+      } else {
+        if (v.paused) {
+          const target = mapping.videoMs / 1000;
+          if (Math.abs(v.currentTime - target) > 0.08) {
+            v.currentTime = target;
+          }
+          v.play().catch(() => {});
+        }
+
+        const speed = state.items.find(
+          (it) => it.kind === 'speed' && state.currentMs >= it.startMs && state.currentMs <= it.endMs
+        );
+        const targetRate = speed?.speed ?? 1;
+        if (Math.abs(v.playbackRate - targetRate) > 0.01) {
+          v.playbackRate = targetRate;
+        }
+
+        const trim = state.items.find(
+          (it) => it.kind === 'trim' && state.currentMs >= it.startMs && state.currentMs < it.endMs
+        );
+        if (trim) {
+          const nextTimelineMs = trim.endMs + 1;
+          const nextMapping = timelineToVideoMs(nextTimelineMs, state.items);
+          v.currentTime = nextMapping.videoMs / 1000;
+          state.setCurrent(nextTimelineMs);
+          dirtyRef.current = true;
+          frameId = requestAnimationFrame(tick);
+          return;
+        }
+
+        const rawVideoMs = v.currentTime * 1000;
+        const knownDuration = recording?.durationMs ?? 0;
+        if (knownDuration > 0 && rawVideoMs >= knownDuration - 30) {
+          v.pause();
+          state.setCurrent(dur);
+          state.setPlaying(false);
+          dirtyRef.current = true;
+          return;
+        }
+
+        const mappedTimelineMs = videoToTimelineMs(rawVideoMs, state.items);
+        const check = timelineToVideoMs(mappedTimelineMs, state.items);
+        if (check.isPaused) {
+          v.pause();
+          state.setCurrent(check.activeTitleCard!.startMs);
+        } else {
+          state.setCurrent(mappedTimelineMs);
+        }
+        dirtyRef.current = true;
+      }
+
+      frameId = requestAnimationFrame(tick);
+    };
+
+    frameId = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frameId);
+      v.pause();
+    };
+  }, [playing, mediaType, items, recording, setPlaying]);
+
   // Publish the live media refs into the store so overlays (CropModal,
   // future thumbnail extractors) can read frames from the same already-primed
   // elements the editor is using.
@@ -169,40 +282,48 @@ export function Preview() {
   }, [videoVolume, videoMuted]);
 
   // External seek: when something else (timeline scrubber, programmatic jump)
-  // moves currentMs, push it onto the main video. The 100ms threshold avoids
-  // the timeupdate→setCurrent→seek feedback loop that would otherwise fire
-  // every frame during normal playback. The webcam catches up via the
-  // dedicated sync effect (its 150ms drift threshold will trip after a scrub).
+  // moves currentMs, push it onto the main video without causing playback feedback loops.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    const target = currentMs / 1000;
-    if (Math.abs(v.currentTime - target) > 0.1) {
-      v.currentTime = target;
+    const { videoMs, isPaused } = timelineToVideoMs(currentMs, items);
+    const target = videoMs / 1000;
+
+    if (!playing) {
+      if (Math.abs(v.currentTime - target) > 0.02) {
+        v.currentTime = target;
+      }
+    } else {
+      if (isPaused) {
+        if (!v.paused) v.pause();
+        if (Math.abs(v.currentTime - target) > 0.05) {
+          v.currentTime = target;
+        }
+      } else {
+        if (Math.abs(v.currentTime - target) > 0.35) {
+          v.currentTime = target;
+        }
+      }
     }
-  }, [currentMs]);
+  }, [currentMs, items, playing]);
 
   // Webcam sync — single source of truth for the webcam <video>'s play state,
-  // currentTime, and playbackRate. Looser thresholds (300ms playing / 50ms
-  // paused) so we don't seek the webcam every tick: MediaRecorder-emitted
-  // WebMs have sparse keyframes and frequent seeks stall the decoder, which
-  // looks like the webcam (or the whole preview) hanging.
+  // currentTime, and playbackRate.
   useEffect(() => {
     const wc = webcamRef.current;
     if (!wc || !webcamFileUrl) return;
-    const target = currentMs / 1000;
+    const { videoMs, isPaused } = timelineToVideoMs(currentMs, items);
+    const target = videoMs / 1000;
 
     const speed = items.find((it) => it.kind === 'speed' && currentMs >= it.startMs && currentMs <= it.endMs);
     const targetRate = speed?.speed ?? 1;
     if (Math.abs(wc.playbackRate - targetRate) > 0.01) wc.playbackRate = targetRate;
 
-    if (!playing) {
+    if (!playing || isPaused) {
       wc.pause();
       // Webcam recordings often have a black warm-up frame at t=0 (camera
       // sensor is still settling). When parked at the very start, show a
-      // slightly later frame as the visible preview — much friendlier than a
-      // black circle. Once playback runs from 0, currentMs increments past
-      // this offset within a couple of frames so it doesn't look like a jump.
+      // slightly later frame as the visible preview.
       const previewTarget =
         currentMs === 0
           ? Math.min(0.15, (recording?.durationMs ?? 0) / 1000 / 20)
@@ -211,12 +332,9 @@ export function Preview() {
       return;
     }
 
-    // 0.3s threshold: we ride the native `timeupdate` event which only fires
-    // every ~250ms, so a tighter threshold (e.g. 150ms) trips on the normal
-    // gap-between-ticks and stomps the webcam mid-decode.
     if (Math.abs(wc.currentTime - target) > 0.3) wc.currentTime = target;
     wc.play().catch(() => {});
-  }, [currentMs, playing, items, webcamFileUrl]);
+  }, [currentMs, playing, items, webcamFileUrl, recording]);
 
   // Background audio sync — controls play/pause, volume, rate, and timeline alignment.
   useEffect(() => {
@@ -329,37 +447,10 @@ export function Preview() {
     }
   }, [currentMs, items]);
 
-  // Sync time + handle trim skip + apply speed via playbackRate.
+  // Video element setup and end detection (playback time is driven by the 60fps loop above)
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    const knownDuration = recording?.durationMs ?? 0;
-    const onTime = () => {
-      const ms = v.currentTime * 1000;
-
-      // MediaRecorder-emitted WebMs don't have a Duration tag, so the native
-      // `ended` event sometimes never fires. Use the recording metadata's
-      // wall-clock duration as the authoritative end so playback doesn't
-      // hang past the real end (this is what made fullscreen "freeze").
-      if (knownDuration > 0 && ms >= knownDuration - 30) {
-        v.pause();
-        setCurrent(knownDuration);
-        setPlaying(false);
-        return;
-      }
-
-      const trim = items.find((it) => it.kind === 'trim' && ms >= it.startMs && ms < it.endMs);
-      if (trim) {
-        const t = (trim.endMs + 1) / 1000;
-        v.currentTime = t;
-        setCurrent(t * 1000); // surface the new time so the webcam-sync effect catches up
-        return;
-      }
-      const speed = items.find((it) => it.kind === 'speed' && ms >= it.startMs && ms <= it.endMs);
-      const targetRate = speed?.speed ?? 1;
-      if (Math.abs(v.playbackRate - targetRate) > 0.01) v.playbackRate = targetRate;
-      setCurrent(ms);
-    };
     const onEnded = () => setPlaying(false);
     const onLoaded = async () => {
       if (v.videoWidth && v.videoHeight) {
@@ -401,15 +492,13 @@ export function Preview() {
         }
       }
     };
-    v.addEventListener('timeupdate', onTime);
     v.addEventListener('ended', onEnded);
     v.addEventListener('loadedmetadata', onLoaded);
     return () => {
-      v.removeEventListener('timeupdate', onTime);
       v.removeEventListener('ended', onEnded);
       v.removeEventListener('loadedmetadata', onLoaded);
     };
-  }, [recording, fileUrl, webcamFileUrl, setRecordingDuration, setCurrent, setPlaying, setVideoIntrinsicSize, items]);
+  }, [recording, fileUrl, webcamFileUrl, setRecordingDuration, setPlaying, setVideoIntrinsicSize]);
 
   // Preload an image background for the canvas compositor (mirrors export.ts).
   useEffect(() => {
@@ -460,7 +549,7 @@ export function Preview() {
       // Compositing a full frame 60 times a second to redraw pixels that did
       // not change is what made two open editors stutter the whole desktop on
       // software GL.
-      const t = isImg ? st.currentMs : (v ? v.currentTime : -1);
+      const t = st.currentMs;
       if (t !== lastT || dirtyRef.current) settle = 8;
       // An animated background is scenery: it moves on its own clock whether or
       // not the video is playing, so a paused editor still has a reason to
@@ -492,7 +581,7 @@ export function Preview() {
         ctx.clearRect(0, 0, bw, bh);
         return;
       }
-      const ms = isImg ? st.currentMs : v!.currentTime * 1000;
+      const ms = st.currentMs;
       const srcMedia = isImg ? img! : v!;
       const itemsNoAnno = st.items.filter((it) => it.kind !== 'annotation');
       const webcamSrc = !isImg && st.webcam.enabled && st.webcamFileUrl ? webcamRef.current : null;

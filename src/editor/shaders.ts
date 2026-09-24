@@ -20,11 +20,13 @@
 
 export type ShaderId =
   | 'aurora' | 'drift' | 'waves' | 'nebula' | 'silk' | 'dusk'
-  | 'fire' | 'electric' | 'rays' | 'beam' | 'ripple' | 'peaks' | 'smoke';
+  | 'fire' | 'electric' | 'rays' | 'beam' | 'ripple' | 'peaks' | 'smoke'
+  | 'cyber' | 'aura' | 'noir';
 
 export const SHADER_IDS: ShaderId[] = [
   'aurora', 'drift', 'waves', 'nebula', 'silk', 'dusk',
-  'fire', 'electric', 'rays', 'beam', 'ripple', 'peaks', 'smoke'
+  'fire', 'electric', 'rays', 'beam', 'ripple', 'peaks', 'smoke',
+  'cyber', 'aura', 'noir'
 ];
 
 export const SHADER_LABELS: Record<ShaderId, string> = {
@@ -40,7 +42,10 @@ export const SHADER_LABELS: Record<ShaderId, string> = {
   beam: 'Beam',
   ripple: 'Ripple',
   peaks: 'Peaks',
-  smoke: 'Smoke'
+  smoke: 'Smoke',
+  cyber: 'Cyber Grid',
+  aura: 'Aura Bloom',
+  noir: 'Noir Carbon'
 };
 
 // The background's own clock.
@@ -354,6 +359,72 @@ const FRAGMENTS: Record<ShaderId, string> = {
     c = mix(c, vec3(0.80, 0.82, 0.88), smoothstep(0.66, 1.0, v) * 0.65);
     c *= 0.50 + 0.50 * smoothstep(1.25, 0.20, length(space()) * 1.5);
     gl_FragColor = vec4(c, 1.0);
+  }`,
+
+  // Cyber matrix perspective grid with glowing horizon and digital depth.
+  cyber: `
+  void main() {
+    vec2 p = space();
+    float t = uTime * 0.45;
+    float horizon = -0.06;
+    float dy = p.y - horizon;
+    vec3 c = vec3(0.015, 0.02, 0.04);
+    if (dy < 0.0) {
+      float z = 0.35 / max(0.001, -dy);
+      float x = p.x * z;
+      float zCoord = z + t * 1.8;
+      float gx = abs(fract(x * 1.15 - 0.5) - 0.5);
+      float gz = abs(fract(zCoord - 0.5) - 0.5);
+      float line = smoothstep(0.055, 0.0, min(gx, gz));
+      float depthFade = exp(-z * 0.16);
+      vec3 gridCol = mix(vec3(0.12, 0.50, 1.0), vec3(0.0, 0.95, 0.85), fract(z * 0.08 - t * 0.15));
+      c += gridCol * (line * 0.85 + 0.12) * depthFade;
+    } else {
+      float skyFade = smoothstep(0.0, 0.70, dy);
+      vec3 sky = mix(vec3(0.035, 0.065, 0.16), vec3(0.01, 0.012, 0.025), skyFade);
+      c = sky;
+    }
+    float glow = 0.035 / (abs(dy) + 0.035);
+    vec3 glowCol = mix(vec3(0.0, 0.8, 1.0), vec3(0.55, 0.25, 0.95), 0.5 + 0.5 * sin(p.x * 2.0 + t));
+    c += glowCol * glow * 0.65;
+    gl_FragColor = vec4(c, 1.0);
+  }`,
+
+  // Atmospheric radial aura bloom with harmonic chromatic dispersion.
+  aura: `
+  void main() {
+    vec2 p = space();
+    float t = uTime * 0.38;
+    vec2 c1 = vec2(sin(t * 0.7) * 0.25, cos(t * 0.5) * 0.15);
+    vec2 c2 = vec2(cos(t * 0.6 + 1.5) * 0.28, sin(t * 0.8 + 2.0) * 0.18);
+    float d1 = length(p - c1);
+    float d2 = length(p - c2);
+    vec3 g1 = vec3(0.38, 0.18, 0.95) * exp(-d1 * 2.3);
+    vec3 g2 = vec3(0.05, 0.68, 0.95) * exp(-d2 * 2.0);
+    vec3 g3 = vec3(0.95, 0.24, 0.58) * exp(-length(p) * 3.0);
+    vec3 c = vec3(0.018, 0.02, 0.045) + (g1 + g2 + g3) * 0.72;
+    float n = noise(p * 7.5 + t * 0.4);
+    c += (n - 0.5) * 0.025;
+    c = c / (c + 0.55);
+    gl_FragColor = vec4(c, 1.0);
+  }`,
+
+  // Apple Pro dark carbon field with anisotropic volumetric light streaks.
+  noir: `
+  void main() {
+    vec2 p = space();
+    float t = uTime * 0.22;
+    float angle = 0.68;
+    vec2 dir = vec2(cos(angle), sin(angle));
+    float proj = dot(p, dir);
+    float b1 = sin(proj * 3.2 - t * 0.7) * 0.5 + 0.5;
+    float b2 = sin(proj * 6.5 + t * 0.4) * 0.5 + 0.5;
+    float sweep = pow(b1, 3.2) * 0.62 + pow(b2, 4.0) * 0.38;
+    float vignette = 1.0 - smoothstep(0.2, 1.25, length(p));
+    vec3 base = vec3(0.016, 0.018, 0.022);
+    vec3 streak = vec3(0.20, 0.24, 0.32) * sweep * vignette;
+    vec3 blueCore = vec3(0.08, 0.16, 0.28) * pow(sweep, 2.0) * 0.45;
+    gl_FragColor = vec4(base + streak + blueCore, 1.0);
   }`
 };
 
@@ -521,7 +592,10 @@ export const SHADER_FALLBACK: Record<ShaderId, string> = {
   beam: '#080513',
   ripple: '#0d0817',
   peaks: '#0a0718',
-  smoke: '#14161a'
+  smoke: '#14161a',
+  cyber: '#080b18',
+  aura: '#0f0c22',
+  noir: '#08090c'
 };
 
 // ── Mesh gradients (static) ────────────────────────────────────────────────

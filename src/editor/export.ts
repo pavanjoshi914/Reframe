@@ -16,7 +16,7 @@ import {
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
 import { paintBorderUnder, paintBorderOver, borderOutset, borderThickness, emissionSpec, normalizeBorder, DEFAULT_BORDER_STYLE, type BorderId, type BorderStyle } from './borders';
 import { renderShaderBackground, normalizeShader, SHADER_FALLBACK, renderMeshBackground, meshPreset, renderFieldBackground, bgClockMs } from './shaders';
-import { useEditor, type CropRegion, type EditorState, ANNOTATION_DEFAULTS } from './store';
+import { useEditor, type CropRegion, type EditorState, ANNOTATION_DEFAULTS, type LaneItem } from './store';
 import type { CursorSample, ClickSample, CursorKindSample } from '@shared/ipc';
 import { renderCard3D, renderScene3D, projectCardPoint, type CardXform } from './card3d';
 import {
@@ -26,6 +26,7 @@ import {
   type SceneSettings, type SceneShape
 } from './scenes';
 import { CURSOR_GLYPHS, KIND_GLYPHS, CURSOR_IDLE_MS, CURSOR_IDLE_FADE_MS, CURSOR_MOVE_EPS_SQ } from './cursorGlyphs';
+import { videoToTimelineMs, timelineToVideoMs } from './timeMapping';
 
 // Export pipeline — frame-accurate, NOT real-time.
 //
@@ -472,16 +473,19 @@ function audioBufferToWav(buf: AudioBuffer): ArrayBuffer {
 function computeOutputDurationSec(sourceDurationSec: number, items: ReturnType<typeof useEditor.getState>['items']): number {
   const trims = items.filter((it) => it.kind === 'trim');
   const speeds = items.filter((it) => it.kind === 'speed');
+  const pausingCards = items.filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false);
+  const pauseSec = pausingCards.reduce((sum, it) => sum + Math.max(0, (it.endMs - it.startMs) / 1000), 0);
   const stepMs = 50;
   const totalSteps = Math.ceil((sourceDurationSec * 1000) / stepMs);
   let outMs = 0;
   for (let s = 0; s < totalSteps; s++) {
     const ms = s * stepMs;
-    if (trims.some((t) => ms >= t.startMs && ms < t.endMs)) continue;
-    const speed = speeds.find((sp) => ms >= sp.startMs && ms <= sp.endMs)?.speed ?? 1;
+    const timelineMs = videoToTimelineMs(ms, items);
+    if (trims.some((t) => timelineMs >= t.startMs && timelineMs < t.endMs)) continue;
+    const speed = speeds.find((sp) => timelineMs >= sp.startMs && timelineMs <= sp.endMs)?.speed ?? 1;
     outMs += stepMs / (speed || 1);
   }
-  return Math.max(0.1, outMs / 1000);
+  return Math.max(0.1, outMs / 1000 + pauseSec);
 }
 
 async function mixWithBackgroundAudio({
@@ -748,6 +752,40 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     let gifFrameCount = 0;
     let gifTotalEst = totalSrcFrames;
     let gifPreviewPct = -100;
+
+    const pausingCardsGif = items
+      .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
+      .sort((a, b) => a.startMs - b.startMs);
+
+    let prevCardsDurGif = 0;
+    const cardScheduleGif = pausingCardsGif.map((card) => {
+      const insertVideoMs = Math.max(0, card.startMs - prevCardsDurGif);
+      const cardDurMs = Math.max(100, card.endMs - card.startMs);
+      prevCardsDurGif += cardDurMs;
+      return { card, insertVideoMs, cardDurMs, emitted: false };
+    });
+
+    const emitGifTitleCard = (cardItem: typeof cardScheduleGif[0], currentSrc: FrameSource | null) => {
+      const cardStartMs = cardItem.card.startMs;
+      const cardEndMs = cardItem.card.endMs;
+      for (let t = cardStartMs; t < cardEndMs; t += gifFrameMs) {
+        if (cancelRequested) break;
+        composite(currentSrc ?? canvas, null, t);
+        let pixels: Uint8ClampedArray;
+        try {
+          pixels = ctx.getImageData(0, 0, outW, outH).data;
+        } catch {
+          throw new Error('GIF export can’t read a cross-origin background image. Use a solid colour, gradient, or an uploaded image.');
+        }
+        const palette = quantize(pixels, 256);
+        const index = applyPalette(pixels, palette);
+        enc.writeFrame(index, outW, outH, { palette, delay: gifFrameMs });
+        outMs += gifFrameMs;
+        nextEmitMs += gifFrameMs;
+      }
+      cardItem.emitted = true;
+    };
+
     for await (const wrapped of screenSink.canvases()) {
       if (cancelRequested) break;
       const { canvas: srcCanvas, timestamp, duration } = wrapped;
@@ -755,13 +793,21 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
       const frameDuration = duration || 1 / 30;
       if (!gifTotalEst && sourceDurationSec > 0) gifTotalEst = Math.max(1, Math.round(sourceDurationSec / frameDuration));
       gifFrameCount++;
-      if (items.some((it) => it.kind === 'trim' && ms >= it.startMs && ms < it.endMs)) continue;
-      const speed = items.find((it) => it.kind === 'speed' && ms >= it.startMs && ms <= it.endMs);
+
+      for (const item of cardScheduleGif) {
+        if (!item.emitted && ms >= item.insertVideoMs) {
+          emitGifTitleCard(item, srcCanvas);
+        }
+      }
+
+      const mappedTimelineMs = videoToTimelineMs(ms, items);
+      if (items.some((it) => it.kind === 'trim' && mappedTimelineMs >= it.startMs && mappedTimelineMs < it.endMs)) continue;
+      const speed = items.find((it) => it.kind === 'speed' && mappedTimelineMs >= it.startMs && mappedTimelineMs <= it.endMs);
       const speedFactor = speed?.speed ?? 1;
       const endOut = outMs + (frameDuration / speedFactor) * 1000;
       if (endOut >= nextEmitMs) {
         const webcamCanvas: FrameSource | null = webcamFrameAt ? await webcamFrameAt(timestamp) : null;
-        composite(srcCanvas, webcamCanvas, ms);
+        composite(srcCanvas, webcamCanvas, mappedTimelineMs);
         let pixels: Uint8ClampedArray;
         try {
           pixels = ctx.getImageData(0, 0, outW, outH).data;
@@ -789,6 +835,13 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
         }
       }
     }
+
+    for (const item of cardScheduleGif) {
+      if (!item.emitted) {
+        emitGifTitleCard(item, canvas);
+      }
+    }
+
     if (cancelRequested) { onProgress('Cancelled', 100); return false; }
     onProgress('Saving', 99);
     enc.finish();
@@ -935,6 +988,37 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   let totalFramesEst = totalSrcFrames;
   let lastPreviewPct = -100;
 
+  const pausingCards = items
+    .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
+    .sort((a, b) => a.startMs - b.startMs);
+
+  let prevCardsDur = 0;
+  const cardSchedule = pausingCards.map((card) => {
+    const insertVideoMs = Math.max(0, card.startMs - prevCardsDur);
+    const cardDurMs = Math.max(100, card.endMs - card.startMs);
+    prevCardsDur += cardDurMs;
+    return { card, insertVideoMs, cardDurMs, emitted: false };
+  });
+
+  const emitTitleCardFrames = async (cardItem: typeof cardSchedule[0], currentSrcCanvas: FrameSource | null) => {
+    const cardStartMs = cardItem.card.startMs;
+    const cardEndMs = cardItem.card.endMs;
+    const stepSec = 1 / outFps;
+    const stepMs = stepSec * 1000;
+    for (let t = cardStartMs; t < cardEndMs; t += stepMs) {
+      if (cancelRequested) break;
+      composite(currentSrcCanvas ?? canvas, null, t);
+      if (rawId) {
+        const px = ctx.getImageData(0, 0, outW, outH);
+        await window.api.rawEncodeFrame(rawId, px.data.buffer as ArrayBuffer);
+      } else {
+        await videoSource.add(outTs, stepSec);
+      }
+      outTs += stepSec;
+    }
+    cardItem.emitted = true;
+  };
+
   for await (const wrapped of screenSink.canvases()) {
     if (cancelRequested) break;
     const { canvas: srcCanvas, timestamp, duration } = wrapped;
@@ -945,15 +1029,23 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     }
     srcFrameCount++;
 
+    for (const item of cardSchedule) {
+      if (!item.emitted && ms >= item.insertVideoMs) {
+        await emitTitleCardFrames(item, srcCanvas);
+      }
+    }
+
+    const mappedTimelineMs = videoToTimelineMs(ms, items);
+
     // Trim: drop frames inside any trim region entirely.
     const inTrim = items.some(
-      (it) => it.kind === 'trim' && ms >= it.startMs && ms < it.endMs
+      (it) => it.kind === 'trim' && mappedTimelineMs >= it.startMs && mappedTimelineMs < it.endMs
     );
     if (inTrim) continue;
 
     // Speed region containing this source frame, if any.
     const speed = items.find(
-      (it) => it.kind === 'speed' && ms >= it.startMs && ms <= it.endMs
+      (it) => it.kind === 'speed' && mappedTimelineMs >= it.startMs && mappedTimelineMs <= it.endMs
     );
     const speedFactor = speed?.speed ?? 1;
     if (speedFactor !== prevSpeedFactor) {
@@ -980,7 +1072,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     // Webcam frame for this timestamp (sequential follower — see above).
     const webcamCanvas: FrameSource | null = webcamFrameAt ? await webcamFrameAt(timestamp) : null;
 
-    composite(srcCanvas, webcamCanvas, ms);
+    composite(srcCanvas, webcamCanvas, mappedTimelineMs);
 
     for (let i = 0; i < emitCount; i++) {
       if (rawId) {
@@ -1009,6 +1101,12 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
         preview = snapshotPreview(canvas);
       }
       onProgress('Encoding', pct, { frame: srcFrameCount, totalFrames: totalFramesEst, preview });
+    }
+  }
+
+  for (const item of cardSchedule) {
+    if (!item.emitted) {
+      await emitTitleCardFrames(item, canvas);
     }
   }
 
@@ -1097,14 +1195,30 @@ async function buildTimelineAudio(
   const speedAt = (ms: number) => speeds.find((s) => ms >= s.startMs && ms <= s.endMs)?.speed ?? 1;
   const inTrim = (ms: number) => trims.some((t) => ms >= t.startMs && ms < t.endMs);
 
+  const pausingCards = items
+    .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
+    .sort((a, b) => a.startMs - b.startMs);
+
+  let prevCardsDurAudio = 0;
+  const cardAudioSchedule = pausingCards.map((card) => {
+    const insertVideoMs = Math.max(0, card.startMs - prevCardsDurAudio);
+    const cardDurMs = Math.max(100, card.endMs - card.startMs);
+    const silenceSamples = Math.round((cardDurMs / 1000) * sr);
+    prevCardsDurAudio += cardDurMs;
+    return { insertVideoMs, silenceSamples, handled: false };
+  });
+
+  const totalSilenceSamples = cardAudioSchedule.reduce((sum, c) => sum + c.silenceSamples, 0);
+
   // Two passes: count output length, then fill preallocated buffers — avoids
   // multi-million-element array growth on longer recordings.
   const countEmit = (): number => {
-    let total = 0, ffDebt = 0, prevF = 1;
+    let total = totalSilenceSamples, ffDebt = 0, prevF = 1;
     for (let i = 0; i < len; i++) {
       const ms = (i / sr) * 1000;
-      if (inTrim(ms)) continue;
-      const f = speedAt(ms);
+      const timelineMs = videoToTimelineMs(ms, items);
+      if (inTrim(timelineMs)) continue;
+      const f = speedAt(timelineMs);
       if (f !== prevF) { ffDebt = 0; prevF = f; }
       if (f === 1) total += 1;
       else if (f > 1) { ffDebt += 1 / f; if (ffDebt >= 1) { ffDebt -= 1; total += 1; } }
@@ -1124,16 +1238,40 @@ async function buildTimelineAudio(
   let w = 0, ffDebt = 0, prevF = 1;
   for (let i = 0; i < len; i++) {
     const ms = (i / sr) * 1000;
-    if (inTrim(ms)) continue;
-    const f = speedAt(ms);
+    const timelineMs = videoToTimelineMs(ms, items);
+
+    for (const card of cardAudioSchedule) {
+      if (!card.handled && ms >= card.insertVideoMs) {
+        card.handled = true;
+        for (let s = 0; s < card.silenceSamples && w < outLen; s++) {
+          for (let c = 0; c < ch; c++) outData[c][w] = 0;
+          w++;
+        }
+      }
+    }
+
+    if (inTrim(timelineMs)) continue;
+    const f = speedAt(timelineMs);
     if (f !== prevF) { ffDebt = 0; prevF = f; }
     let emit: number;
     if (f === 1) emit = 1;
     else if (f > 1) { ffDebt += 1 / f; emit = ffDebt >= 1 ? 1 : 0; if (emit) ffDebt -= 1; }
     else emit = Math.max(1, Math.round(1 / f));
     for (let k = 0; k < emit; k++) {
-      for (let c = 0; c < ch; c++) outData[c][w] = inData[c][i] * vol;
-      w++;
+      if (w < outLen) {
+        for (let c = 0; c < ch; c++) outData[c][w] = inData[c][i] * vol;
+        w++;
+      }
+    }
+  }
+
+  for (const card of cardAudioSchedule) {
+    if (!card.handled) {
+      card.handled = true;
+      for (let s = 0; s < card.silenceSamples && w < outLen; s++) {
+        for (let c = 0; c < ch; c++) outData[c][w] = 0;
+        w++;
+      }
     }
   }
   await outCtx.close().catch(() => {});
@@ -1573,22 +1711,69 @@ export function drawFrame(
   const activeAnnotation = items.find(
     (it) => it.kind === 'annotation' && ms >= it.startMs && ms <= it.endMs
   );
+  const activeTitleCard = items.find(
+    (it) => it.kind === 'titleCard' && ms >= it.startMs && ms <= it.endMs
+  );
+
+  let videoAlpha = 1.0;
+  let videoBlurPx = 0;
+  if (activeTitleCard) {
+    const backdrop = activeTitleCard.titleBackdrop ?? 'hideVideo';
+    const dur = Math.max(1, activeTitleCard.endMs - activeTitleCard.startMs);
+    const elapsed = ms - activeTitleCard.startMs;
+    const fadeMs = Math.min(300, dur * 0.25);
+
+    let cardPresence = 1.0;
+    if (elapsed < fadeMs) {
+      cardPresence = elapsed / fadeMs;
+    } else if (elapsed > dur - fadeMs) {
+      cardPresence = (dur - elapsed) / fadeMs;
+    }
+    cardPresence = Math.max(0, Math.min(1, cardPresence));
+    const easedPresence = cardPresence * (2 - cardPresence);
+
+    if (backdrop === 'hideVideo') {
+      videoAlpha = 1.0 - easedPresence;
+    } else if (backdrop === 'dimVideo') {
+      videoAlpha = 1.0 - easedPresence * 0.75;
+    } else if (backdrop === 'blurVideo') {
+      videoAlpha = 1.0 - easedPresence * 0.35;
+      videoBlurPx = Math.round(28 * (outH / 1080) * easedPresence);
+    } else if (backdrop === 'auraGlow') {
+      videoAlpha = 1.0 - easedPresence * 0.65;
+    } else if (backdrop === 'spotlightPlate') {
+      videoAlpha = 1.0 - easedPresence * 0.75;
+    }
+  }
+
+  const shouldDrawVideo = videoAlpha > 0.005;
+  const needVideoScope = shouldDrawVideo && (videoAlpha < 0.995 || videoBlurPx > 0);
   const layout = LAYOUT_COORDS[layoutPreset];
 
   if (layout.sideBySide && webcam.enabled) {
-    const innerW = outW * innerScale;
-    const innerH = outH * innerScale;
-    const innerX = (outW - innerW) / 2;
-    const innerY = (outH - innerH) / 2;
-    const wcW = innerW * 0.4;
-    const vidW = innerW - wcW - 12;
-    const sd = srcDims(srcCanvas);
-    const vb = fitInside(sd.w, sd.h, cropRegion, innerX, innerY, vidW, innerH);
-    drawVideoBox(ctx, srcCanvas, vb.x, vb.y, vb.w, vb.h, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH, border, borderStyle);
-    if (webcamCanvas) {
-      drawWebcamVideo(ctx, webcamCanvas, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx, false);
-    } else {
-      drawWebcamPlaceholder(ctx, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx);
+    if (shouldDrawVideo) {
+      if (needVideoScope) {
+        ctx.save();
+        if (videoAlpha < 0.995) ctx.globalAlpha *= videoAlpha;
+        if (videoBlurPx > 0) ctx.filter = `blur(${videoBlurPx}px)`;
+      }
+      const innerW = outW * innerScale;
+      const innerH = outH * innerScale;
+      const innerX = (outW - innerW) / 2;
+      const innerY = (outH - innerH) / 2;
+      const wcW = innerW * 0.4;
+      const vidW = innerW - wcW - 12;
+      const sd = srcDims(srcCanvas);
+      const vb = fitInside(sd.w, sd.h, cropRegion, innerX, innerY, vidW, innerH);
+      drawVideoBox(ctx, srcCanvas, vb.x, vb.y, vb.w, vb.h, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH, border, borderStyle);
+      if (webcamCanvas) {
+        drawWebcamVideo(ctx, webcamCanvas, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx, false);
+      } else {
+        drawWebcamPlaceholder(ctx, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx);
+      }
+      if (needVideoScope) {
+        ctx.restore();
+      }
     }
   } else {
     const innerW = outW * innerScale;
@@ -1599,50 +1784,60 @@ export function drawFrame(
     // window that isn't the output's aspect keeps all of itself.
     const sd = srcDims(srcCanvas);
     const card = fitInside(sd.w, sd.h, cropRegion, innerX, innerY, innerW, innerH);
-    drawVideoBox(ctx, srcCanvas, card.x, card.y, card.w, card.h, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH, border, borderStyle);
-    if (webcam.enabled) {
-      // Shrink the bubble as the camera zooms in. Driven by the SAME eased zoom
-      // level the video card uses, so the two move in lockstep instead of the
-      // webcam popping after the zoom lands.
-      //
-      // zoom^-0.75, floored at 0.45.
-      //
-      // The reference sits at ~0.75x while zoomed to roughly 2x (zoom^-0.4), but
-      // that's subtle enough to read as "the webcam didn't change" rather than as
-      // a deliberate move. This is tuned DELIBERATELY past the reference so the
-      // shrink is legible: at 2.5x the bubble is now half its wide size instead
-      // of 0.69 — about 20 points more reduction.
-      //
-      // The floor has to come down with the exponent or it does nothing: the old
-      // 0.6 clamp would have caught 2.5x (0.50) and cancelled the change outright.
-      const zLevel = Math.max(1, activeZoom?.zoomLevel ?? 1);
-      const zoomScale = Math.max(0.45, Math.pow(zLevel, -0.75));
-      const wcH = outH * webcam.size * zoomScale;
-      const wcW = wcH * (webcam.shape === 'rectangle' ? 16 / 9 : 1);
-      // Keep the bubble's MARGIN constant as it resizes, so it stays pinned to
-      // its corner instead of drifting inward (x/y are the top-left, so a
-      // shrinking box would otherwise pull away from the bottom/right edges).
-      const fullH = outH * webcam.size;
-      const fullW = fullH * (webcam.shape === 'rectangle' ? 16 / 9 : 1);
-      const anchorR = webcam.x * outW + fullW;   // right edge at full size
-      const anchorB = webcam.y * outH + fullH;   // bottom edge at full size
-      // Which corner it's parked in is decided by the box's CENTRE, not its
-      // top-left: a tall bubble sitting on the bottom edge still has a top-left
-      // y well above the midpoint (the reference's is 0.48), and anchoring that
-      // to the top would make it climb away from the edge as it shrank.
-      const cxFull = webcam.x + fullW / outW / 2;
-      const cyFull = webcam.y + fullH / outH / 2;
-      const wx = cxFull > 0.5 ? anchorR - wcW : webcam.x * outW;
-      const wy = cyFull > 0.5 ? anchorB - wcH : webcam.y * outH;
-      // Radius as a FRACTION of the box, not a pixel cap. The old
-      // min(h/4, 24px@1080) capped a 0.45-height bubble at ~24px of rounding,
-      // which reads as a plain rectangle; the reference sits at 0.35 of the box.
-      const cornerRadius =
-        webcam.shape === 'circle' ? wcH / 2 : Math.min(wcW, wcH) * WEBCAM_CORNER_RATIO;
-      if (webcamCanvas) {
-        drawWebcamVideo(ctx, webcamCanvas, wx, wy, wcW, wcH, cornerRadius, webcam.shape === 'circle');
-      } else {
-        drawWebcamPlaceholder(ctx, wx, wy, wcW, wcH, cornerRadius);
+    if (shouldDrawVideo) {
+      if (needVideoScope) {
+        ctx.save();
+        if (videoAlpha < 0.995) ctx.globalAlpha *= videoAlpha;
+        if (videoBlurPx > 0) ctx.filter = `blur(${videoBlurPx}px)`;
+      }
+      drawVideoBox(ctx, srcCanvas, card.x, card.y, card.w, card.h, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH, border, borderStyle);
+      if (webcam.enabled) {
+        // Shrink the bubble as the camera zooms in. Driven by the SAME eased zoom
+        // level the video card uses, so the two move in lockstep instead of the
+        // webcam popping after the zoom lands.
+        //
+        // zoom^-0.75, floored at 0.45.
+        //
+        // The reference sits at ~0.75x while zoomed to roughly 2x (zoom^-0.4), but
+        // that's subtle enough to read as "the webcam didn't change" rather than as
+        // a deliberate move. This is tuned DELIBERATELY past the reference so the
+        // shrink is legible: at 2.5x the bubble is now half its wide size instead
+        // of 0.69 — about 20 points more reduction.
+        //
+        // The floor has to come down with the exponent or it does nothing: the old
+        // 0.6 clamp would have caught 2.5x (0.50) and cancelled the change outright.
+        const zLevel = Math.max(1, activeZoom?.zoomLevel ?? 1);
+        const zoomScale = Math.max(0.45, Math.pow(zLevel, -0.75));
+        const wcH = outH * webcam.size * zoomScale;
+        const wcW = wcH * (webcam.shape === 'rectangle' ? 16 / 9 : 1);
+        // Keep the bubble's MARGIN constant as it resizes, so it stays pinned to
+        // its corner instead of drifting inward (x/y are the top-left, so a
+        // shrinking box would otherwise pull away from the bottom/right edges).
+        const fullH = outH * webcam.size;
+        const fullW = fullH * (webcam.shape === 'rectangle' ? 16 / 9 : 1);
+        const anchorR = webcam.x * outW + fullW;   // right edge at full size
+        const anchorB = webcam.y * outH + fullH;   // bottom edge at full size
+        // Which corner it's parked in is decided by the box's CENTRE, not its
+        // top-left: a tall bubble sitting on the bottom edge still has a top-left
+        // y well above the midpoint (the reference's is 0.48), and anchoring that
+        // to the top would make it climb away from the edge as it shrank.
+        const cxFull = webcam.x + fullW / outW / 2;
+        const cyFull = webcam.y + fullH / outH / 2;
+        const wx = cxFull > 0.5 ? anchorR - wcW : webcam.x * outW;
+        const wy = cyFull > 0.5 ? anchorB - wcH : webcam.y * outH;
+        // Radius as a FRACTION of the box, not a pixel cap. The old
+        // min(h/4, 24px@1080) capped a 0.45-height bubble at ~24px of rounding,
+        // which reads as a plain rectangle; the reference sits at 0.35 of the box.
+        const cornerRadius =
+          webcam.shape === 'circle' ? wcH / 2 : Math.min(wcW, wcH) * WEBCAM_CORNER_RATIO;
+        if (webcamCanvas) {
+          drawWebcamVideo(ctx, webcamCanvas, wx, wy, wcW, wcH, cornerRadius, webcam.shape === 'circle');
+        } else {
+          drawWebcamPlaceholder(ctx, wx, wy, wcW, wcH, cornerRadius);
+        }
+      }
+      if (needVideoScope) {
+        ctx.restore();
       }
     }
     // Cursor spotlight + magnifier. Each is active either globally (its slider,
@@ -1653,12 +1848,13 @@ export function drawFrame(
     const spotItem = items.find((it) => it.kind === 'spotlight' && ms >= it.startMs && ms <= it.endMs);
     const globalMag = effects.cursorMagnifier;
     const globalSpot = effects.cursorSpotlight;
+    const { videoMs: cursorVideoMs } = timelineToVideoMs(ms, items);
     if (globalMag > 0 || globalSpot > 0 || magItem || spotItem) {
       // Position following the recorded cursor — shared by the global sliders
       // and any 'cursor'-tracked region. Null when there's no cursor data.
       let cursorPos: { x: number; y: number } | null = null;
       if (d.cursorSamples) {
-        const cur = cursorAt(d.cursorSamples, ms);
+        const cur = cursorAt(d.cursorSamples, cursorVideoMs);
         if (cur) {
           const { w: sw, h: sh } = srcDims(srcCanvas);
           cursorPos = cursorToOutput(cur, sw, sh, cropRegion, card.x, card.y, card.w, card.h, activeZoom ?? undefined, outW, outH);
@@ -1695,7 +1891,7 @@ export function drawFrame(
         cursorToOutput({ x: nx, y: ny }, sw, sh, cropRegion, card.x, card.y, card.w, card.h, activeZoom ?? undefined, outW, outH);
       if (cfx.clicks && d.cursorClicks) {
         for (const c of d.cursorClicks) {
-          const age = ms - c.t;
+          const age = cursorVideoMs - c.t;
           if (age < 0 || age > CLICK_RIPPLE_MS) continue;
           const p = toOut(c.x, c.y);
           if (p) drawClickRipple(ctx, p.x, p.y, age / CLICK_RIPPLE_MS, outH);
@@ -1704,8 +1900,8 @@ export function drawFrame(
       // Blend the raw (pixel-exact) and One-Euro-smoothed positions by the
       // smoothing amount: 0 = exactly where the cursor was, 1 = full glide.
       const sm = Math.max(0, Math.min(1, cfx.smoothing ?? 0.5));
-      const raw = cursorAt(d.cursorSamples, ms);
-      const smooth = d.cursorSamplesSmooth?.length ? cursorAtSpline(d.cursorSamplesSmooth, ms) : raw;
+      const raw = cursorAt(d.cursorSamples, cursorVideoMs);
+      const smooth = d.cursorSamplesSmooth?.length ? cursorAtSpline(d.cursorSamplesSmooth, cursorVideoMs) : raw;
       const cur =
         raw && smooth ? { x: raw.x + (smooth.x - raw.x) * sm, y: raw.y + (smooth.y - raw.y) * sm } : smooth || raw;
       if (cur) {
@@ -1714,7 +1910,7 @@ export function drawFrame(
         // and projection, so the travel vector is in output pixels and already
         // accounts for zoom/rotation — a flick during a 2x zoom smears twice as
         // far on screen, which is correct.
-        const pm = ms - CURSOR_MOTION_DT_MS;
+        const pm = cursorVideoMs - CURSOR_MOTION_DT_MS;
         const rawPrev = cursorAt(d.cursorSamples, pm);
         const smoothPrev = d.cursorSamplesSmooth?.length ? cursorAtSpline(d.cursorSamplesSmooth, pm) : rawPrev;
         const prev =
@@ -1725,16 +1921,17 @@ export function drawFrame(
         // "Hide when idle": fade the pointer out while it sits still, so a
         // paused demo isn't dominated by a parked arrow. Click ripples are
         // exempt — a click is activity by definition.
-        const idleA = cfx.hideWhenIdle ? cursorIdleAlpha(d.cursorSamples, ms) : 1;
-        if (p && idleA > 0.01) {
+        const idleA = cfx.hideWhenIdle ? cursorIdleAlpha(d.cursorSamples, cursorVideoMs) : 1;
+        const totalCursorA = idleA * videoAlpha;
+        if (p && totalCursorA > 0.01) {
           ctx.save();
-          ctx.globalAlpha *= idleA;
+          ctx.globalAlpha *= totalCursorA;
           // 'system' means "whatever the OS was showing", resolved per frame
           // from the captured kinds; every other style is a fixed glyph.
           const style = (cfx.style ?? 'system') === 'system'
-            ? glyphForKind(d.cursorKinds, ms)
+            ? glyphForKind(d.cursorKinds, cursorVideoMs)
             : cfx.style!;
-          const press = (cfx.clickPress ?? true) ? clickPressScale(d.cursorClicks, ms) : 1;
+          const press = (cfx.clickPress ?? true) ? clickPressScale(d.cursorClicks, cursorVideoMs) : 1;
           drawCursorWithMotion(
             ctx, p.x, p.y, pPrev?.x ?? null, pPrev?.y ?? null,
             cfx.size * press, outH, style, cfx.color ?? '#ffffff', cfx.emoji ?? '',
@@ -1752,6 +1949,10 @@ export function drawFrame(
 
   if (activeAnnotation && activeAnnotation.text) {
     drawAnnotation(ctx, activeAnnotation, outW, outH);
+  }
+
+  if (activeTitleCard) {
+    drawTitleCard(ctx, activeTitleCard, ms, outW, outH);
   }
 
   ctx.restore();
@@ -2866,6 +3067,446 @@ function drawAnnotation(
     const y = cy - totalH / 2 + lineHeight * (i + 0.5);
     ctx.fillText(l, cx, y);
   });
+
+  ctx.restore();
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  if (!text) return [];
+  const rawParagraphs = text.split('\n');
+  const lines: string[] = [];
+  for (const para of rawParagraphs) {
+    const words = para.split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      lines.push('');
+      continue;
+    }
+    let current = '';
+    for (const w of words) {
+      const trial = current ? current + ' ' + w : w;
+      if (ctx.measureText(trial).width > maxW && current) {
+        lines.push(current);
+        current = w;
+      } else {
+        current = trial;
+      }
+    }
+    if (current) lines.push(current);
+  }
+  return lines;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return `rgba(99, 102, 241, ${alpha})`;
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function createHeadlineFill(
+  ctx: CanvasRenderingContext2D,
+  item: LaneItem,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  elapsed: number,
+  anim: string
+): string | CanvasGradient {
+  const grad = item.titleGradient ?? 'none';
+  if (grad === 'sunset') {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, '#ff6b6b');
+    g.addColorStop(0.5, '#ffa07a');
+    g.addColorStop(1, '#ffd166');
+    return g;
+  }
+  if (grad === 'ocean') {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, '#00f2fe');
+    g.addColorStop(0.5, '#4facfe');
+    g.addColorStop(1, '#8b5cf6');
+    return g;
+  }
+  if (grad === 'aurora') {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, '#38ef7d');
+    g.addColorStop(0.5, '#11998e');
+    g.addColorStop(1, '#00d2ff');
+    return g;
+  }
+  if (grad === 'purple') {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, '#f472b6');
+    g.addColorStop(0.5, '#c084fc');
+    g.addColorStop(1, '#818cf8');
+    return g;
+  }
+  if (grad === 'silver') {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.35, '#e2e8f0');
+    g.addColorStop(0.7, '#cbd5e1');
+    g.addColorStop(1, '#94a3b8');
+    return g;
+  }
+  if (anim === 'shimmer') {
+    const band = (elapsed % 2200) / 2200;
+    const p0 = Math.max(0, band - 0.16);
+    const p1 = band;
+    const p2 = Math.min(1, band + 0.16);
+    const g = ctx.createLinearGradient(x0, 0, x1, 0);
+    const baseCol = item.textColor || '#ffffff';
+    g.addColorStop(0, baseCol);
+    g.addColorStop(p0, baseCol);
+    g.addColorStop(p1, '#ffffff');
+    g.addColorStop(p2, baseCol);
+    g.addColorStop(1, baseCol);
+    return g;
+  }
+  return item.textColor || '#ffffff';
+}
+
+function drawTitleCard(
+  ctx: CanvasRenderingContext2D,
+  item: LaneItem,
+  ms: number,
+  outW: number,
+  outH: number
+) {
+  const rawTitle = item.title?.trim() ?? '';
+  const subtitleText = item.subtitle?.trim() ?? '';
+  const badgeText = item.badge?.trim() ?? '';
+
+  if (!rawTitle && !subtitleText && !badgeText) return;
+
+  const dur = Math.max(1, item.endMs - item.startMs);
+  const elapsed = ms - item.startMs;
+  const transMs = Math.min(380, dur * 0.3);
+
+  let enterP = 1.0;
+  let exitP = 1.0;
+  if (elapsed < transMs) {
+    enterP = Math.max(0, Math.min(1, elapsed / transMs));
+  }
+  if (elapsed > dur - transMs) {
+    exitP = Math.max(0, Math.min(1, (dur - elapsed) / transMs));
+  }
+
+  const easeOutCubic = (x: number) => 1 - Math.pow(1 - x, 3);
+  const easeInCubic = (x: number) => Math.pow(x, 3);
+
+  const enterEased = easeOutCubic(enterP);
+  const exitEased = easeInCubic(exitP);
+  const presence = Math.min(enterEased, exitEased);
+  if (presence <= 0.005) return;
+
+  const baseScale = Math.max(0.5, outH / 1080);
+
+  let scale = 1.0;
+  let translateY = 0;
+  const anim = item.titleAnim ?? 'fadeBlur';
+
+  if (anim === 'slideUp') {
+    if (enterP < 1.0) {
+      translateY = (1.0 - enterEased) * (40 * baseScale);
+    } else if (exitP < 1.0) {
+      translateY = -(1.0 - exitEased) * (40 * baseScale);
+    }
+  } else if (anim === 'scalePop') {
+    if (enterP < 1.0) {
+      scale = 0.88 + 0.12 * enterEased;
+    } else if (exitP < 1.0) {
+      scale = 0.94 + 0.06 * exitEased;
+    }
+  } else if (anim === 'punchIn') {
+    if (enterP < 1.0) {
+      scale = 1.0 + 0.32 * Math.pow(1.0 - enterEased, 2.8);
+    } else if (exitP < 1.0) {
+      scale = 1.0 - 0.08 * (1.0 - exitEased);
+    }
+  } else {
+    // 'fadeBlur', 'shimmer', 'typewriter', 'wordStagger', 'glitch'
+    if (enterP < 1.0) {
+      scale = 0.97 + 0.03 * enterEased;
+    } else if (exitP < 1.0) {
+      scale = 1.0 + 0.02 * (1.0 - exitEased);
+    }
+  }
+
+  let titlePx = 54;
+  switch (item.titleSize) {
+    case 'sm': titlePx = 28; break;
+    case 'md': titlePx = 40; break;
+    case 'hero': titlePx = 72; break;
+    case 'lg':
+    default:
+      titlePx = 54; break;
+  }
+  const titleFontSize = Math.round(titlePx * baseScale);
+  const subtitleFontSize = Math.max(14, Math.round(titleFontSize * 0.45));
+  const badgeFontSize = Math.max(12, Math.round(titleFontSize * 0.32));
+
+  const fontStack = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", Roboto, sans-serif';
+  const titleFont = `700 ${titleFontSize}px ${fontStack}`;
+  const subtitleFont = `500 ${subtitleFontSize}px ${fontStack}`;
+  const badgeFont = `600 ${badgeFontSize}px ${fontStack}`;
+
+  ctx.save();
+  ctx.font = titleFont;
+  const maxTitleW = outW * 0.78;
+
+  // Typewriter handling
+  let displayTitleText = rawTitle;
+  let typewriterCaret = false;
+  let subAnimAlpha = 1.0;
+
+  if (anim === 'typewriter') {
+    const typeDur = Math.min(1200, dur * 0.55);
+    const typeP = Math.min(1.0, Math.max(0, elapsed / typeDur));
+    const typeChars = Math.floor(typeP * rawTitle.length);
+    displayTitleText = rawTitle.slice(0, typeChars);
+    typewriterCaret = typeP < 1.0 || (Math.floor(elapsed / 380) % 2 === 0 && exitP === 1.0);
+    subAnimAlpha = Math.max(0, Math.min(1, (typeP - 0.7) / 0.3));
+  }
+
+  let titleLines = wrapText(ctx, displayTitleText, maxTitleW);
+  if (typewriterCaret && titleLines.length) {
+    titleLines[titleLines.length - 1] += ' ▏';
+  }
+
+  ctx.font = subtitleFont;
+  const maxSubtitleW = outW * 0.72;
+  const subtitleLines = wrapText(ctx, subtitleText, maxSubtitleW);
+
+  const titleLineH = titleFontSize * 1.25;
+  const subtitleLineH = subtitleFontSize * 1.35;
+
+  const badgePadX = Math.round(badgeFontSize * 0.85);
+  const badgePadY = Math.round(badgeFontSize * 0.35);
+  const badgeH = badgeText ? (badgeFontSize + badgePadY * 2) : 0;
+  let badgeW = 0;
+  if (badgeText) {
+    ctx.font = badgeFont;
+    badgeW = ctx.measureText(badgeText).width + badgePadX * 2;
+  }
+
+  const gapBadgeToTitle = badgeText && titleLines.length ? 18 * baseScale : 0;
+  const gapTitleToSub = titleLines.length && subtitleLines.length ? 16 * baseScale : 0;
+
+  const totalTitleH = titleLines.length * titleLineH;
+  const totalSubtitleH = subtitleLines.length * subtitleLineH;
+  const totalStackH = badgeH + gapBadgeToTitle + totalTitleH + gapTitleToSub + totalSubtitleH;
+
+  // Full raw title lines for bounding box calculation so layout doesn't jump during typing
+  ctx.font = titleFont;
+  const fullTitleLines = wrapText(ctx, rawTitle, maxTitleW);
+  let maxBlockW = badgeW;
+  for (const l of fullTitleLines) {
+    maxBlockW = Math.max(maxBlockW, ctx.measureText(l).width);
+  }
+  ctx.font = subtitleFont;
+  for (const l of subtitleLines) {
+    maxBlockW = Math.max(maxBlockW, ctx.measureText(l).width);
+  }
+
+  const align = item.titleAlign ?? 'center';
+  const posX = item.posX ?? 0.5;
+  const defaultPosY = align === 'bottom' ? 0.8 : 0.5;
+  const posY = item.posY ?? defaultPosY;
+  const cx = posX * outW;
+  const cy = posY * outH + translateY;
+
+  // Backdrops
+  if (item.titleBackdrop === 'dimVideo') {
+    ctx.save();
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.45 * presence})`;
+    ctx.fillRect(0, 0, outW, outH);
+    ctx.restore();
+  } else if (item.titleBackdrop === 'auraGlow') {
+    const glowCol = item.titleGlowColor || '#6366f1';
+    const glowRadius = Math.max(maxBlockW * 0.75, totalStackH * 1.3, 300 * baseScale);
+    const glowGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowRadius);
+    glowGrad.addColorStop(0, hexToRgba(glowCol, 0.48 * presence));
+    glowGrad.addColorStop(0.35, hexToRgba(glowCol, 0.26 * presence));
+    glowGrad.addColorStop(0.65, hexToRgba(glowCol, 0.08 * presence));
+    glowGrad.addColorStop(1, hexToRgba(glowCol, 0.0));
+    ctx.save();
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(cx - glowRadius, cy - glowRadius, glowRadius * 2, glowRadius * 2);
+    ctx.restore();
+  } else if (item.titleBackdrop === 'spotlightPlate') {
+    const spotRadius = Math.max(maxBlockW * 0.85, 360 * baseScale);
+    const spotGrad = ctx.createRadialGradient(cx, cy - 60 * baseScale, 10, cx, cy, spotRadius);
+    spotGrad.addColorStop(0, `rgba(255, 255, 255, ${0.20 * presence})`);
+    spotGrad.addColorStop(0.35, `rgba(180, 210, 255, ${0.10 * presence})`);
+    spotGrad.addColorStop(0.75, `rgba(15, 20, 35, ${0.03 * presence})`);
+    spotGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.save();
+    ctx.fillStyle = spotGrad;
+    ctx.fillRect(0, 0, outW, outH);
+    ctx.restore();
+  } else if (item.titleBackdrop === 'overlay') {
+    const cardPadX = 40 * baseScale;
+    const cardPadY = 32 * baseScale;
+    const cardW = maxBlockW + cardPadX * 2;
+    const cardH = totalStackH + cardPadY * 2;
+    const cardX = cx - cardW / 2;
+    const cardY = cy - cardH / 2;
+
+    ctx.save();
+    ctx.globalAlpha = presence;
+    ctx.fillStyle = 'rgba(12, 14, 22, 0.82)';
+    roundedRectPath(ctx, cardX, cardY, cardW, cardH, 22 * baseScale);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.lineWidth = 1.5 * baseScale;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.globalAlpha *= presence;
+
+  if (scale !== 1.0) {
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+    ctx.translate(-cx, -cy);
+  }
+
+  let curY = cy - totalStackH / 2;
+
+  // Badge pill
+  if (badgeText) {
+    const badgeX = cx - badgeW / 2;
+    const badgeY = curY;
+    const badgeR = badgeH / 2;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    roundedRectPath(ctx, badgeX, badgeY, badgeW, badgeH, badgeR);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = badgeFont;
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + badgeH / 2 + 1);
+    ctx.restore();
+
+    curY += badgeH + gapBadgeToTitle;
+  }
+
+  // Headline lines
+  if (titleLines.length) {
+    ctx.save();
+    ctx.font = titleFont;
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+    ctx.shadowBlur = 16 * baseScale;
+    ctx.shadowOffsetY = 4 * baseScale;
+
+    const fillStyle = createHeadlineFill(
+      ctx,
+      item,
+      cx - maxBlockW / 2,
+      curY,
+      cx + maxBlockW / 2,
+      curY + totalTitleH,
+      elapsed,
+      anim
+    );
+    ctx.fillStyle = fillStyle;
+
+    if (anim === 'glitch') {
+      const decodeDur = Math.min(650, dur * 0.4);
+      const decodeP = Math.min(1.0, Math.max(0, elapsed / decodeDur));
+      const GLYPHS = '01#_<>*/+!~%&$[]';
+
+      for (let i = 0; i < titleLines.length; i++) {
+        const line = titleLines[i];
+        let decoded = '';
+        const resolved = Math.floor(decodeP * line.length);
+        for (let k = 0; k < line.length; k++) {
+          if (k <= resolved) {
+            decoded += line[k];
+          } else if (k <= resolved + 3) {
+            decoded += GLYPHS[(k + Math.floor(elapsed / 50)) % GLYPHS.length];
+          } else {
+            decoded += ' ';
+          }
+        }
+        const ly = curY + titleLineH * (i + 0.5);
+        ctx.textAlign = 'center';
+        ctx.fillText(decoded, cx, ly);
+      }
+    } else if (anim === 'wordStagger') {
+      // Kinetic word-by-word reveal
+      const allWords = rawTitle.split(/\s+/).filter(Boolean);
+      let globalWordIdx = 0;
+      for (let i = 0; i < titleLines.length; i++) {
+        const lineWords = titleLines[i].split(/\s+/).filter(Boolean);
+        const ly = curY + titleLineH * (i + 0.5);
+        const spaceW = ctx.measureText(' ').width;
+        const wordWidths = lineWords.map((w) => ctx.measureText(w).width);
+        const totalLineW = wordWidths.reduce((a, b) => a + b, 0) + Math.max(0, lineWords.length - 1) * spaceW;
+        let wordX = cx - totalLineW / 2;
+
+        for (let w = 0; w < lineWords.length; w++) {
+          const wText = lineWords[w];
+          const wWidth = wordWidths[w];
+          const wordDelay = (globalWordIdx / Math.max(1, allWords.length)) * 0.5;
+          const wordP = Math.max(0, Math.min(1, (enterP - wordDelay) / (1.0 - wordDelay + 0.001)));
+          const wordEased = easeOutCubic(wordP);
+          const wordY = ly + (1.0 - wordEased) * (24 * baseScale);
+
+          ctx.save();
+          ctx.globalAlpha *= wordEased;
+          ctx.textAlign = 'left';
+          ctx.fillText(wText, wordX, wordY);
+          ctx.restore();
+
+          wordX += wWidth + spaceW;
+          globalWordIdx++;
+        }
+      }
+    } else {
+      ctx.textAlign = 'center';
+      for (let i = 0; i < titleLines.length; i++) {
+        const l = titleLines[i];
+        const ly = curY + titleLineH * (i + 0.5);
+        ctx.fillText(l, cx, ly);
+      }
+    }
+    ctx.restore();
+
+    curY += totalTitleH + gapTitleToSub;
+  }
+
+  // Subtitle lines
+  if (subtitleLines.length) {
+    ctx.save();
+    ctx.font = subtitleFont;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.82)';
+    ctx.globalAlpha *= subAnimAlpha;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = 10 * baseScale;
+    ctx.shadowOffsetY = 3 * baseScale;
+
+    for (let i = 0; i < subtitleLines.length; i++) {
+      const l = subtitleLines[i];
+      const ly = curY + subtitleLineH * (i + 0.5);
+      ctx.fillText(l, cx, ly);
+    }
+    ctx.restore();
+  }
 
   ctx.restore();
 }

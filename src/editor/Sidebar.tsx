@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight, Camera, Crosshair, LayoutTemplate, Palette, MousePointer2, Music, Play, Pause, Scissors, ExternalLink, Copy, Check, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight, Camera, Crosshair, LayoutTemplate, Palette, MousePointer2, Music, Play, Pause, Scissors, ExternalLink, Copy, Check, Heading, type LucideIcon } from 'lucide-react';
 import { BORDER_IDS, BORDER_LABELS, BORDER_COLORS, BORDER_DEFAULTS, type BorderId } from './borders';
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem, type CursorStyle } from './store';
 import { runExport, cancelExport, saveStillNow, copyImageToClipboardNow } from './export';
 import { SCENE_GROUPS, DEFAULT_SCENE_SETTINGS, sceneInstances } from './scenes';
-import { MESH_PRESETS, meshPreset, renderMeshBackground, FIELD_PRESETS, FIELD_VARIANTS, FIELD_VARIANT_LABELS, fieldStyleOf, renderFieldBackground, bgClockMs, type FieldVariant } from './shaders';
+import { MESH_PRESETS, meshPreset, renderMeshBackground, FIELD_PRESETS, FIELD_VARIANTS, FIELD_VARIANT_LABELS, fieldStyleOf, renderFieldBackground, bgClockMs, type FieldVariant, SHADER_IDS, SHADER_LABELS, SHADER_FALLBACK, renderShaderBackground, type ShaderId } from './shaders';
 import { CURSOR_GLYPHS, CURSOR_STYLE_IDS } from './cursorGlyphs';
 import type { SceneInstance } from './card3d';
 import { SupportDialog, shouldPromptAfterExport } from './SupportDialog';
@@ -27,7 +27,8 @@ export function Sidebar() {
     selectedItem.kind === 'spotlight' ||
     selectedItem.kind === 'blur' ||
     selectedItem.kind === 'rotation' ||
-    selectedItem.kind === 'scene'
+    selectedItem.kind === 'scene' ||
+    selectedItem.kind === 'titleCard'
   );
 
   // One panel at a time behind an icon rail, instead of every section stacked
@@ -236,6 +237,10 @@ function SelectionSection() {
     );
   }
 
+  if (item.kind === 'titleCard') {
+    return <TitleCardEditor item={item} />;
+  }
+
   if (item.kind === 'annotation') {
     return <AnnotationEditor item={item} />;
   }
@@ -356,6 +361,384 @@ const ANNOTATION_BG_PRESETS: { key: string; label: string; value: string | null 
   { key: 'side.bgWarning', label: 'Warning', value: 'rgba(234,88,12,0.85)' },
   { key: 'side.bgNone', label: 'None', value: null }
 ];
+
+const TITLE_CARD_PRESETS = [
+  {
+    name: 'Apple Keynote',
+    icon: '🍏',
+    title: 'Introducing Reframe',
+    sub: 'The ultimate demo recorder on desktop',
+    badge: ' ONE MORE THING',
+    anim: 'punchIn' as const,
+    backdrop: 'hideVideo' as const,
+    pauseVideo: true,
+    grad: 'silver' as const,
+    size: 'hero' as const
+  },
+  {
+    name: 'Supabase Launch',
+    icon: '⚡',
+    title: '100x Faster Exports',
+    sub: 'Hardware-accelerated rendering pipeline',
+    badge: '⚡ LAUNCH WEEK',
+    anim: 'typewriter' as const,
+    backdrop: 'auraGlow' as const,
+    pauseVideo: false,
+    glow: '#3ecf8e',
+    grad: 'aurora' as const,
+    size: 'lg' as const
+  },
+  {
+    name: 'Linear Craft',
+    icon: '🚀',
+    title: 'Engineered for Velocity',
+    sub: 'Built with craft, designed for focus',
+    badge: 'v2.0 UPDATE',
+    anim: 'wordStagger' as const,
+    backdrop: 'overlay' as const,
+    pauseVideo: false,
+    grad: 'none' as const,
+    size: 'lg' as const
+  },
+  {
+    name: 'CleanShot Drop',
+    icon: '📸',
+    title: 'Smart Auto-Zooms',
+    sub: 'Follows cursor movements with zero editing',
+    badge: '⇧ ⌘ 2',
+    anim: 'shimmer' as const,
+    backdrop: 'hideVideo' as const,
+    pauseVideo: true,
+    grad: 'ocean' as const,
+    size: 'lg' as const
+  },
+  {
+    name: 'Raycast AI',
+    icon: '🪄',
+    title: 'Supercharge Your Flow',
+    sub: 'Press ⌥ Space to summon anything',
+    badge: '⌥ SPACE',
+    anim: 'glitch' as const,
+    backdrop: 'auraGlow' as const,
+    pauseVideo: false,
+    glow: '#ff6363',
+    grad: 'sunset' as const,
+    size: 'lg' as const
+  },
+  {
+    name: 'SaaS Teaser',
+    icon: '🔥',
+    title: 'Ship 10x Faster',
+    sub: 'Turn raw screen captures into viral product videos',
+    badge: '🔥 WAITLIST OPEN',
+    anim: 'scalePop' as const,
+    backdrop: 'auraGlow' as const,
+    pauseVideo: false,
+    glow: '#8b5cf6',
+    grad: 'purple' as const,
+    size: 'lg' as const
+  },
+  {
+    name: 'Pro Tip',
+    icon: '💡',
+    title: 'Hold Option to Zoom',
+    sub: 'Instant focal point anywhere on your timeline',
+    badge: '💡 PRO TIP',
+    anim: 'slideUp' as const,
+    backdrop: 'dimVideo' as const,
+    pauseVideo: false,
+    grad: 'none' as const,
+    size: 'md' as const
+  }
+];
+
+const BADGE_PRESETS = ['⇧ ⌘ F', '⌘ K', 'SPACE', 'NEW', 'PRO', 'TIP'];
+const AURA_GLOW_COLORS = ['#6366f1', '#3ecf8e', '#06b6d4', '#ec4899', '#f97316', '#a855f7', '#3b82f6', '#ffffff'];
+
+function TitleCardEditor({ item }: { item: LaneItem }) {
+  const t = useT();
+  const updateItem = useEditor((s) => s.updateItem);
+  const removeItem = useEditor((s) => s.removeItem);
+  const selectItem = useEditor((s) => s.selectItem);
+
+  const title = item.title ?? '';
+  const subtitle = item.subtitle ?? '';
+  const badge = item.badge ?? '';
+  const backdrop = item.titleBackdrop ?? 'hideVideo';
+  const anim = item.titleAnim ?? 'fadeBlur';
+  const size = item.titleSize ?? 'lg';
+  const align = item.titleAlign ?? 'center';
+  const grad = item.titleGradient ?? 'none';
+  const glow = item.titleGlowColor ?? '#6366f1';
+
+  const set = (patch: Partial<LaneItem>) => updateItem(item.id, patch);
+
+  return (
+    <div className="space-y-3.5">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted)]">
+          <Heading size={12} className="text-indigo-400" /> {t('tl.titleCard')}
+        </span>
+        <span className="rounded bg-indigo-500/15 px-1.5 py-0.5 font-mono text-[11px] text-indigo-300">
+          {((item.endMs - item.startMs) / 1000).toFixed(1)}s
+        </span>
+      </div>
+
+      {/* Product Demo Presets */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <Label>{t('side.titleCard.presets')}</Label>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {TITLE_CARD_PRESETS.map((p) => (
+            <button
+              key={p.name}
+              onClick={() =>
+                set({
+                  title: p.title,
+                  subtitle: p.sub,
+                  badge: p.badge,
+                  titleAnim: p.anim,
+                  titleBackdrop: p.backdrop,
+                  pauseVideo: p.pauseVideo,
+                  titleGradient: p.grad,
+                  titleGlowColor: (p as any).glow ?? '#6366f1',
+                  titleSize: p.size
+                })
+              }
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-1.5 text-left transition hover:border-[var(--accent)] hover:bg-[var(--panel-3)]"
+            >
+              <span className="text-sm shrink-0">{p.icon}</span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[11px] font-medium text-[var(--text)]">{p.name}</div>
+                <div className="truncate text-[9px] text-[var(--faint)]">{p.badge}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Headline input */}
+      <div>
+        <Label>{t('side.titleCard.headline')}</Label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => set({ title: e.target.value })}
+          placeholder="e.g. Add smart zooms"
+          className="w-full rounded border border-[var(--line)] bg-[var(--field)] px-2 py-1.5 text-sm font-semibold text-[var(--text)] placeholder:text-[var(--faint)] focus:border-[var(--accent)] focus:outline-none"
+        />
+      </div>
+
+      {/* Subheadline input */}
+      <div>
+        <Label>{t('side.titleCard.subtitle')}</Label>
+        <input
+          type="text"
+          value={subtitle}
+          onChange={(e) => set({ subtitle: e.target.value })}
+          placeholder="e.g. That follow your cursor"
+          className="w-full rounded border border-[var(--line)] bg-[var(--field)] px-2 py-1.5 text-xs text-[var(--text)] placeholder:text-[var(--faint)] focus:border-[var(--accent)] focus:outline-none"
+        />
+      </div>
+
+      {/* Badge / Key combo pill */}
+      <div>
+        <div className="flex items-center justify-between">
+          <Label>{t('side.titleCard.badge')}</Label>
+          <div className="flex items-center gap-1">
+            {BADGE_PRESETS.map((bp) => (
+              <button
+                key={bp}
+                onClick={() => set({ badge: bp })}
+                className="rounded bg-[var(--panel-2)] px-1.5 py-0.5 text-[9px] font-mono text-[var(--muted)] hover:text-[var(--text)]"
+              >
+                {bp}
+              </button>
+            ))}
+          </div>
+        </div>
+        <input
+          type="text"
+          value={badge}
+          onChange={(e) => set({ badge: e.target.value })}
+          placeholder="e.g. ⇧ ⌘ F or NEW (optional)"
+          className="w-full rounded border border-[var(--line)] bg-[var(--field)] px-2 py-1 text-xs font-mono text-[var(--text)] placeholder:text-[var(--faint)] focus:border-[var(--accent)] focus:outline-none"
+        />
+      </div>
+
+      {/* Motion Animation preset */}
+      <div>
+        <Label>{t('side.titleCard.animation')}</Label>
+        <div className="grid grid-cols-4 gap-1 mt-1">
+          {[
+            { id: 'fadeBlur', label: 'Fade & Blur' },
+            { id: 'wordStagger', label: 'Kinetic' },
+            { id: 'typewriter', label: 'Typewriter' },
+            { id: 'shimmer', label: 'Shimmer' },
+            { id: 'punchIn', label: 'Punch In' },
+            { id: 'scalePop', label: 'Scale Pop' },
+            { id: 'slideUp', label: 'Slide Up' },
+            { id: 'glitch', label: 'Decode' }
+          ].map((a) => (
+            <button
+              key={a.id}
+              onClick={() => set({ titleAnim: a.id as any })}
+              className={
+                'h-7 rounded-[5px] px-1 text-[10px] font-medium leading-none truncate transition-colors ' +
+                (anim === a.id
+                  ? 'bg-[var(--accent)] text-[var(--accent-fg)] shadow-sm'
+                  : 'glass glass-hover text-[var(--muted)]')
+              }
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Backdrop mode */}
+      <div>
+        <div className="flex items-center justify-between">
+          <Label>{t('side.titleCard.backdrop')}</Label>
+          <span className="text-[10px] text-[var(--faint)]">
+            {backdrop === 'hideVideo' ? 'Separate screen' : 'Video overlay'}
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-1 mt-1">
+          {[
+            { id: 'hideVideo', label: 'Separate Screen' },
+            { id: 'overlay', label: 'Bento Glass' },
+            { id: 'auraGlow', label: 'Aura Halo' },
+            { id: 'dimVideo', label: 'Dim Video' },
+            { id: 'blurVideo', label: 'Blur Video' },
+            { id: 'spotlightPlate', label: 'Spotlight' }
+          ].map((mode) => (
+            <button
+              key={mode.id}
+              onClick={() =>
+                set({
+                  titleBackdrop: mode.id as any,
+                  pauseVideo: mode.id === 'hideVideo'
+                })
+              }
+              className={
+                'h-7 rounded-[5px] px-1 text-[10px] font-medium leading-none truncate transition-colors ' +
+                (backdrop === mode.id
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'glass glass-hover text-[var(--muted)]')
+              }
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Aura Halo Glow Color Picker */}
+        {backdrop === 'auraGlow' && (
+          <div className="mt-2 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] text-[var(--muted)]">{t('side.titleCard.glowColor')}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {AURA_GLOW_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => set({ titleGlowColor: c })}
+                  className={
+                    'h-5 w-5 rounded-full transition-transform ' +
+                    (glow === c ? 'scale-125 ring-2 ring-white' : 'hover:scale-110 opacity-80')
+                  }
+                  style={{ backgroundColor: c }}
+                  title={c}
+                />
+              ))}
+              <input
+                type="color"
+                value={glow}
+                onChange={(e) => set({ titleGlowColor: e.target.value })}
+                className="h-5 w-5 cursor-pointer rounded-full border-0 bg-transparent p-0"
+                title="Custom glow"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Text Gradient Style */}
+      <div>
+        <Label>{t('side.titleCard.textGradient')}</Label>
+        <div className="grid grid-cols-6 gap-1 mt-1">
+          {[
+            { id: 'none', label: 'Solid', bg: 'bg-white' },
+            { id: 'sunset', label: 'Sunset', bg: 'bg-gradient-to-r from-rose-500 to-amber-400' },
+            { id: 'ocean', label: 'Ocean', bg: 'bg-gradient-to-r from-cyan-400 to-blue-600' },
+            { id: 'aurora', label: 'Aurora', bg: 'bg-gradient-to-r from-emerald-400 to-teal-500' },
+            { id: 'purple', label: 'Purple', bg: 'bg-gradient-to-r from-pink-400 to-indigo-500' },
+            { id: 'silver', label: 'Titanium', bg: 'bg-gradient-to-r from-slate-100 to-slate-400' }
+          ].map((g) => (
+            <button
+              key={g.id}
+              onClick={() => set({ titleGradient: g.id as any })}
+              className={
+                'flex flex-col items-center gap-1 rounded-md border p-1 text-[9px] transition ' +
+                (grad === g.id
+                  ? 'border-[var(--accent)] bg-[var(--accent-dim)] font-medium text-[var(--accent)]'
+                  : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--muted)] hover:text-[var(--text)]')
+              }
+            >
+              <span className={`h-2.5 w-full rounded-sm ${g.bg}`} />
+              <span className="truncate">{g.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Typography scale & position */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label>{t('side.titleCard.size')}</Label>
+          <select
+            value={size}
+            onChange={(e) => set({ titleSize: e.target.value as any })}
+            className="h-7 w-full rounded border border-[var(--line)] bg-[var(--panel-2)] px-1.5 text-xs text-[var(--text)] focus:outline-none"
+          >
+            <option value="hero">Hero (72px)</option>
+            <option value="lg">Large (54px)</option>
+            <option value="md">Medium (40px)</option>
+            <option value="sm">Small (28px)</option>
+          </select>
+        </div>
+        <div>
+          <Label>{t('side.titleCard.position')}</Label>
+          <select
+            value={align}
+            onChange={(e) => set({ titleAlign: e.target.value as any })}
+            className="h-7 w-full rounded border border-[var(--line)] bg-[var(--panel-2)] px-1.5 text-xs text-[var(--text)] focus:outline-none"
+          >
+            <option value="center">Center Screen</option>
+            <option value="bottom">Lower Third</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="pt-1 border-t border-[var(--line)]">
+        <ToggleRow
+          label={t('side.titleCard.pauseVideo')}
+          checked={item.pauseVideo !== false}
+          onChange={(v) => set({ pauseVideo: v })}
+        />
+        <p className="text-[10px] text-[var(--muted)] leading-tight -mt-0.5 mb-2">
+          {item.pauseVideo !== false
+            ? 'Pauses video at insertion point; resumes from where it was done.'
+            : 'Video continues playing underneath while screen shows.'}
+        </p>
+      </div>
+
+      <DeleteBtn onClick={() => { removeItem(item.id); selectItem(null); }} label={t('side.titleCard.delete')} />
+    </div>
+  );
+}
 
 function AnnotationEditor({ item }: { item: LaneItem }) {
   const t = useT();
@@ -2296,77 +2679,141 @@ function ShapeBtn({
   );
 }
 
-// Shaders: a variant filter, a grid of starting points, and the colour controls.
-//
-// Presets alone can't cover this. The source site has ~290 Grain shaders and
-// they differ almost entirely in HUE — shipping three of them and calling it
-// done is the wrong shape of answer. A preset here seeds the sliders; the
-// sliders are what actually give you the other 287.
+function ShaderThumb({ id }: { id: ShaderId }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  const [hover, setHover] = useState(false);
+  useEffect(() => {
+    const cv = ref.current;
+    const ctx = cv?.getContext('2d');
+    if (!cv || !ctx) return;
+    const draw = (ms: number) => {
+      const src = renderShaderBackground(id, ms, cv.width, cv.height);
+      if (src) ctx.drawImage(src as CanvasImageSource, 0, 0, cv.width, cv.height);
+      else { ctx.fillStyle = SHADER_FALLBACK[id] || '#08070d'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    };
+    draw(bgClockMs());
+    if (!hover) return;
+    const timer = window.setInterval(() => draw(bgClockMs()), 100);
+    return () => window.clearInterval(timer);
+  }, [id, hover]);
+  return (
+    <canvas ref={ref} width={96} height={60} className="block h-auto w-full"
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} />
+  );
+}
+
+// Shaders: dynamic WebGL animated shaders or parametric generative field.
 function FieldPanel() {
   const t = useT();
   const background = useEditor((s) => s.background);
   const setBackground = useEditor((s) => s.setBackground);
   const fieldStyle = useEditor((s) => s.fieldStyle);
   const setFieldStyle = useEditor((s) => s.setFieldStyle);
+  const [panelMode, setPanelMode] = useState<'shaders' | 'field'>(background.mode === 'shader' ? 'shaders' : 'shaders');
   const [variant, setVariant] = useState<FieldVariant>(fieldStyle.variant);
 
   const shown = FIELD_PRESETS.filter((f) => f.variant === variant);
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-1">
-        {FIELD_VARIANTS.map((v) => (
-          <button
-            key={v}
-            onClick={() => {
-              setVariant(v);
-              setFieldStyle({ variant: v });
-            }}
-            className={
-              'rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ' +
-              (variant === v
-                ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)]'
-                : 'text-[var(--muted)] hover:text-[var(--text)]')
-            }
-          >
-            {FIELD_VARIANT_LABELS[v]}
-          </button>
-        ))}
+      {/* Sub-tabs: Dynamic Shaders vs Parametric Field */}
+      <div className="grid grid-cols-2 gap-1 mb-2">
+        <ChipBtn active={panelMode === 'shaders'} onClick={() => {
+          setPanelMode('shaders');
+          if (background.mode !== 'shader') setBackground({ mode: 'shader', value: 'cyber' });
+        }}>
+          Dynamic Shaders
+        </ChipBtn>
+        <ChipBtn active={panelMode === 'field'} onClick={() => {
+          setPanelMode('field');
+          if (background.mode !== 'field') setBackground({ mode: 'field', value: FIELD_PRESETS[0].id });
+        }}>
+          Parametric Field
+        </ChipBtn>
       </div>
 
-      <div className="grid grid-cols-3 gap-1.5">
-        {shown.map((f, i) => (
-          <button
-            key={f.id}
-            aria-label={`${FIELD_VARIANT_LABELS[f.variant]} ${i + 1}`}
-            title={`${FIELD_VARIANT_LABELS[f.variant]} ${i + 1}`}
-            onClick={() => {
-              setBackground({ mode: 'field', value: f.id });
-              setFieldStyle(fieldStyleOf(f.id));
-            }}
-            className={
-              'overflow-hidden rounded transition ' +
-              (background.value === f.id
-                ? 'ring-2 ring-[var(--accent)]'
-                : 'ring-1 ring-[var(--line)] hover:ring-white/30')
-            }
-          >
-            <FieldThumb id={f.id} />
-          </button>
-        ))}
-      </div>
+      {panelMode === 'shaders' ? (
+        <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-1.5">
+            {SHADER_IDS.map((id) => (
+              <button
+                key={id}
+                aria-label={SHADER_LABELS[id]}
+                title={SHADER_LABELS[id]}
+                onClick={() => setBackground({ mode: 'shader', value: id })}
+                className={
+                  'group flex flex-col items-center overflow-hidden rounded p-0.5 transition ' +
+                  (background.mode === 'shader' && background.value === id
+                    ? 'ring-2 ring-[var(--accent)]'
+                    : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+                }
+              >
+                <ShaderThumb id={id} />
+                <span className="mt-1 block w-full truncate text-center text-[9px] text-[var(--muted)] group-hover:text-[var(--text)]">
+                  {SHADER_LABELS[id]}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-[var(--faint)]">Hover over any shader to preview its 60fps animation.</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-1">
+            {FIELD_VARIANTS.map((v) => (
+              <button
+                key={v}
+                onClick={() => {
+                  setVariant(v);
+                  setFieldStyle({ variant: v });
+                }}
+                className={
+                  'rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ' +
+                  (variant === v
+                    ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)]'
+                    : 'text-[var(--muted)] hover:text-[var(--text)]')
+                }
+              >
+                {FIELD_VARIANT_LABELS[v]}
+              </button>
+            ))}
+          </div>
 
-      <div className="space-y-1.5 pt-1">
-        <RangeRow label={t('side.fieldHue')} value={Math.round(fieldStyle.hue * 360)} min={0} max={360} step={1}
-          onChange={(v) => setFieldStyle({ hue: v / 360 })} fmt={(v) => `${v}°`} />
-        <RangeRow label={t('side.fieldSpread')} value={Math.round(fieldStyle.hueSpread * 360)} min={0} max={90} step={1}
-          onChange={(v) => setFieldStyle({ hueSpread: v / 360 })} fmt={(v) => `${v}°`} />
-        <RangeRow label={t('side.fieldChroma')} value={Math.round(fieldStyle.chroma * 500)} min={0} max={100} step={1}
-          onChange={(v) => setFieldStyle({ chroma: v / 500 })} fmt={(v) => `${v}%`} />
-        <RangeRow label={t('side.fieldLightness')} value={Math.round(fieldStyle.lightness * 100)} min={25} max={70} step={1}
-          onChange={(v) => setFieldStyle({ lightness: v / 100 })} fmt={(v) => `${v}%`} />
-      </div>
-      <p className="text-[11px] leading-snug text-[var(--faint)]">{t('side.fieldHint')}</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {shown.map((f, i) => (
+              <button
+                key={f.id}
+                aria-label={`${FIELD_VARIANT_LABELS[f.variant]} ${i + 1}`}
+                title={`${FIELD_VARIANT_LABELS[f.variant]} ${i + 1}`}
+                onClick={() => {
+                  setBackground({ mode: 'field', value: f.id });
+                  setFieldStyle(fieldStyleOf(f.id));
+                }}
+                className={
+                  'overflow-hidden rounded transition ' +
+                  (background.mode === 'field' && background.value === f.id
+                    ? 'ring-2 ring-[var(--accent)]'
+                    : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+                }
+              >
+                <FieldThumb id={f.id} />
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-1.5 pt-1">
+            <RangeRow label={t('side.fieldHue')} value={Math.round(fieldStyle.hue * 360)} min={0} max={360} step={1}
+              onChange={(v) => setFieldStyle({ hue: v / 360 })} fmt={(v) => `${v}°`} />
+            <RangeRow label={t('side.fieldSpread')} value={Math.round(fieldStyle.hueSpread * 360)} min={0} max={90} step={1}
+              onChange={(v) => setFieldStyle({ hueSpread: v / 360 })} fmt={(v) => `${v}°`} />
+            <RangeRow label={t('side.fieldChroma')} value={Math.round(fieldStyle.chroma * 500)} min={0} max={100} step={1}
+              onChange={(v) => setFieldStyle({ chroma: v / 500 })} fmt={(v) => `${v}%`} />
+            <RangeRow label={t('side.fieldLightness')} value={Math.round(fieldStyle.lightness * 100)} min={25} max={70} step={1}
+              onChange={(v) => setFieldStyle({ lightness: v / 100 })} fmt={(v) => `${v}%`} />
+          </div>
+          <p className="text-[11px] leading-snug text-[var(--faint)]">{t('side.fieldHint')}</p>
+        </>
+      )}
     </div>
   );
 }

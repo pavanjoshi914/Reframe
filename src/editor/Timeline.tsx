@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Minus, ZoomIn, Scissors, MessageSquare, Gauge, Trash2, Maximize2, Sparkles, Search, Flashlight, EyeOff, type LucideIcon, Rotate3d, Film } from 'lucide-react';
+import { Plus, Minus, ZoomIn, Scissors, MessageSquare, Gauge, Trash2, Maximize2, Sparkles, Search, Flashlight, EyeOff, type LucideIcon, Rotate3d, Film, Heading } from 'lucide-react';
 import { useEditor, type LaneItem, type LaneKind } from './store';
 import { isTextEntry } from './textEntry';
 import { useT } from '../i18n';
 
 const LANES: { kind: LaneKind; label: string; key: string; icon: LucideIcon; color: string; chip: string }[] = [
+  { kind: 'titleCard', label: 'Scene Text', key: 'C', icon: Heading, color: 'border-indigo-400', chip: 'bg-indigo-500/30' },
+  { kind: 'scene', label: 'Animations', key: 'D', icon: Film, color: 'border-teal-400', chip: 'bg-teal-500/30' },
   { kind: 'zoom', label: 'Zoom', key: 'Z', icon: ZoomIn, color: 'border-[var(--accent)]', chip: 'bg-[var(--accent)]/30' },
   { kind: 'trim', label: 'Trim', key: 'T', icon: Scissors, color: 'border-rose-400', chip: 'bg-rose-500/30' },
   { kind: 'annotation', label: 'Annotation', key: 'A', icon: MessageSquare, color: 'border-amber-400', chip: 'bg-amber-500/30' },
@@ -12,8 +14,7 @@ const LANES: { kind: LaneKind; label: string; key: string; icon: LucideIcon; col
   { kind: 'magnify', label: 'Magnify', key: 'M', icon: Search, color: 'border-fuchsia-400', chip: 'bg-fuchsia-500/30' },
   { kind: 'spotlight', label: 'Spotlight', key: 'L', icon: Flashlight, color: 'border-violet-400', chip: 'bg-violet-500/30' },
   { kind: 'blur', label: 'Blur', key: 'B', icon: EyeOff, color: 'border-slate-300', chip: 'bg-slate-400/30' },
-  { kind: 'rotation', label: 'Rotation', key: 'R', icon: Rotate3d, color: 'border-orange-400', chip: 'bg-orange-500/30' },
-  { kind: 'scene', label: 'Animations', key: 'D', icon: Film, color: 'border-teal-400', chip: 'bg-teal-500/30' }
+  { kind: 'rotation', label: 'Rotation', key: 'R', icon: Rotate3d, color: 'border-orange-400', chip: 'bg-orange-500/30' }
 ];
 
 const LANE_LABEL_W = 100;
@@ -104,7 +105,7 @@ export function Timeline() {
       // Let modifier combos through (Ctrl+Z undo, Ctrl+S save, …) — only bare
       // letter keys add lane items.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      const map: Record<string, LaneKind> = { z: 'zoom', t: 'trim', a: 'annotation', s: 'speed', m: 'magnify', l: 'spotlight', b: 'blur', r: 'rotation', d: 'scene' };
+      const map: Record<string, LaneKind> = { z: 'zoom', t: 'trim', a: 'annotation', s: 'speed', m: 'magnify', l: 'spotlight', b: 'blur', r: 'rotation', d: 'scene', c: 'titleCard' };
       const k = e.key.toLowerCase();
       // Shift+L / Shift+M apply a cursor-tracked spotlight/magnify to the WHOLE
       // video (bare L / M still drop a region on part of it).
@@ -481,7 +482,7 @@ function ItemChip({
     } else if (d.kind === 'left') {
       nextStart = Math.max(0, Math.min(d.endMs - 100, d.startMs + dxMs));
     } else {
-      nextEnd = Math.max(d.startMs + 100, Math.min(durationMs, d.endMs + dxMs));
+      nextEnd = Math.max(d.startMs + 100, item.kind === 'titleCard' ? d.endMs + dxMs : Math.min(durationMs, d.endMs + dxMs));
     }
     updateItem(item.id, { startMs: nextStart, endMs: nextEnd });
   }
@@ -493,6 +494,7 @@ function ItemChip({
   }
 
   const labelText =
+    item.kind === 'titleCard' ? `${item.pauseVideo === false ? '💬' : '🗂️'} ${item.title?.trim() || t('tl.titleCardPlaceholder')}` :
     item.kind === 'zoom' ? `${item.zoomLevel?.toFixed(1)}×` :
     item.kind === 'speed' ? `${item.speed?.toFixed(2)}×` :
     item.kind === 'magnify' ? t('tl.magnify') :
@@ -517,7 +519,7 @@ function ItemChip({
       style={{ left, width }}
       title="Drag to move; drag edges to resize; click to select"
     >
-      <div className={'truncate px-1.5 pt-1 text-[10px] tracking-wide text-[var(--text)] ' + (item.kind === 'annotation' ? 'normal-case' : 'uppercase')}>
+      <div className={'truncate px-1.5 pt-1 text-[10px] tracking-wide text-[var(--text)] ' + (item.kind === 'annotation' || item.kind === 'titleCard' ? 'normal-case' : 'uppercase')}>
         {labelText}
       </div>
       {/* resize handles */}
@@ -546,15 +548,15 @@ function SelectedItemInspector() {
 
   if (!item) return null;
 
-  // Zoom / Speed item editing lives in the right sidebar's Selection panel
+  // Zoom / Speed / Title Card item editing lives in the right sidebar's Selection panel
   // (presets, custom value, focus crosshair). This inline strip keeps just the
   // identifying summary and a delete shortcut; annotation text is edited on the
   // preview (double-click) or in the sidebar.
-  const showSidebarHint = item.kind === 'zoom' || item.kind === 'speed';
+  const showSidebarHint = item.kind === 'zoom' || item.kind === 'speed' || item.kind === 'titleCard';
 
   return (
     <div className="flex items-center gap-3 border-b border-white/5 bg-[var(--panel)] px-3 py-1.5 text-xs">
-      <span className="font-medium uppercase tracking-wide text-[var(--muted)]">{item.kind}</span>
+      <span className="font-medium uppercase tracking-wide text-[var(--muted)]">{item.kind === 'titleCard' ? t('tl.titleCard') : item.kind}</span>
       <span className="font-mono text-[var(--faint)]">
         {formatTime(item.startMs)} → {formatTime(item.endMs)}
       </span>
@@ -563,7 +565,11 @@ function SelectedItemInspector() {
         <span className="truncate text-[11px] text-[var(--faint)]">{t('tl.annotationEditHint')}</span>
       )}
 
-      {showSidebarHint && (
+      {item.kind === 'titleCard' && (
+        <span className="truncate text-[11px] text-[var(--faint)]">{t('tl.titleCardEditHint')}</span>
+      )}
+
+      {showSidebarHint && item.kind !== 'titleCard' && (
         <span className="text-[11px] text-[var(--faint)]">{t('tl.adjustHint')}</span>
       )}
 

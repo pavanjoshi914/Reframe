@@ -5,10 +5,16 @@ import type { CursorStyleId } from './cursorGlyphs';
 import type { ZoomStyle } from './export';
 import { DEFAULT_BORDER, DEFAULT_BORDER_STYLE, normalizeBorder, type BorderId, type BorderStyle } from './borders';
 import { DEFAULT_FIELD_STYLE, type FieldStyle } from './shaders';
+import { computeTotalDuration } from './timeMapping';
 import defaultWallpaperUrl from '../../assets/wallpapers/wallpaper-00.jpg';
 
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
-export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed' | 'magnify' | 'spotlight' | 'blur' | 'rotation' | 'scene';
+export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed' | 'magnify' | 'spotlight' | 'blur' | 'rotation' | 'scene' | 'titleCard';
+export type TitleBackdrop = 'hideVideo' | 'blurVideo' | 'dimVideo' | 'overlay' | 'auraGlow' | 'spotlightPlate';
+export type TitleAnim = 'fadeBlur' | 'slideUp' | 'scalePop' | 'typewriter' | 'wordStagger' | 'shimmer' | 'punchIn' | 'glitch';
+export type TitleSize = 'sm' | 'md' | 'lg' | 'hero';
+export type TitleAlign = 'center' | 'bottom';
+export type TitleGradient = 'none' | 'sunset' | 'ocean' | 'aurora' | 'purple' | 'silver';
 // Redaction style for a blur region.
 export type BlurStyle = 'blur' | 'pixelate';
 // Synthetic-cursor pointer styles — arrows, a pointing hand, a text I-beam,
@@ -125,6 +131,17 @@ export type LaneItem = {
   blurStrength?: number; // 0..1
   blurFeather?: number;  // 0..1 — how far the region's edge fades
   progressive?: boolean; // feathered depth-of-field instead of a hard redaction
+  // Scene Title Card (CleanShot promo style full-screen / lower-third interstitials)
+  title?: string;
+  subtitle?: string;
+  badge?: string;
+  titleBackdrop?: TitleBackdrop;
+  titleAnim?: TitleAnim;
+  titleSize?: TitleSize;
+  titleAlign?: TitleAlign;
+  titleGradient?: TitleGradient;
+  titleGlowColor?: string;
+  pauseVideo?: boolean;
 } & AnnotationStyle;
 
 // Defaults applied when an annotation has no explicit value for a field.
@@ -171,6 +188,7 @@ export type EditorState = {
   imageMeta: import('@shared/ipc').ImageMeta | null;
   fileUrl: string | null;
   webcamFileUrl: string | null;
+  rawDurationMs: number;
   durationMs: number;
   currentMs: number;
   playing: boolean;
@@ -518,6 +536,7 @@ function docOf(s: EditorState): SerializedProject {
 // before the cut) since their interior is removed.
 function previewPointFor(item: { kind: LaneKind; startMs: number; endMs: number }): number {
   if (item.kind === 'trim') return item.startMs;
+  if (item.kind === 'titleCard') return Math.min(item.endMs, (item.startMs + item.endMs) / 2);
   return Math.min(item.endMs, item.startMs + 500);
 }
 
@@ -550,6 +569,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   imageMeta: null,
   fileUrl: null,
   webcamFileUrl: null,
+  rawDurationMs: 0,
   durationMs: 0,
   currentMs: 0,
   playing: false,
@@ -638,7 +658,8 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   setRecordingDuration: (durationMs) =>
     set((s) => ({
-      durationMs,
+      rawDurationMs: durationMs,
+      durationMs: computeTotalDuration(durationMs, s.items),
       recording: s.recording ? { ...s.recording, durationMs } : null
     })),
 
@@ -650,6 +671,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         s.cropRegion.y !== 0 ||
         s.cropRegion.width !== 1 ||
         s.cropRegion.height !== 1;
+      const rawDur = isSameImage && s.rawDurationMs > 0 ? s.rawDurationMs : 5000;
 
       return {
         mediaType: 'image',
@@ -657,7 +679,8 @@ export const useEditor = create<EditorState>((set, get) => ({
         recording: null,
         fileUrl: image.fileUrl,
         webcamFileUrl: null,
-        durationMs: isSameImage && s.durationMs > 0 ? s.durationMs : 5000,
+        rawDurationMs: rawDur,
+        durationMs: computeTotalDuration(rawDur, s.items),
         currentMs: 0,
         playing: false,
         videoIntrinsicSize: { width: image.width, height: image.height },
@@ -688,7 +711,8 @@ export const useEditor = create<EditorState>((set, get) => ({
         imageMeta: null,
         fileUrl,
         webcamFileUrl: webcamFileUrl ?? null,
-        durationMs: r.durationMs,
+        rawDurationMs: r.durationMs,
+        durationMs: computeTotalDuration(r.durationMs, s.items),
         // Fresh recording → fresh undo history.
         past: isSameRecording ? s.past : [],
         future: isSameRecording ? s.future : [],
@@ -853,6 +877,50 @@ export const useEditor = create<EditorState>((set, get) => ({
   addItem: (kind, atMs) => {
     const dur = Math.max(100, get().durationMs || 1000);
     const validAt = typeof atMs === 'number' && !isNaN(atMs) ? atMs : 0;
+
+    if (kind === 'titleCard') {
+      const desiredLen = 3000;
+      const targetStart = Math.max(0, validAt);
+      const targetEnd = targetStart + desiredLen;
+
+      // Ripple shift existing items at or after targetStart by desiredLen so they stay on the same video frames
+      const shiftedItems = get().items.map((it) => {
+        if (it.startMs >= targetStart) {
+          return { ...it, startMs: it.startMs + desiredLen, endMs: it.endMs + desiredLen };
+        }
+        return it;
+      });
+
+      const item: LaneItem = {
+        id: crypto.randomUUID(),
+        kind: 'titleCard',
+        startMs: targetStart,
+        endMs: targetEnd,
+        title: 'Add smart zooms',
+        subtitle: 'That follow your cursor',
+        badge: '',
+        titleBackdrop: 'hideVideo',
+        titleAnim: 'fadeBlur',
+        titleSize: 'lg',
+        titleAlign: 'center',
+        titleGradient: 'none',
+        titleGlowColor: '#6366f1',
+        pauseVideo: true
+      };
+
+      const nextItems = [...shiftedItems, item];
+      const rawDur = get().rawDurationMs || get().recording?.durationMs || dur;
+      const nextDur = computeTotalDuration(rawDur, nextItems);
+      set({
+        items: nextItems,
+        selectedItemId: item.id,
+        currentMs: previewPointFor(item),
+        playing: false,
+        durationMs: nextDur
+      });
+      return;
+    }
+
     const desiredLen = Math.min(2000, dur);
     // If the playhead is at or near the end of the video, extend backwards from
     // the end so the element gets its full desired duration instead of collapsing
@@ -879,7 +947,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     };
     // Jump the preview straight to the new item and pause, so the user sees it
     // immediately instead of having to manually seek to where they added it.
-    set((s) => ({ items: [...s.items, item], selectedItemId: item.id, currentMs: previewPointFor(item), playing: false }));
+    const nextItems = [...get().items, item];
+    const rawDur = get().rawDurationMs || get().recording?.durationMs || dur;
+    set({
+      items: nextItems,
+      selectedItemId: item.id,
+      currentMs: previewPointFor(item),
+      playing: false,
+      durationMs: computeTotalDuration(rawDur, nextItems)
+    });
   },
   addWholeVideoEffect: (kind) => {
     const dur = get().durationMs || 1000;
@@ -909,12 +985,87 @@ export const useEditor = create<EditorState>((set, get) => ({
       };
     }),
   updateItem: (id, patch) =>
-    set((s) => ({ items: s.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) })),
+    set((s) => {
+      const target = s.items.find((it) => it.id === id);
+      if (!target) return {};
+
+      const effectivePatch = { ...patch };
+      // If backdrop is changed and pauseVideo was not explicitly specified,
+      // hideVideo means separate interstitial text card (pauseVideo: true),
+      // while any overlay mode means text overlay over live video (pauseVideo: false).
+      if (target.kind === 'titleCard' && patch.titleBackdrop !== undefined && patch.pauseVideo === undefined) {
+        effectivePatch.pauseVideo = patch.titleBackdrop === 'hideVideo';
+      }
+
+      const wasPaused = target.kind === 'titleCard' && target.pauseVideo !== false;
+      const nowPaused = target.kind === 'titleCard'
+        ? (effectivePatch.pauseVideo !== undefined ? effectivePatch.pauseVideo !== false : wasPaused)
+        : false;
+
+      let nextItems = s.items.map((it) => (it.id === id ? { ...it, ...effectivePatch } : it));
+
+      if (target.kind === 'titleCard') {
+        const cardDur = Math.max(0, target.endMs - target.startMs);
+
+        if (wasPaused && !nowPaused) {
+          // Transitioned from pausing interstitial screen -> non-pausing video overlay:
+          // Un-shift subsequent items backwards by cardDur
+          nextItems = nextItems.map((it) => {
+            if (it.id !== id && it.startMs >= target.endMs) {
+              return { ...it, startMs: it.startMs - cardDur, endMs: it.endMs - cardDur };
+            }
+            return it;
+          });
+        } else if (!wasPaused && nowPaused) {
+          // Transitioned from non-pausing video overlay -> pausing interstitial screen:
+          // Shift subsequent items forward by cardDur
+          nextItems = nextItems.map((it) => {
+            if (it.id !== id && it.startMs >= target.endMs) {
+              return { ...it, startMs: it.startMs + cardDur, endMs: it.endMs + cardDur };
+            }
+            return it;
+          });
+        } else if (nowPaused) {
+          // Remained a pausing card: adjust ripple delta if endMs was resized
+          if (effectivePatch.endMs !== undefined && effectivePatch.startMs === undefined && effectivePatch.endMs !== target.endMs) {
+            const delta = effectivePatch.endMs - target.endMs;
+            nextItems = nextItems.map((it) => {
+              if (it.id !== id && it.startMs >= target.endMs) {
+                return { ...it, startMs: it.startMs + delta, endMs: it.endMs + delta };
+              }
+              return it;
+            });
+          }
+        }
+      }
+
+      const rawDur = s.rawDurationMs || s.recording?.durationMs || s.durationMs;
+      return {
+        items: nextItems,
+        durationMs: computeTotalDuration(rawDur, nextItems)
+      };
+    }),
   removeItem: (id) =>
-    set((s) => ({
-      items: s.items.filter((it) => it.id !== id),
-      selectedItemId: s.selectedItemId === id ? null : s.selectedItemId
-    })),
+    set((s) => {
+      const target = s.items.find((it) => it.id === id);
+      const remaining = s.items.filter((it) => it.id !== id);
+      let nextItems = remaining;
+      if (target && target.kind === 'titleCard' && target.pauseVideo !== false) {
+        const cardDur = Math.max(0, target.endMs - target.startMs);
+        nextItems = remaining.map((it) => {
+          if (it.startMs >= target.endMs) {
+            return { ...it, startMs: it.startMs - cardDur, endMs: it.endMs - cardDur };
+          }
+          return it;
+        });
+      }
+      const rawDur = s.rawDurationMs || s.recording?.durationMs || s.durationMs;
+      return {
+        items: nextItems,
+        selectedItemId: s.selectedItemId === id ? null : s.selectedItemId,
+        durationMs: computeTotalDuration(rawDur, nextItems)
+      };
+    }),
   selectItem: (id) => set((s) => {
     // Changing selection always leaves any on-canvas text edit.
     if (!id) return { selectedItemId: id, editingAnnotationId: null };
@@ -989,7 +1140,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       imageExportScale: data.imageExportScale ?? 2,
       mediaType: data.mediaType ?? (data.imageMeta ? 'image' : 'video'),
       imageMeta: data.imageMeta ?? null,
-      durationMs: data.durationMs ?? (data.mediaType === 'image' || data.imageMeta ? 5000 : s.durationMs),
+      rawDurationMs: data.durationMs ?? (data.mediaType === 'image' || data.imageMeta ? 5000 : s.rawDurationMs || s.recording?.durationMs || s.durationMs),
+      durationMs: computeTotalDuration(
+        data.durationMs ?? (data.mediaType === 'image' || data.imageMeta ? 5000 : s.rawDurationMs || s.recording?.durationMs || s.durationMs),
+        data.items
+      ),
       ...((data.mediaType === 'image' || (!data.mediaType && data.imageMeta)) && data.imageMeta
         ? {
             fileUrl: data.imageMeta.fileUrl,
@@ -1011,34 +1166,38 @@ export const useEditor = create<EditorState>((set, get) => ({
   // Restore a document snapshot without touching transient state (playhead,
   // selection beyond validity). Used by undo/redo and never recorded itself.
   applyDoc: (snap) =>
-    set((s) => ({
-      aspect: snap.aspect,
-      cropRegion: snap.cropRegion ?? DEFAULT_CROP_REGION,
-      background: snap.background,
-      webcam: snap.webcam,
-      layoutPreset: snap.layoutPreset,
-      polish: snap.polish,
-      showAdvanced: snap.showAdvanced,
-      effects: snap.effects,
-      border: normalizeBorder(snap.border),
-      borderStyle: snap.borderStyle ?? DEFAULT_BORDER_STYLE,
-      fieldStyle: snap.fieldStyle ?? DEFAULT_FIELD_STYLE,
-      fullBleed: snap.fullBleed ?? false,
-      zoomStyle: snap.zoomStyle ?? s.zoomStyle,
-      exportFormat: snap.exportFormat,
-      exportQuality: snap.exportQuality,
-      exportEncoder: snap.exportEncoder ?? 'builtin',
-      imageExportFormat: snap.imageExportFormat ?? s.imageExportFormat,
-      imageExportScale: snap.imageExportScale ?? s.imageExportScale,
-      mediaType: snap.mediaType ?? s.mediaType,
-      imageMeta: snap.imageMeta ?? s.imageMeta,
-      items: snap.items,
-      cursorFx: snap.cursorFx ?? s.cursorFx,
-      videoVolume: snap.videoVolume ?? s.videoVolume,
-      videoMuted: snap.videoMuted ?? s.videoMuted,
-      backgroundAudio: snap.backgroundAudio ? { ...DEFAULT_BACKGROUND_AUDIO, ...snap.backgroundAudio } : s.backgroundAudio,
-      selectedItemId: snap.items.some((it) => it.id === s.selectedItemId) ? s.selectedItemId : null
-    })),
+    set((s) => {
+      const rawDur = s.rawDurationMs || s.recording?.durationMs || s.durationMs;
+      return {
+        aspect: snap.aspect,
+        cropRegion: snap.cropRegion ?? DEFAULT_CROP_REGION,
+        background: snap.background,
+        webcam: snap.webcam,
+        layoutPreset: snap.layoutPreset,
+        polish: snap.polish,
+        showAdvanced: snap.showAdvanced,
+        effects: snap.effects,
+        border: normalizeBorder(snap.border),
+        borderStyle: snap.borderStyle ?? DEFAULT_BORDER_STYLE,
+        fieldStyle: snap.fieldStyle ?? DEFAULT_FIELD_STYLE,
+        fullBleed: snap.fullBleed ?? false,
+        zoomStyle: snap.zoomStyle ?? s.zoomStyle,
+        exportFormat: snap.exportFormat,
+        exportQuality: snap.exportQuality,
+        exportEncoder: snap.exportEncoder ?? 'builtin',
+        imageExportFormat: snap.imageExportFormat ?? s.imageExportFormat,
+        imageExportScale: snap.imageExportScale ?? s.imageExportScale,
+        mediaType: snap.mediaType ?? s.mediaType,
+        imageMeta: snap.imageMeta ?? s.imageMeta,
+        items: snap.items,
+        durationMs: computeTotalDuration(rawDur, snap.items),
+        cursorFx: snap.cursorFx ?? s.cursorFx,
+        videoVolume: snap.videoVolume ?? s.videoVolume,
+        videoMuted: snap.videoMuted ?? s.videoMuted,
+        backgroundAudio: snap.backgroundAudio ? { ...DEFAULT_BACKGROUND_AUDIO, ...snap.backgroundAudio } : s.backgroundAudio,
+        selectedItemId: snap.items.some((it) => it.id === s.selectedItemId) ? s.selectedItemId : null
+      };
+    }),
   // Push a pre-change snapshot onto the past stack (called by the debounced
   // capture subscription) and drop any redo future. Cap depth at 100.
   historyCommit: (snapshot) => set((s) => ({ past: [...s.past, snapshot].slice(-100), future: [] })),
