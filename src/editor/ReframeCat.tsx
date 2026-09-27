@@ -146,16 +146,73 @@ export function ReframeCat() {
     setMood(pick.mood);
   };
 
+  const [minimizedPos, setMinimizedPos] = useState<{ x: number; y: number }>(() => {
+    try {
+      const saved = localStorage.getItem('reframe.catMinPos');
+      if (saved) {
+        const p = JSON.parse(saved);
+        if (typeof p.x === 'number' && typeof p.y === 'number') return p;
+      }
+    } catch { /* ignore */ }
+    return { x: 18, y: 54 };
+  });
+  const isDraggingMinRef = useRef(false);
+  const dragMinStartRef = useRef({ x: 0, y: 0, startPosX: 0, startPosY: 0, hasMoved: false });
+
+  const handleMinPointerDown = (e: React.PointerEvent) => {
+    isDraggingMinRef.current = true;
+    dragMinStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      startPosX: minimizedPos.x,
+      startPosY: minimizedPos.y,
+      hasMoved: false
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+
+  const handleMinPointerMove = (e: React.PointerEvent) => {
+    if (!isDraggingMinRef.current) return;
+    const dx = e.clientX - dragMinStartRef.current.x;
+    const dy = e.clientY - dragMinStartRef.current.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      dragMinStartRef.current.hasMoved = true;
+    }
+    const newX = Math.max(10, Math.min(window.innerWidth - 120, dragMinStartRef.current.startPosX + dx));
+    const newY = Math.max(48, Math.min(window.innerHeight - 60, dragMinStartRef.current.startPosY + dy));
+    setMinimizedPos({ x: newX, y: newY });
+  };
+
+  const handleMinPointerUp = () => {
+    isDraggingMinRef.current = false;
+    try {
+      localStorage.setItem('reframe.catMinPos', JSON.stringify(minimizedPos));
+    } catch { /* ignore */ }
+    if (!dragMinStartRef.current.hasMoved) {
+      setIsMinimized(false);
+    }
+  };
+
   if (isMinimized) {
     return (
-      <button
-        onClick={() => setIsMinimized(false)}
-        className="fixed bottom-3 left-4 z-50 flex items-center gap-1.5 rounded-full border border-indigo-500/40 bg-indigo-950/80 px-3 py-1.5 text-xs text-indigo-200 shadow-xl backdrop-blur-md transition hover:scale-105 hover:bg-indigo-900"
-        title="Summon Reframe Cat!"
+      <div
+        style={{
+          position: 'fixed',
+          left: `${minimizedPos.x}px`,
+          top: `${minimizedPos.y}px`,
+          zIndex: 40
+        }}
+        onPointerDown={handleMinPointerDown}
+        onPointerMove={handleMinPointerMove}
+        onPointerUp={handleMinPointerUp}
+        className="cursor-grab active:cursor-grabbing select-none"
+        title="Click to wake Cat, or drag to reposition"
       >
-        <span className="text-base">🐱</span>
-        <span className="font-medium">Wake Cat</span>
-      </button>
+        <div className="flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-[#0f1322]/90 px-2.5 py-1 text-xs text-indigo-200 shadow-xl backdrop-blur-md transition hover:scale-105 hover:border-indigo-400 hover:bg-indigo-950">
+          <span className="text-sm">🐱</span>
+          <span className="font-medium text-[11px] tracking-wide">Wake Cat</span>
+        </div>
+      </div>
     );
   }
 
