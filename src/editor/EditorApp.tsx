@@ -12,6 +12,7 @@ import { saveStillNow, copyImageToClipboardNow } from './export';
 import wordmarkUrl from '../../assets/logo-wordmark-transparent.png';
 import { useT } from '../i18n';
 import { LanguageSelector } from '../i18n/LanguageSelector';
+import { ReframeCat } from './ReframeCat';
 
 declare global {
   interface Window {
@@ -638,6 +639,7 @@ export function EditorApp() {
           </div>
         </div>
       )}
+      <ReframeCat />
     </div>
   );
 }
