@@ -574,8 +574,14 @@ export function Preview() {
       // that 60 times a second forever is what made two open editors stutter
       // the desktop on software GL.
       const animatedBg = st.background.mode === 'shader' || st.background.mode === 'field';
+      const firstPausingCard = st.items
+        .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
+        .sort((a, b) => a.startMs - b.startMs)[0];
       const activeCard = st.items.find(
-        (it) => it.kind === 'titleCard' && st.currentMs >= it.startMs && st.currentMs <= it.endMs
+        (it) => it.kind === 'titleCard' && (
+          (st.currentMs >= it.startMs && st.currentMs <= it.endMs) ||
+          (it === firstPausingCard && it.startMs <= 150 && st.currentMs >= 0 && st.currentMs <= it.endMs)
+        )
       );
       const cardAnimatedBg = activeCard && (
         (activeCard.titleBgMode === 'shader' || activeCard.titleBgMode === 'field') ||

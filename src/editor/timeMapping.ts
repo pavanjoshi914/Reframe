@@ -28,6 +28,9 @@ export function timelineToVideoMs(
   let shift = 0;
   for (const card of cards) {
     if (timelineMs < card.startMs) {
+      if (card === cards[0] && card.startMs <= 150 && timelineMs >= 0) {
+        return { videoMs: 0, isPaused: true, activeTitleCard: card };
+      }
       break;
     }
     if (timelineMs < card.endMs) {

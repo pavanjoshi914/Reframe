@@ -477,10 +477,14 @@ function ItemChip({
     let nextEnd = d.endMs;
     if (d.kind === 'move') {
       const len = d.endMs - d.startMs;
-      nextStart = Math.max(0, Math.min(durationMs - len, d.startMs + dxMs));
+      let rawStart = d.startMs + dxMs;
+      if (rawStart < 150) rawStart = 0;
+      nextStart = Math.max(0, Math.min(durationMs - len, rawStart));
       nextEnd = nextStart + len;
     } else if (d.kind === 'left') {
-      nextStart = Math.max(0, Math.min(d.endMs - 100, d.startMs + dxMs));
+      let rawStart = d.startMs + dxMs;
+      if (rawStart < 150) rawStart = 0;
+      nextStart = Math.max(0, Math.min(d.endMs - 100, rawStart));
     } else {
       nextEnd = Math.max(d.startMs + 100, item.kind === 'titleCard' ? d.endMs + dxMs : Math.min(durationMs, d.endMs + dxMs));
     }

@@ -883,7 +883,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
     if (kind === 'titleCard') {
       const desiredLen = 3000;
-      const targetStart = Math.max(0, validAt);
+      const targetStart = validAt < 150 ? 0 : Math.max(0, validAt);
       const targetEnd = targetStart + desiredLen;
 
       // Ripple shift existing items at or after targetStart by desiredLen so they stay on the same video frames

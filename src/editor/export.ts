@@ -1714,8 +1714,15 @@ export function drawFrame(
     paintBgConfig(c, background, blurPx);
   };
 
+  const firstPausingCard = items
+    .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
+    .sort((a, b) => a.startMs - b.startMs)[0];
+
   const activeTitleCard = items.find(
-    (it) => it.kind === 'titleCard' && ms >= it.startMs && ms <= it.endMs
+    (it) => it.kind === 'titleCard' && (
+      (ms >= it.startMs && ms <= it.endMs) ||
+      (it === firstPausingCard && it.startMs <= 150 && ms >= 0 && ms <= it.endMs)
+    )
   );
 
   let videoAlpha = 1.0;
@@ -1725,10 +1732,10 @@ export function drawFrame(
   if (activeTitleCard) {
     const backdrop = activeTitleCard.titleBackdrop ?? 'hideVideo';
     const dur = Math.max(1, activeTitleCard.endMs - activeTitleCard.startMs);
-    const elapsed = ms - activeTitleCard.startMs;
+    const elapsed = Math.max(0, ms - activeTitleCard.startMs);
     const fadeMs = Math.min(300, dur * 0.25);
 
-    const isTimelineStart = activeTitleCard.startMs === 0;
+    const isTimelineStart = activeTitleCard.startMs <= 150;
     if (!isTimelineStart && elapsed < fadeMs) {
       titleCardPresence = elapsed / fadeMs;
     } else if (elapsed > dur - fadeMs) {
@@ -1900,7 +1907,7 @@ export function drawFrame(
     const globalMag = effects.cursorMagnifier;
     const globalSpot = effects.cursorSpotlight;
     const { videoMs: cursorVideoMs } = timelineToVideoMs(ms, items);
-    if (globalMag > 0 || globalSpot > 0 || magItem || spotItem) {
+    if ((globalMag > 0 || globalSpot > 0 || magItem || spotItem) && shouldDrawVideo) {
       // Position following the recorded cursor — shared by the global sliders
       // and any 'cursor'-tracked region. Null when there's no cursor data.
       let cursorPos: { x: number; y: number } | null = null;
@@ -1996,7 +2003,9 @@ export function drawFrame(
 
   // Redaction: blur/pixelate any active blur regions over the composited frame
   // (above the video + cursor, below annotations) so sensitive areas are hidden.
-  drawBlurRegions(ctx, items, ms, outW, outH);
+  if (shouldDrawVideo) {
+    drawBlurRegions(ctx, items, ms, outW, outH);
+  }
 
   if (activeAnnotation && activeAnnotation.text) {
     drawAnnotation(ctx, activeAnnotation, outW, outH);
@@ -3236,10 +3245,10 @@ function drawTitleCard(
     if (!rawTitle && !subtitleText && !badgeText) return;
 
   const dur = Math.max(1, item.endMs - item.startMs);
-  const elapsed = ms - item.startMs;
+  const elapsed = Math.max(0, ms - item.startMs);
   const transMs = Math.min(380, dur * 0.3);
 
-  const isTimelineStart = item.startMs === 0;
+  const isTimelineStart = item.startMs <= 150;
   let enterP = 1.0;
   let exitP = 1.0;
   if (!isTimelineStart && elapsed < transMs) {
