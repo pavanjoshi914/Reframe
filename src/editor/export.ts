@@ -15,8 +15,20 @@ import {
 } from 'mediabunny';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
 import { paintBorderUnder, paintBorderOver, borderOutset, borderThickness, emissionSpec, normalizeBorder, DEFAULT_BORDER_STYLE, type BorderId, type BorderStyle } from './borders';
-import { renderShaderBackground, normalizeShader, SHADER_FALLBACK, renderMeshBackground, meshPreset, renderFieldBackground, bgClockMs } from './shaders';
-import { useEditor, type CropRegion, type EditorState, ANNOTATION_DEFAULTS, type LaneItem } from './store';
+import { renderShaderBackground, normalizeShader, SHADER_FALLBACK, renderMeshBackground, meshPreset, renderFieldBackground, bgClockMs, fieldStyleOf } from './shaders';
+import { useEditor, type CropRegion, type EditorState, ANNOTATION_DEFAULTS, type LaneItem, type BackgroundMode } from './store';
+
+const imageCache = new Map<string, HTMLImageElement>();
+function getCachedImage(url: string): HTMLImageElement | null {
+  if (!url) return null;
+  let img = imageCache.get(url);
+  if (!img) {
+    img = new Image();
+    img.src = url;
+    imageCache.set(url, img);
+  }
+  return img.complete && img.naturalWidth > 0 ? img : null;
+}
 import type { CursorSample, ClickSample, CursorKindSample } from '@shared/ipc';
 import { renderCard3D, renderScene3D, projectCardPoint, type CardXform } from './card3d';
 import {
@@ -1635,21 +1647,26 @@ export function drawFrame(
   // because progressive blur needs the SAME background twice — once sharp,
   // once blurred — and the two must agree pixel for pixel or the fade between
   // them shows a seam.
-  const paintBackground = (c: CanvasRenderingContext2D, blurPx: number) => {
+  const paintBgConfig = (
+    c: CanvasRenderingContext2D,
+    bg: { mode: BackgroundMode; value: string },
+    blurPx: number,
+    customFieldStyle?: Partial<import('./shaders').FieldStyle>
+  ) => {
     c.save();
     if (blurPx > 0) c.filter = `blur(${Math.round(blurPx)}px)`;
     // Overscan when blurring: a blurred fill's own soft edge would otherwise
     // reveal the base colour in a band around the frame.
     const ov = blurPx > 0 ? 0.05 : 0;
     const bx = -outW * ov, by = -outH * ov, bw = outW * (1 + 2 * ov), bh = outH * (1 + 2 * ov);
-    if (background.mode === 'shader') {
+    if (bg.mode === 'shader') {
       // Driven by `ms`, the playhead — so the preview, the export and a
       // captured still all show the same frame of the animation. Rendered
       // small and scaled up (see shaders.ts); these are smooth fields with no
       // detail to lose, and a 4K frame of fbm per output frame is not worth
       // paying for. Falls back to a flat colour if WebGL is missing, rather
       // than leaving the frame empty.
-      const sid = normalizeShader(background.value);
+      const sid = normalizeShader(bg.value);
       const sh = renderShaderBackground(sid, d.bgTimeMs ?? ms, Math.round(bw), Math.round(bh));
       if (sh) {
         c.drawImage(sh as CanvasImageSource, bx, by, bw, bh);
@@ -1657,42 +1674,110 @@ export function drawFrame(
         c.fillStyle = SHADER_FALLBACK[sid];
         c.fillRect(bx, by, bw, bh);
       }
-    } else if (background.mode === 'field') {
+    } else if (bg.mode === 'field') {
       // Animated like a shader, so it reads the same clock.
-      const fd = renderFieldBackground(background.value, d.bgTimeMs ?? ms, Math.round(bw), Math.round(bh), d.fieldStyle);
+      const fStyle = customFieldStyle ?? (bg.value ? fieldStyleOf(bg.value) : d.fieldStyle);
+      const fd = renderFieldBackground(bg.value, d.bgTimeMs ?? ms, Math.round(bw), Math.round(bh), fStyle);
       if (fd) {
         c.drawImage(fd as CanvasImageSource, bx, by, bw, bh);
       } else {
         c.fillStyle = '#08070d';
         c.fillRect(bx, by, bw, bh);
       }
-    } else if (background.mode === 'mesh') {
+    } else if (bg.mode === 'mesh') {
       // Still, so no `ms` — a mesh renders the same at every point on the
       // timeline, which is the entire difference between it and a shader.
-      const mh = renderMeshBackground(background.value, Math.round(bw), Math.round(bh));
+      const mh = renderMeshBackground(bg.value, Math.round(bw), Math.round(bh));
       if (mh) {
         c.drawImage(mh as CanvasImageSource, bx, by, bw, bh);
       } else {
-        c.fillStyle = meshPreset(background.value).colors[3];
+        c.fillStyle = meshPreset(bg.value).colors[3];
         c.fillRect(bx, by, bw, bh);
       }
-    } else if (background.mode === 'color') {
-      c.fillStyle = background.value;
+    } else if (bg.mode === 'color') {
+      c.fillStyle = bg.value;
       c.fillRect(bx, by, bw, bh);
-    } else if (background.mode === 'gradient') {
-      const grad = parseLinearGradient(c, background.value, outW, outH);
+    } else if (bg.mode === 'gradient') {
+      const grad = parseLinearGradient(c, bg.value, outW, outH);
       c.fillStyle = grad ?? '#1a1d23';
       c.fillRect(bx, by, bw, bh);
-    } else if (background.mode === 'image' && bgImage && bgImage.complete) {
-      drawCover(c, bgImage, bx, by, bw, bh);
+    } else if (bg.mode === 'image') {
+      const img = (bgImage && bg.value === background.value) ? bgImage : getCachedImage(bg.value);
+      if (img) {
+        drawCover(c, img, bx, by, bw, bh);
+      }
     }
     c.restore();
   };
 
-  if (!d.fullBleed) {
-    const sc0 = outH / 1080;
-    paintBackground(ctx, effects.blurBg ? 20 * sc0 : 0);
+  const paintBackground = (c: CanvasRenderingContext2D, blurPx: number) => {
+    paintBgConfig(c, background, blurPx);
+  };
 
+  const activeTitleCard = items.find(
+    (it) => it.kind === 'titleCard' && ms >= it.startMs && ms <= it.endMs
+  );
+
+  let videoAlpha = 1.0;
+  let videoBlurPx = 0;
+  let titleCardPresence = 0;
+  let titleCardEasedPresence = 0;
+  if (activeTitleCard) {
+    const backdrop = activeTitleCard.titleBackdrop ?? 'hideVideo';
+    const dur = Math.max(1, activeTitleCard.endMs - activeTitleCard.startMs);
+    const elapsed = ms - activeTitleCard.startMs;
+    const fadeMs = Math.min(300, dur * 0.25);
+
+    const isTimelineStart = activeTitleCard.startMs === 0;
+    if (!isTimelineStart && elapsed < fadeMs) {
+      titleCardPresence = elapsed / fadeMs;
+    } else if (elapsed > dur - fadeMs) {
+      titleCardPresence = (dur - elapsed) / fadeMs;
+    } else {
+      titleCardPresence = 1.0;
+    }
+    titleCardPresence = Math.max(0, Math.min(1, titleCardPresence));
+    titleCardEasedPresence = titleCardPresence * (2 - titleCardPresence);
+
+    if (backdrop === 'hideVideo') {
+      videoAlpha = isTimelineStart ? 0.0 : (1.0 - titleCardEasedPresence);
+    } else if (backdrop === 'dimVideo') {
+      videoAlpha = 1.0 - titleCardEasedPresence * 0.75;
+    } else if (backdrop === 'blurVideo') {
+      videoAlpha = 1.0 - titleCardEasedPresence * 0.35;
+      videoBlurPx = Math.round(28 * (outH / 1080) * titleCardEasedPresence);
+    } else if (backdrop === 'auraGlow') {
+      videoAlpha = 1.0 - titleCardEasedPresence * 0.65;
+    } else if (backdrop === 'spotlightPlate') {
+      videoAlpha = 1.0 - titleCardEasedPresence * 0.75;
+    }
+  }
+
+  const sc0 = outH / 1080;
+  if (!d.fullBleed) {
+    paintBackground(ctx, effects.blurBg ? 20 * sc0 : 0);
+  } else if (videoAlpha < 0.999) {
+    ctx.save();
+    ctx.globalAlpha = 1.0 - videoAlpha;
+    paintBackground(ctx, 0);
+    ctx.restore();
+  }
+
+  // Draw custom title card background if specified (e.g. CleanShot motion shaders)
+  if (activeTitleCard && titleCardEasedPresence > 0.005) {
+    const tBgMode = activeTitleCard.titleBgMode ?? 'shader';
+    const tBgValue = activeTitleCard.titleBgValue ?? 'cs-horizon';
+    if (tBgMode !== 'project') {
+      ctx.save();
+      ctx.globalAlpha = titleCardEasedPresence;
+      paintBgConfig(
+        ctx,
+        { mode: tBgMode as BackgroundMode, value: tBgValue },
+        0,
+        activeTitleCard.titleFieldStyle
+      );
+      ctx.restore();
+    }
   }
 
   const padding = effects.paddingPct / 100;
@@ -1711,40 +1796,6 @@ export function drawFrame(
   const activeAnnotation = items.find(
     (it) => it.kind === 'annotation' && ms >= it.startMs && ms <= it.endMs
   );
-  const activeTitleCard = items.find(
-    (it) => it.kind === 'titleCard' && ms >= it.startMs && ms <= it.endMs
-  );
-
-  let videoAlpha = 1.0;
-  let videoBlurPx = 0;
-  if (activeTitleCard) {
-    const backdrop = activeTitleCard.titleBackdrop ?? 'hideVideo';
-    const dur = Math.max(1, activeTitleCard.endMs - activeTitleCard.startMs);
-    const elapsed = ms - activeTitleCard.startMs;
-    const fadeMs = Math.min(300, dur * 0.25);
-
-    let cardPresence = 1.0;
-    if (elapsed < fadeMs) {
-      cardPresence = elapsed / fadeMs;
-    } else if (elapsed > dur - fadeMs) {
-      cardPresence = (dur - elapsed) / fadeMs;
-    }
-    cardPresence = Math.max(0, Math.min(1, cardPresence));
-    const easedPresence = cardPresence * (2 - cardPresence);
-
-    if (backdrop === 'hideVideo') {
-      videoAlpha = 1.0 - easedPresence;
-    } else if (backdrop === 'dimVideo') {
-      videoAlpha = 1.0 - easedPresence * 0.75;
-    } else if (backdrop === 'blurVideo') {
-      videoAlpha = 1.0 - easedPresence * 0.35;
-      videoBlurPx = Math.round(28 * (outH / 1080) * easedPresence);
-    } else if (backdrop === 'auraGlow') {
-      videoAlpha = 1.0 - easedPresence * 0.65;
-    } else if (backdrop === 'spotlightPlate') {
-      videoAlpha = 1.0 - easedPresence * 0.75;
-    }
-  }
 
   const shouldDrawVideo = videoAlpha > 0.005;
   const needVideoScope = shouldDrawVideo && (videoAlpha < 0.995 || videoBlurPx > 0);
@@ -3176,19 +3227,22 @@ function drawTitleCard(
   outW: number,
   outH: number
 ) {
-  const rawTitle = item.title?.trim() ?? '';
-  const subtitleText = item.subtitle?.trim() ?? '';
-  const badgeText = item.badge?.trim() ?? '';
+  ctx.save();
+  try {
+    const rawTitle = item.title?.trim() ?? '';
+    const subtitleText = item.subtitle?.trim() ?? '';
+    const badgeText = item.badge?.trim() ?? '';
 
-  if (!rawTitle && !subtitleText && !badgeText) return;
+    if (!rawTitle && !subtitleText && !badgeText) return;
 
   const dur = Math.max(1, item.endMs - item.startMs);
   const elapsed = ms - item.startMs;
   const transMs = Math.min(380, dur * 0.3);
 
+  const isTimelineStart = item.startMs === 0;
   let enterP = 1.0;
   let exitP = 1.0;
-  if (elapsed < transMs) {
+  if (!isTimelineStart && elapsed < transMs) {
     enterP = Math.max(0, Math.min(1, elapsed / transMs));
   }
   if (elapsed > dur - transMs) {
@@ -3507,8 +3561,9 @@ function drawTitleCard(
     }
     ctx.restore();
   }
-
-  ctx.restore();
+  } finally {
+    ctx.restore();
+  }
 }
 
 function roundedRectPath(

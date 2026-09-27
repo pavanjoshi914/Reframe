@@ -141,6 +141,9 @@ export type LaneItem = {
   titleAlign?: TitleAlign;
   titleGradient?: TitleGradient;
   titleGlowColor?: string;
+  titleBgMode?: BackgroundMode | 'project';
+  titleBgValue?: string;
+  titleFieldStyle?: Partial<FieldStyle>;
   pauseVideo?: boolean;
 } & AnnotationStyle;
 
@@ -905,6 +908,8 @@ export const useEditor = create<EditorState>((set, get) => ({
         titleAlign: 'center',
         titleGradient: 'none',
         titleGlowColor: '#6366f1',
+        titleBgMode: 'shader',
+        titleBgValue: 'cs-horizon',
         pauseVideo: true
       };
 

@@ -4,7 +4,7 @@ import { BORDER_IDS, BORDER_LABELS, BORDER_COLORS, BORDER_DEFAULTS, type BorderI
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem, type CursorStyle } from './store';
 import { runExport, cancelExport, saveStillNow, copyImageToClipboardNow } from './export';
 import { SCENE_GROUPS, DEFAULT_SCENE_SETTINGS, sceneInstances } from './scenes';
-import { MESH_PRESETS, meshPreset, renderMeshBackground, FIELD_PRESETS, FIELD_VARIANTS, FIELD_VARIANT_LABELS, fieldStyleOf, renderFieldBackground, bgClockMs, type FieldVariant, SHADER_IDS, SHADER_LABELS, SHADER_FALLBACK, renderShaderBackground, type ShaderId } from './shaders';
+import { MESH_PRESETS, meshPreset, renderMeshBackground, FIELD_PRESETS, FIELD_VARIANTS, FIELD_VARIANT_LABELS, fieldStyleOf, renderFieldBackground, bgClockMs, type FieldVariant, type FieldStyle, SHADER_IDS, SHADER_LABELS, SHADER_FALLBACK, renderShaderBackground, type ShaderId } from './shaders';
 import { CURSOR_GLYPHS, CURSOR_STYLE_IDS } from './cursorGlyphs';
 import type { SceneInstance } from './card3d';
 import { SupportDialog, shouldPromptAfterExport } from './SupportDialog';
@@ -362,16 +362,663 @@ const ANNOTATION_BG_PRESETS: { key: string; label: string; value: string | null 
   { key: 'side.bgNone', label: 'None', value: null }
 ];
 
+// Bundled wallpapers — Vite resolves these to hashed URLs at build time
+const wallpaperModules = import.meta.glob('../../assets/wallpapers/wallpaper-*.jpg', {
+  eager: true,
+  query: '?url',
+  import: 'default'
+});
+const WALLPAPER_URLS: string[] = Object.entries(wallpaperModules)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([, url]) => url as string);
+
+function ShaderThumb({ id }: { id: ShaderId }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  const [hover, setHover] = useState(false);
+  useEffect(() => {
+    const cv = ref.current;
+    const ctx = cv?.getContext('2d');
+    if (!cv || !ctx) return;
+    const draw = (ms: number) => {
+      const src = renderShaderBackground(id, ms, cv.width, cv.height);
+      if (src) ctx.drawImage(src as CanvasImageSource, 0, 0, cv.width, cv.height);
+      else { ctx.fillStyle = SHADER_FALLBACK[id] || '#08070d'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    };
+    draw(bgClockMs());
+    if (!hover) return;
+    const timer = window.setInterval(() => draw(bgClockMs()), 100);
+    return () => window.clearInterval(timer);
+  }, [id, hover]);
+  return (
+    <canvas ref={ref} width={96} height={60} className="block h-auto w-full"
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} />
+  );
+}
+
+function FieldThumb({ id }: { id: string }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  const [hover, setHover] = useState(false);
+  useEffect(() => {
+    const cv = ref.current;
+    const ctx = cv?.getContext('2d');
+    if (!cv || !ctx) return;
+    const draw = (ms: number) => {
+      const src = renderFieldBackground(id, ms, cv.width, cv.height);
+      if (src) ctx.drawImage(src as CanvasImageSource, 0, 0, cv.width, cv.height);
+      else { ctx.fillStyle = '#08070d'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    };
+    draw(bgClockMs());
+    if (!hover) return;
+    const timer = window.setInterval(() => draw(bgClockMs()), 100);
+    return () => window.clearInterval(timer);
+  }, [id, hover]);
+  return (
+    <canvas ref={ref} width={96} height={60} className="block h-auto w-full"
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} />
+  );
+}
+
+function MeshThumb({ id }: { id: string }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const cv = ref.current;
+    const ctx = cv?.getContext('2d');
+    if (!cv || !ctx) return;
+    const src = renderMeshBackground(id, cv.width, cv.height);
+    if (src) ctx.drawImage(src as CanvasImageSource, 0, 0, cv.width, cv.height);
+    else { ctx.fillStyle = meshPreset(id).colors[3]; ctx.fillRect(0, 0, cv.width, cv.height); }
+  }, [id]);
+  return <canvas ref={ref} width={72} height={48} className="block h-auto w-full" />;
+}
+
+function BgTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={
+        'flex-1 basis-[28%] rounded-full px-2 py-1 text-[11px] font-medium transition-colors ' +
+        (active
+          ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)] shadow-sm'
+          : 'text-[var(--muted)] hover:text-[var(--text)]')
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function ChipBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={
+        'rounded-md px-2 py-1.5 text-xs font-medium ' +
+        (active ? 'bg-[var(--accent)] text-[var(--accent-fg)]' : 'glass glass-hover text-[var(--muted)]')
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function RangeRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  fmt
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  fmt?: (v: number) => string;
+}) {
+  const pct = max > min ? Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100)) : 0;
+  const face = (ink: string) => (
+    <div className={'pointer-events-none absolute inset-0 flex items-center gap-2 px-3 ' + ink}>
+      <span className="min-w-0 flex-1 truncate text-[11px] font-medium" title={label}>{label}</span>
+      <span className="shrink-0 text-[11px] font-semibold tabular-nums">{fmt ? fmt(value) : value}</span>
+    </div>
+  );
+  return (
+    <div className="relative h-8 overflow-hidden rounded-full bg-[var(--track)]">
+      <div
+        className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-[var(--accent)]"
+        style={{ width: `${pct}%` }}
+      />
+      {face('text-[var(--text)]')}
+      <div className="absolute inset-0" style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}>
+        {face('text-[var(--accent-fg)]')}
+      </div>
+      <input
+        type="range"
+        aria-label={label}
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
+      />
+    </div>
+  );
+}
+
+const GRADIENTS = [
+  'linear-gradient(135deg,#fb923c,#ec4899)',
+  'linear-gradient(111.6deg,rgba(114,167,232,1) 9.4%,rgba(253,129,82,1) 43.9%,rgba(253,129,82,1) 54.8%,rgba(249,202,86,1) 86.3%)',
+  'linear-gradient(135deg,#f59e0b,#ef4444)',
+  'linear-gradient(107.7deg,rgba(235,230,44,0.7) 8.4%,rgba(252,152,15,1) 90.3%)',
+  'linear-gradient(to right,#fa709a,#fee140)',
+  'linear-gradient(to right,#ff8177,#ff8c7f 21%,#f99185 52%,#cf556c 78%,#b12a5b)',
+  'linear-gradient(45deg,#ff9a9e,#fad0c4 99%,#fad0c4)',
+  'linear-gradient(135deg,#3b82f6,#8b5cf6)',
+  'linear-gradient(135deg,#10b981,#3b82f6)',
+  'linear-gradient(120deg,#84fab0,#8fd3f4)',
+  'linear-gradient(to right,#4facfe,#00f2fe)',
+  'linear-gradient(to top,#30cfd0,#330867)',
+  'linear-gradient(to right,#0acffe,#495aff)',
+  'linear-gradient(to top,#48c6ef,#6f86d6)',
+  'linear-gradient(135deg,#a78bfa,#f472b6)',
+  'linear-gradient(109.6deg,#F635A6,#36D860)',
+  'linear-gradient(to top,#c471f5,#fa71cd)',
+  'linear-gradient(to top,#a18cd1,#fbc2eb)',
+  'linear-gradient(135deg,#FBC8B4,#2447B1)',
+  'linear-gradient(120deg,#d4fc79,#96e6a1)',
+  'linear-gradient(91deg,rgba(72,154,78,1) 5.2%,rgba(251,206,70,1) 95.9%)',
+  'linear-gradient(135deg,#1e3a8a,#0c4a6e)',
+  'linear-gradient(135deg,#0f172a,#334155)',
+  'linear-gradient(109.6deg,rgba(15,2,2,1) 11.2%,rgba(36,163,190,1) 91.1%)',
+  'linear-gradient(315deg,#EC0101,#5044A9)',
+  'linear-gradient(to top,#fcc5e4,#fda34b 15%,#ff7882 35%,#c8699e 52%,#7046aa 71%,#0c1db8 87%,#020f75)',
+  'linear-gradient(135deg,#fde68a,#fca5a5)',
+  'linear-gradient(to right,#f78ca0,#f9748f 19%,#fd868c 60%,#fe9a8b)',
+  'radial-gradient(circle farthest-corner at 3.2% 49.6%,rgba(80,12,139,0.87) 0%,rgba(161,10,144,0.72) 83.6%)',
+  'radial-gradient(circle farthest-corner at 10% 20%,rgba(2,37,78,1) 0%,rgba(4,56,126,1) 19.7%,rgba(85,245,221,1) 100.2%)'
+];
+
+function pickReadableTextColor(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return '#ffffff';
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.55 ? '#0a0b0e' : '#ffffff';
+}
+
+const COLOR_SWATCHES = [
+  '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',
+  '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',
+  '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#78716c',
+  '#0a0b0e', '#1f2937', '#475569', '#ffffff'
+];
+
+function ShadersAndFieldPicker({
+  mode,
+  value,
+  fieldStyle,
+  onSelectShader,
+  onSelectField,
+  onFieldStyleChange
+}: {
+  mode: 'shader' | 'field';
+  value: string;
+  fieldStyle?: Partial<FieldStyle>;
+  onSelectShader: (id: ShaderId) => void;
+  onSelectField: (id: string, style: FieldStyle) => void;
+  onFieldStyleChange?: (style: Partial<FieldStyle>) => void;
+}) {
+  const t = useT();
+  const [panelMode, setPanelMode] = useState<'shaders' | 'field'>(mode === 'field' ? 'field' : 'shaders');
+  const currentVariant = fieldStyle?.variant || 'pure';
+  const [variant, setVariant] = useState<FieldVariant>(currentVariant);
+
+  const shown = FIELD_PRESETS.filter((f) => f.variant === variant);
+
+  const curHue = fieldStyle?.hue ?? 0.6;
+  const curSpread = fieldStyle?.hueSpread ?? 0.08;
+  const curChroma = fieldStyle?.chroma ?? 0.08;
+
+  return (
+    <div className="space-y-2">
+      {/* Sub-tabs: Dynamic Shaders vs Parametric Field */}
+      <div className="grid grid-cols-2 gap-1 mb-2">
+        <ChipBtn active={panelMode === 'shaders'} onClick={() => {
+          setPanelMode('shaders');
+          if (mode !== 'shader') onSelectShader('cs-horizon');
+        }}>
+          Dynamic Shaders
+        </ChipBtn>
+        <ChipBtn active={panelMode === 'field'} onClick={() => {
+          setPanelMode('field');
+          if (mode !== 'field') {
+            const first = FIELD_PRESETS[0];
+            onSelectField(first.id, fieldStyleOf(first.id));
+          }
+        }}>
+          Parametric Field
+        </ChipBtn>
+      </div>
+
+      {panelMode === 'shaders' ? (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-medium text-[var(--muted)]">CleanShot Motion Shaders (60fps)</span>
+            <span className="text-[9px] text-indigo-400">Live WebGL</span>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(['cs-horizon', 'cs-arch', 'cs-ribbon', 'cs-magenta', 'cs-prism', 'cs-noir'] as ShaderId[]).map((id) => (
+              <button
+                key={id}
+                aria-label={SHADER_LABELS[id]}
+                title={SHADER_LABELS[id]}
+                onClick={() => onSelectShader(id)}
+                className={
+                  'group flex flex-col items-center overflow-hidden rounded p-0.5 transition ' +
+                  (mode === 'shader' && value === id
+                    ? 'ring-2 ring-indigo-500 bg-indigo-500/10'
+                    : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+                }
+              >
+                <ShaderThumb id={id} />
+                <span className="mt-1 block w-full truncate text-center text-[9px] text-[var(--muted)] group-hover:text-[var(--text)]">
+                  {SHADER_LABELS[id]}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="text-[10px] font-medium text-[var(--muted)] pt-1">Atmospheric Shaders</div>
+          <div className="grid grid-cols-3 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
+            {SHADER_IDS.filter(id => !id.startsWith('cs-')).map((id) => (
+              <button
+                key={id}
+                aria-label={SHADER_LABELS[id]}
+                title={SHADER_LABELS[id]}
+                onClick={() => onSelectShader(id)}
+                className={
+                  'group flex flex-col items-center overflow-hidden rounded p-0.5 transition ' +
+                  (mode === 'shader' && value === id
+                    ? 'ring-2 ring-[var(--accent)] bg-indigo-500/10'
+                    : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+                }
+              >
+                <ShaderThumb id={id} />
+                <span className="mt-1 block w-full truncate text-center text-[9px] text-[var(--muted)] group-hover:text-[var(--text)]">
+                  {SHADER_LABELS[id]}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-[var(--faint)]">Hover over any shader to preview its 60fps animation.</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-1">
+            {FIELD_VARIANTS.map((v) => (
+              <button
+                key={v}
+                onClick={() => {
+                  setVariant(v);
+                  onFieldStyleChange?.({ variant: v });
+                }}
+                className={
+                  'rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ' +
+                  (variant === v
+                    ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)]'
+                    : 'text-[var(--muted)] hover:text-[var(--text)]')
+                }
+              >
+                {FIELD_VARIANT_LABELS[v]}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
+            {shown.map((f) => (
+              <button
+                key={f.id}
+                aria-label={`${FIELD_VARIANT_LABELS[f.variant]} ${f.id}`}
+                title={`${FIELD_VARIANT_LABELS[f.variant]} ${f.id}`}
+                onClick={() => {
+                  onSelectField(f.id, fieldStyleOf(f.id));
+                }}
+                className={
+                  'overflow-hidden rounded transition ' +
+                  (mode === 'field' && value === f.id
+                    ? 'ring-2 ring-[var(--accent)]'
+                    : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+                }
+              >
+                <FieldThumb id={f.id} />
+              </button>
+            ))}
+          </div>
+
+          {onFieldStyleChange && (
+            <div className="space-y-1.5 pt-1">
+              <RangeRow label={t('side.fieldHue')} value={Math.round(curHue * 360)} min={0} max={360} step={1}
+                onChange={(v) => onFieldStyleChange({ hue: v / 360 })} fmt={(v) => `${v}°`} />
+              <RangeRow label={t('side.fieldSpread')} value={Math.round(curSpread * 360)} min={0} max={90} step={1}
+                onChange={(v) => onFieldStyleChange({ hueSpread: v / 360 })} fmt={(v) => `${v}°`} />
+              <RangeRow label={t('side.fieldChroma')} value={Math.round(curChroma * 500)} min={0} max={100} step={1}
+                onChange={(v) => onFieldStyleChange({ chroma: v / 500 })} fmt={(v) => `${v}%`} />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function TitleCardBackgroundSelector({
+  item,
+  onChange
+}: {
+  item: LaneItem;
+  onChange: (patch: Partial<LaneItem>) => void;
+}) {
+  const currentValue = item.titleBgValue || '';
+  const currentFieldStyle = item.titleFieldStyle || (currentValue ? fieldStyleOf(currentValue) : fieldStyleOf(FIELD_PRESETS[0].id));
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const activeTab: 'project' | 'shader' | 'field' | 'mesh' | 'gradient' | 'color' | 'image' =
+    (!item.titleBgMode || item.titleBgMode === 'project') ? 'project' : item.titleBgMode;
+
+  const handleUploadImage = () => {
+    fileInputRef.current?.click();
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      if (dataUrl) {
+        onChange({ titleBgMode: 'image', titleBgValue: dataUrl });
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  return (
+    <div className="space-y-2">
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
+
+      {/* Primary Category Selector Tabs */}
+      <div className="flex flex-wrap gap-1">
+        <BgTab active={activeTab === 'project'} onClick={() => onChange({ titleBgMode: 'project', titleBgValue: '' })}>
+          Project
+        </BgTab>
+        <BgTab active={activeTab === 'shader' || activeTab === 'field'} onClick={() => onChange({
+          titleBgMode: 'shader',
+          titleBgValue: (item.titleBgMode === 'shader' && item.titleBgValue) ? item.titleBgValue : 'cs-horizon'
+        })}>
+          Shaders
+        </BgTab>
+        <BgTab active={activeTab === 'mesh'} onClick={() => onChange({
+          titleBgMode: 'mesh',
+          titleBgValue: (item.titleBgMode === 'mesh' && item.titleBgValue) ? item.titleBgValue : MESH_PRESETS[0].id
+        })}>
+          Mesh
+        </BgTab>
+        <BgTab active={activeTab === 'gradient'} onClick={() => onChange({
+          titleBgMode: 'gradient',
+          titleBgValue: (item.titleBgMode === 'gradient' && item.titleBgValue) ? item.titleBgValue : GRADIENTS[0]
+        })}>
+          Gradient
+        </BgTab>
+        <BgTab active={activeTab === 'color'} onClick={() => onChange({
+          titleBgMode: 'color',
+          titleBgValue: (item.titleBgMode === 'color' && item.titleBgValue) ? item.titleBgValue : '#0d1117'
+        })}>
+          Color
+        </BgTab>
+        <BgTab active={activeTab === 'image'} onClick={() => onChange({
+          titleBgMode: 'image',
+          titleBgValue: (item.titleBgMode === 'image' && item.titleBgValue) ? item.titleBgValue : (WALLPAPER_URLS[0] || '')
+        })}>
+          Image
+        </BgTab>
+      </div>
+
+      {activeTab === 'project' && (
+        <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-2.5 text-center">
+          <p className="text-[11px] text-[var(--muted)]">
+            Inherits the canvas background of your recording.
+          </p>
+        </div>
+      )}
+
+      {(activeTab === 'shader' || activeTab === 'field') && (
+        <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-2">
+          <ShadersAndFieldPicker
+            mode={activeTab === 'field' ? 'field' : 'shader'}
+            value={currentValue || 'cs-horizon'}
+            fieldStyle={currentFieldStyle}
+            onSelectShader={(id) => onChange({ titleBgMode: 'shader', titleBgValue: id })}
+            onSelectField={(id, style) => onChange({ titleBgMode: 'field', titleBgValue: id, titleFieldStyle: style })}
+            onFieldStyleChange={(patch) => onChange({
+              titleFieldStyle: { ...currentFieldStyle, ...patch }
+            })}
+          />
+        </div>
+      )}
+
+      {activeTab === 'mesh' && (
+        <div className="space-y-2 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-2">
+          <div className="grid grid-cols-4 gap-1.5">
+            {MESH_PRESETS.map((m) => (
+              <button
+                key={m.id}
+                aria-label={`Mesh ${m.id}`}
+                title={`Mesh ${m.id}`}
+                onClick={() => onChange({ titleBgMode: 'mesh', titleBgValue: m.id })}
+                className={
+                  'overflow-hidden rounded transition ' +
+                  (currentValue === m.id
+                    ? 'ring-2 ring-[var(--accent)]'
+                    : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+                }
+              >
+                <MeshThumb id={m.id} />
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-[var(--faint)]">Still gradient fields that keep focus on your titles.</p>
+        </div>
+      )}
+
+      {activeTab === 'gradient' && (
+        <div className="space-y-2 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-2">
+          <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
+            {GRADIENTS.map((g) => (
+              <button
+                key={g}
+                aria-label="Gradient preset"
+                title="Gradient preset"
+                onClick={() => onChange({ titleBgMode: 'gradient', titleBgValue: g })}
+                className={
+                  'aspect-video w-full rounded border transition hover:opacity-90 ' +
+                  (currentValue === g ? 'border-2 border-white ring-2 ring-[var(--accent)]' : 'border-transparent')
+                }
+                style={{ backgroundImage: g }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'color' && (
+        <div className="space-y-2 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-2">
+          <div
+            className="flex h-12 w-full items-center justify-center rounded-md border border-[var(--line)] font-mono text-xs font-semibold"
+            style={{
+              backgroundColor: currentValue || '#0d1117',
+              color: pickReadableTextColor(currentValue || '#0d1117')
+            }}
+          >
+            {(currentValue || '#0d1117').toUpperCase()}
+          </div>
+          <div className="grid grid-cols-8 gap-1">
+            {COLOR_SWATCHES.map((hex) => (
+              <button
+                key={hex}
+                aria-label={hex}
+                title={hex}
+                onClick={() => onChange({ titleBgMode: 'color', titleBgValue: hex })}
+                className={
+                  'h-6 w-full rounded border transition hover:scale-105 ' +
+                  (currentValue.toLowerCase() === hex.toLowerCase()
+                    ? 'border-white ring-2 ring-[var(--accent)]'
+                    : 'border-white/10')
+                }
+                style={{ backgroundColor: hex }}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <input
+              type="color"
+              value={currentValue || '#0d1117'}
+              onChange={(e) => onChange({ titleBgMode: 'color', titleBgValue: e.target.value })}
+              className="h-8 w-10 cursor-pointer rounded border border-[var(--line)] bg-transparent p-0.5"
+              title="Custom color picker"
+            />
+            <input
+              type="text"
+              value={currentValue || '#0d1117'}
+              onChange={(e) => onChange({ titleBgMode: 'color', titleBgValue: e.target.value })}
+              placeholder="#000000"
+              className="h-8 flex-1 rounded border border-[var(--line)] bg-[var(--field)] px-2 font-mono text-xs uppercase outline-none focus:border-[var(--accent)]"
+            />
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'image' && (
+        <div className="space-y-2 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-2">
+          <button
+            onClick={handleUploadImage}
+            className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-1.5 text-xs hover:bg-[var(--field)] transition"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Upload Custom Image
+          </button>
+          <div className="text-[10px] font-medium text-[var(--muted)] pt-1">Bundled Wallpapers</div>
+          <div className="grid grid-cols-4 gap-1.5 max-h-44 overflow-y-auto pr-0.5">
+            {WALLPAPER_URLS.map((url, i) => (
+              <button
+                key={url}
+                onClick={() => onChange({ titleBgMode: 'image', titleBgValue: url })}
+                className={
+                  'group relative aspect-video overflow-hidden rounded transition ' +
+                  (currentValue === url
+                    ? 'ring-2 ring-[var(--accent)]'
+                    : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+                }
+                title={`Wallpaper ${i + 1}`}
+              >
+                <img src={url} alt="" className="h-full w-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const TITLE_CARD_PRESETS = [
   {
-    name: 'Apple Keynote',
-    icon: '🍏',
-    title: 'Introducing Reframe',
-    sub: 'The ultimate demo recorder on desktop',
-    badge: ' ONE MORE THING',
+    name: 'Horizon Wave',
+    icon: '🌊',
+    title: 'The Wait is Over',
+    sub: 'cleanshot.com',
+    badge: 'NEW',
     anim: 'punchIn' as const,
     backdrop: 'hideVideo' as const,
     pauseVideo: true,
+    bgMode: 'shader' as const,
+    bgValue: 'cs-horizon',
+    grad: 'ocean' as const,
+    size: 'hero' as const
+  },
+  {
+    name: 'Lilac Arch',
+    icon: '🔮',
+    title: 'Introducing Something New',
+    sub: 'Crafted with extreme care and precision',
+    badge: 'RELEASE',
+    anim: 'shimmer' as const,
+    backdrop: 'hideVideo' as const,
+    pauseVideo: true,
+    bgMode: 'shader' as const,
+    bgValue: 'cs-arch',
+    grad: 'purple' as const,
+    size: 'lg' as const
+  },
+  {
+    name: 'Fluid Ribbon',
+    icon: '🧵',
+    title: 'CleanShot Quality',
+    sub: 'Flawless 60fps motion without compromises',
+    badge: 'STUDIO',
+    anim: 'wordStagger' as const,
+    backdrop: 'hideVideo' as const,
+    pauseVideo: true,
+    bgMode: 'shader' as const,
+    bgValue: 'cs-ribbon',
+    grad: 'none' as const,
+    size: 'lg' as const
+  },
+  {
+    name: 'Neo Magenta',
+    icon: '📸',
+    title: 'Add Smart Zooms',
+    sub: 'That automatically follow your cursor',
+    badge: '⇧ ⌘ 2',
+    anim: 'scalePop' as const,
+    backdrop: 'hideVideo' as const,
+    pauseVideo: true,
+    bgMode: 'shader' as const,
+    bgValue: 'cs-magenta',
+    grad: 'sunset' as const,
+    size: 'lg' as const
+  },
+  {
+    name: 'Chromatic Prism',
+    icon: '💎',
+    title: 'Smooth Motion',
+    sub: 'Engineered for breathtaking product tours',
+    badge: 'PRO',
+    anim: 'punchIn' as const,
+    backdrop: 'hideVideo' as const,
+    pauseVideo: true,
+    bgMode: 'shader' as const,
+    bgValue: 'cs-prism',
+    grad: 'aurora' as const,
+    size: 'lg' as const
+  },
+  {
+    name: 'Obsidian Noir',
+    icon: '🖤',
+    title: 'Built Natively for Mac',
+    sub: 'Instant exports with native hardware acceleration',
+    badge: ' NATIVE',
+    anim: 'typewriter' as const,
+    backdrop: 'hideVideo' as const,
+    pauseVideo: true,
+    bgMode: 'shader' as const,
+    bgValue: 'cs-noir',
     grad: 'silver' as const,
     size: 'hero' as const
   },
@@ -384,6 +1031,8 @@ const TITLE_CARD_PRESETS = [
     anim: 'typewriter' as const,
     backdrop: 'auraGlow' as const,
     pauseVideo: false,
+    bgMode: 'project' as const,
+    bgValue: '',
     glow: '#3ecf8e',
     grad: 'aurora' as const,
     size: 'lg' as const
@@ -397,58 +1046,10 @@ const TITLE_CARD_PRESETS = [
     anim: 'wordStagger' as const,
     backdrop: 'overlay' as const,
     pauseVideo: false,
+    bgMode: 'project' as const,
+    bgValue: '',
     grad: 'none' as const,
     size: 'lg' as const
-  },
-  {
-    name: 'CleanShot Drop',
-    icon: '📸',
-    title: 'Smart Auto-Zooms',
-    sub: 'Follows cursor movements with zero editing',
-    badge: '⇧ ⌘ 2',
-    anim: 'shimmer' as const,
-    backdrop: 'hideVideo' as const,
-    pauseVideo: true,
-    grad: 'ocean' as const,
-    size: 'lg' as const
-  },
-  {
-    name: 'Raycast AI',
-    icon: '🪄',
-    title: 'Supercharge Your Flow',
-    sub: 'Press ⌥ Space to summon anything',
-    badge: '⌥ SPACE',
-    anim: 'glitch' as const,
-    backdrop: 'auraGlow' as const,
-    pauseVideo: false,
-    glow: '#ff6363',
-    grad: 'sunset' as const,
-    size: 'lg' as const
-  },
-  {
-    name: 'SaaS Teaser',
-    icon: '🔥',
-    title: 'Ship 10x Faster',
-    sub: 'Turn raw screen captures into viral product videos',
-    badge: '🔥 WAITLIST OPEN',
-    anim: 'scalePop' as const,
-    backdrop: 'auraGlow' as const,
-    pauseVideo: false,
-    glow: '#8b5cf6',
-    grad: 'purple' as const,
-    size: 'lg' as const
-  },
-  {
-    name: 'Pro Tip',
-    icon: '💡',
-    title: 'Hold Option to Zoom',
-    sub: 'Instant focal point anywhere on your timeline',
-    badge: '💡 PRO TIP',
-    anim: 'slideUp' as const,
-    backdrop: 'dimVideo' as const,
-    pauseVideo: false,
-    grad: 'none' as const,
-    size: 'md' as const
   }
 ];
 
@@ -501,6 +1102,8 @@ function TitleCardEditor({ item }: { item: LaneItem }) {
                   titleAnim: p.anim,
                   titleBackdrop: p.backdrop,
                   pauseVideo: p.pauseVideo,
+                  titleBgMode: (p as any).bgMode ?? 'project',
+                  titleBgValue: (p as any).bgValue ?? '',
                   titleGradient: p.grad,
                   titleGlowColor: (p as any).glow ?? '#6366f1',
                   titleSize: p.size
@@ -663,6 +1266,19 @@ function TitleCardEditor({ item }: { item: LaneItem }) {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Screen Background Customization */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <Label>Screen Background</Label>
+          <span className="text-[10px] text-[var(--faint)]">
+            {(item.titleBgMode && item.titleBgMode !== 'project')
+              ? (item.titleBgMode === 'shader' ? SHADER_LABELS[item.titleBgValue as ShaderId] || 'Motion Shader' : item.titleBgMode.toUpperCase())
+              : 'Inherit Project'}
+          </span>
+        </div>
+        <TitleCardBackgroundSelector item={item} onChange={set} />
       </div>
 
       {/* Text Gradient Style */}
@@ -2574,83 +3190,6 @@ function SceneThumb({ id, label, active, onPick }: { id: string; label: string; 
   );
 }
 
-function RangeRow({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-  fmt
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (v: number) => void;
-  fmt?: (v: number) => string;
-}) {
-  // The ROW is the slider — no separate track.
-  //
-  // A label, a track and a value cannot share a half-width grid cell at 11px:
-  // the fixed columns alone overflow it, so the track collapsed to nothing and
-  // the control looked dead. The reference solves it by making the pill itself
-  // the control — its fill shows the value and you drag anywhere on it. That
-  // fits any width, which is what lets these sit two-up.
-  const pct = max > min ? Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100)) : 0;
-  // The text is drawn TWICE, in both inks, and the top copy is clipped to the
-  // fill. That is what lets a label sit across the fill's edge and stay legible
-  // on both sides of it — half white on blue, half dark on the track — instead
-  // of picking one colour and going invisible at some fill level. Both copies
-  // are `absolute inset-0` with identical padding, so they line up to the pixel
-  // and the clip never reflows or re-truncates the text.
-  const face = (ink: string) => (
-    <div className={'pointer-events-none absolute inset-0 flex items-center gap-2 px-3 ' + ink}>
-      <span className="min-w-0 flex-1 truncate text-[11px] font-medium" title={label}>{label}</span>
-      <span className="shrink-0 text-[11px] font-semibold tabular-nums">{fmt ? fmt(value) : value}</span>
-    </div>
-  );
-  return (
-    <div className="relative h-8 overflow-hidden rounded-full bg-[var(--track)]">
-      <div
-        className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-[var(--accent)]"
-        style={{ width: `${pct}%` }}
-      />
-      {face('text-[var(--text)]')}
-      <div className="absolute inset-0" style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}>
-        {face('text-[var(--accent-fg)]')}
-      </div>
-      {/* Invisible, but full-size: it stays a real range input, so the arrow
-          keys, Home/End and screen readers all keep working. */}
-      <input
-        type="range"
-        aria-label={label}
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
-      />
-    </div>
-  );
-}
-
-function ChipBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={
-        'rounded-md px-2 py-1.5 text-xs font-medium ' +
-        (active ? 'bg-[var(--accent)] text-[var(--accent-fg)]' : 'glass glass-hover text-[var(--muted)]')
-      }
-    >
-      {children}
-    </button>
-  );
-}
-
 function ShapeBtn({
   active,
   onClick,
@@ -2679,281 +3218,27 @@ function ShapeBtn({
   );
 }
 
-function ShaderThumb({ id }: { id: ShaderId }) {
-  const ref = useRef<HTMLCanvasElement | null>(null);
-  const [hover, setHover] = useState(false);
-  useEffect(() => {
-    const cv = ref.current;
-    const ctx = cv?.getContext('2d');
-    if (!cv || !ctx) return;
-    const draw = (ms: number) => {
-      const src = renderShaderBackground(id, ms, cv.width, cv.height);
-      if (src) ctx.drawImage(src as CanvasImageSource, 0, 0, cv.width, cv.height);
-      else { ctx.fillStyle = SHADER_FALLBACK[id] || '#08070d'; ctx.fillRect(0, 0, cv.width, cv.height); }
-    };
-    draw(bgClockMs());
-    if (!hover) return;
-    const timer = window.setInterval(() => draw(bgClockMs()), 100);
-    return () => window.clearInterval(timer);
-  }, [id, hover]);
-  return (
-    <canvas ref={ref} width={96} height={60} className="block h-auto w-full"
-      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} />
-  );
-}
-
 // Shaders: dynamic WebGL animated shaders or parametric generative field.
 function FieldPanel() {
-  const t = useT();
   const background = useEditor((s) => s.background);
   const setBackground = useEditor((s) => s.setBackground);
   const fieldStyle = useEditor((s) => s.fieldStyle);
   const setFieldStyle = useEditor((s) => s.setFieldStyle);
-  const [panelMode, setPanelMode] = useState<'shaders' | 'field'>(background.mode === 'shader' ? 'shaders' : 'shaders');
-  const [variant, setVariant] = useState<FieldVariant>(fieldStyle.variant);
-
-  const shown = FIELD_PRESETS.filter((f) => f.variant === variant);
 
   return (
-    <div className="space-y-2">
-      {/* Sub-tabs: Dynamic Shaders vs Parametric Field */}
-      <div className="grid grid-cols-2 gap-1 mb-2">
-        <ChipBtn active={panelMode === 'shaders'} onClick={() => {
-          setPanelMode('shaders');
-          if (background.mode !== 'shader') setBackground({ mode: 'shader', value: 'cyber' });
-        }}>
-          Dynamic Shaders
-        </ChipBtn>
-        <ChipBtn active={panelMode === 'field'} onClick={() => {
-          setPanelMode('field');
-          if (background.mode !== 'field') setBackground({ mode: 'field', value: FIELD_PRESETS[0].id });
-        }}>
-          Parametric Field
-        </ChipBtn>
-      </div>
-
-      {panelMode === 'shaders' ? (
-        <div className="space-y-2">
-          <div className="grid grid-cols-3 gap-1.5">
-            {SHADER_IDS.map((id) => (
-              <button
-                key={id}
-                aria-label={SHADER_LABELS[id]}
-                title={SHADER_LABELS[id]}
-                onClick={() => setBackground({ mode: 'shader', value: id })}
-                className={
-                  'group flex flex-col items-center overflow-hidden rounded p-0.5 transition ' +
-                  (background.mode === 'shader' && background.value === id
-                    ? 'ring-2 ring-[var(--accent)]'
-                    : 'ring-1 ring-[var(--line)] hover:ring-white/30')
-                }
-              >
-                <ShaderThumb id={id} />
-                <span className="mt-1 block w-full truncate text-center text-[9px] text-[var(--muted)] group-hover:text-[var(--text)]">
-                  {SHADER_LABELS[id]}
-                </span>
-              </button>
-            ))}
-          </div>
-          <p className="text-[10px] text-[var(--faint)]">Hover over any shader to preview its 60fps animation.</p>
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-wrap gap-1">
-            {FIELD_VARIANTS.map((v) => (
-              <button
-                key={v}
-                onClick={() => {
-                  setVariant(v);
-                  setFieldStyle({ variant: v });
-                }}
-                className={
-                  'rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ' +
-                  (variant === v
-                    ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)]'
-                    : 'text-[var(--muted)] hover:text-[var(--text)]')
-                }
-              >
-                {FIELD_VARIANT_LABELS[v]}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-3 gap-1.5">
-            {shown.map((f, i) => (
-              <button
-                key={f.id}
-                aria-label={`${FIELD_VARIANT_LABELS[f.variant]} ${i + 1}`}
-                title={`${FIELD_VARIANT_LABELS[f.variant]} ${i + 1}`}
-                onClick={() => {
-                  setBackground({ mode: 'field', value: f.id });
-                  setFieldStyle(fieldStyleOf(f.id));
-                }}
-                className={
-                  'overflow-hidden rounded transition ' +
-                  (background.mode === 'field' && background.value === f.id
-                    ? 'ring-2 ring-[var(--accent)]'
-                    : 'ring-1 ring-[var(--line)] hover:ring-white/30')
-                }
-              >
-                <FieldThumb id={f.id} />
-              </button>
-            ))}
-          </div>
-
-          <div className="space-y-1.5 pt-1">
-            <RangeRow label={t('side.fieldHue')} value={Math.round(fieldStyle.hue * 360)} min={0} max={360} step={1}
-              onChange={(v) => setFieldStyle({ hue: v / 360 })} fmt={(v) => `${v}°`} />
-            <RangeRow label={t('side.fieldSpread')} value={Math.round(fieldStyle.hueSpread * 360)} min={0} max={90} step={1}
-              onChange={(v) => setFieldStyle({ hueSpread: v / 360 })} fmt={(v) => `${v}°`} />
-            <RangeRow label={t('side.fieldChroma')} value={Math.round(fieldStyle.chroma * 500)} min={0} max={100} step={1}
-              onChange={(v) => setFieldStyle({ chroma: v / 500 })} fmt={(v) => `${v}%`} />
-            <RangeRow label={t('side.fieldLightness')} value={Math.round(fieldStyle.lightness * 100)} min={25} max={70} step={1}
-              onChange={(v) => setFieldStyle({ lightness: v / 100 })} fmt={(v) => `${v}%`} />
-          </div>
-          <p className="text-[11px] leading-snug text-[var(--faint)]">{t('side.fieldHint')}</p>
-        </>
-      )}
-    </div>
+    <ShadersAndFieldPicker
+      mode={background.mode === 'field' ? 'field' : 'shader'}
+      value={background.value}
+      fieldStyle={fieldStyle}
+      onSelectShader={(id) => setBackground({ mode: 'shader', value: id })}
+      onSelectField={(id, style) => {
+        setBackground({ mode: 'field', value: id });
+        setFieldStyle(style);
+      }}
+      onFieldStyleChange={(patch) => setFieldStyle(patch)}
+    />
   );
 }
-
-// Field thumbnails animate on hover like the shader ones — same 10fps budget,
-// same reason (one shared GL canvas that resizes per call).
-function FieldThumb({ id }: { id: string }) {
-  const ref = useRef<HTMLCanvasElement | null>(null);
-  const [hover, setHover] = useState(false);
-  useEffect(() => {
-    const cv = ref.current;
-    const ctx = cv?.getContext('2d');
-    if (!cv || !ctx) return;
-    const draw = (ms: number) => {
-      const src = renderFieldBackground(id, ms, cv.width, cv.height);
-      if (src) ctx.drawImage(src as CanvasImageSource, 0, 0, cv.width, cv.height);
-      else { ctx.fillStyle = '#08070d'; ctx.fillRect(0, 0, cv.width, cv.height); }
-    };
-    draw(bgClockMs());
-    if (!hover) return;
-    const timer = window.setInterval(() => draw(bgClockMs()), 100);
-    return () => window.clearInterval(timer);
-  }, [id, hover]);
-  return (
-    <canvas ref={ref} width={96} height={60} className="block h-auto w-full"
-      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} />
-  );
-}
-
-// Mesh thumbnails never animate, so this is a straight one-shot draw.
-function MeshThumb({ id }: { id: string }) {
-  const ref = useRef<HTMLCanvasElement | null>(null);
-  useEffect(() => {
-    const cv = ref.current;
-    const ctx = cv?.getContext('2d');
-    if (!cv || !ctx) return;
-    const src = renderMeshBackground(id, cv.width, cv.height);
-    if (src) ctx.drawImage(src as CanvasImageSource, 0, 0, cv.width, cv.height);
-    else { ctx.fillStyle = meshPreset(id).colors[3]; ctx.fillRect(0, 0, cv.width, cv.height); }
-  }, [id]);
-  return <canvas ref={ref} width={72} height={48} className="block h-auto w-full" />;
-}
-
-function BgTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={
-        // Segmented control, macOS-style: a light pill with dark text marks the
-        // selection, not a coloured one. Blue is reserved for the ring on a
-        // chosen preset tile, so the two never compete for the same meaning.
-        'flex-1 basis-[28%] rounded-full px-2 py-1 text-[11px] font-medium transition-colors ' +
-        (active
-          ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)] shadow-sm'
-          : 'text-[var(--muted)] hover:text-[var(--text)]')
-      }
-    >
-      {children}
-    </button>
-  );
-}
-
-// Curated from uigradients.com and similar free CSS gradient libraries — these
-// are public CSS strings, not bundled images, so no licensing or asset-size
-// considerations. Mix of warm/cool/duotone/photographic-feel and a few moody
-// darks so dark UI screenshots have a tonal home.
-const GRADIENTS = [
-  // Warm sunsets
-  'linear-gradient(135deg,#fb923c,#ec4899)',
-  'linear-gradient(111.6deg,rgba(114,167,232,1) 9.4%,rgba(253,129,82,1) 43.9%,rgba(253,129,82,1) 54.8%,rgba(249,202,86,1) 86.3%)',
-  'linear-gradient(135deg,#f59e0b,#ef4444)',
-  'linear-gradient(107.7deg,rgba(235,230,44,0.7) 8.4%,rgba(252,152,15,1) 90.3%)',
-  'linear-gradient(to right,#fa709a,#fee140)',
-  'linear-gradient(to right,#ff8177,#ff8c7f 21%,#f99185 52%,#cf556c 78%,#b12a5b)',
-  'linear-gradient(45deg,#ff9a9e,#fad0c4 99%,#fad0c4)',
-  // Cool blues / purples
-  'linear-gradient(135deg,#3b82f6,#8b5cf6)',
-  'linear-gradient(135deg,#10b981,#3b82f6)',
-  'linear-gradient(120deg,#84fab0,#8fd3f4)',
-  'linear-gradient(to right,#4facfe,#00f2fe)',
-  'linear-gradient(to top,#30cfd0,#330867)',
-  'linear-gradient(to right,#0acffe,#495aff)',
-  'linear-gradient(to top,#48c6ef,#6f86d6)',
-  // Vibrant / playful
-  'linear-gradient(135deg,#a78bfa,#f472b6)',
-  'linear-gradient(109.6deg,#F635A6,#36D860)',
-  'linear-gradient(to top,#c471f5,#fa71cd)',
-  'linear-gradient(to top,#a18cd1,#fbc2eb)',
-  'linear-gradient(135deg,#FBC8B4,#2447B1)',
-  // Greens
-  'linear-gradient(120deg,#d4fc79,#96e6a1)',
-  'linear-gradient(91deg,rgba(72,154,78,1) 5.2%,rgba(251,206,70,1) 95.9%)',
-  // Moody / dark — good for dark-themed screen recordings
-  'linear-gradient(135deg,#1e3a8a,#0c4a6e)',
-  'linear-gradient(135deg,#0f172a,#334155)',
-  'linear-gradient(109.6deg,rgba(15,2,2,1) 11.2%,rgba(36,163,190,1) 91.1%)',
-  'linear-gradient(315deg,#EC0101,#5044A9)',
-  'linear-gradient(to top,#fcc5e4,#fda34b 15%,#ff7882 35%,#c8699e 52%,#7046aa 71%,#0c1db8 87%,#020f75)',
-  // Pastels
-  'linear-gradient(135deg,#fde68a,#fca5a5)',
-  'linear-gradient(to right,#f78ca0,#f9748f 19%,#fd868c 60%,#fe9a8b)',
-  // Radial pops
-  'radial-gradient(circle farthest-corner at 3.2% 49.6%,rgba(80,12,139,0.87) 0%,rgba(161,10,144,0.72) 83.6%)',
-  'radial-gradient(circle farthest-corner at 10% 20%,rgba(2,37,78,1) 0%,rgba(4,56,126,1) 19.7%,rgba(85,245,221,1) 100.2%)'
-];
-
-// Bundled wallpapers — Vite resolves these to hashed URLs at build time, so
-// the resulting `background.value` is a regular http/https/file URL that the
-// canvas exporter can load via `new Image()` exactly like a user-uploaded one.
-// Sources + licences are listed in CREDITS.md alongside the asset folder.
-const wallpaperModules = import.meta.glob('../../assets/wallpapers/wallpaper-*.jpg', {
-  eager: true,
-  query: '?url',
-  import: 'default'
-});
-const WALLPAPER_URLS: string[] = Object.entries(wallpaperModules)
-  .sort(([a], [b]) => a.localeCompare(b))
-  .map(([, url]) => url as string);
-
-// Returns black or white depending on which contrasts better with the given
-// hex colour — used so the hex preview label stays legible on any swatch.
-function pickReadableTextColor(hex: string): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return '#ffffff';
-  const r = parseInt(m[1].slice(0, 2), 16);
-  const g = parseInt(m[1].slice(2, 4), 16);
-  const b = parseInt(m[1].slice(4, 6), 16);
-  // Perceptual luminance per WCAG.
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.55 ? '#0a0b0e' : '#ffffff';
-}
-
-// Curated color swatches — modern flat palette covering a good range of hues
-// + dark/neutral options. Hex strings flow straight into background.value.
-const COLOR_SWATCHES = [
-  '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',
-  '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',
-  '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#78716c',
-  '#0a0b0e', '#1f2937', '#475569', '#ffffff'
-];
 
 function AudioSection() {
   const t = useT();

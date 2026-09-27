@@ -240,6 +240,22 @@ export function Preview() {
         }
 
         const mappedTimelineMs = videoToTimelineMs(rawVideoMs, state.items);
+
+        // Check if normal video playback has reached an upcoming pausing title card:
+        const nextCard = state.items
+          .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false && it.startMs >= state.currentMs)
+          .sort((a, b) => a.startMs - b.startMs)[0];
+
+        if (nextCard && mappedTimelineMs >= nextCard.startMs) {
+          v.pause();
+          const insertSec = timelineToVideoMs(nextCard.startMs, state.items).videoMs / 1000;
+          v.currentTime = insertSec;
+          state.setCurrent(nextCard.startMs);
+          dirtyRef.current = true;
+          frameId = requestAnimationFrame(tick);
+          return;
+        }
+
         const check = timelineToVideoMs(mappedTimelineMs, state.items);
         if (check.isPaused) {
           v.pause();
@@ -558,8 +574,16 @@ export function Preview() {
       // that 60 times a second forever is what made two open editors stutter
       // the desktop on software GL.
       const animatedBg = st.background.mode === 'shader' || st.background.mode === 'field';
+      const activeCard = st.items.find(
+        (it) => it.kind === 'titleCard' && st.currentMs >= it.startMs && st.currentMs <= it.endMs
+      );
+      const cardAnimatedBg = activeCard && (
+        (activeCard.titleBgMode === 'shader' || activeCard.titleBgMode === 'field') ||
+        ((!activeCard.titleBgMode || activeCard.titleBgMode === 'project') && animatedBg)
+      );
+      const hasAnimatedBg = animatedBg || !!cardAnimatedBg;
       const now = performance.now();
-      const bgTick = animatedBg && !st.playing && now - lastBgPaint >= 33;
+      const bgTick = hasAnimatedBg && !st.playing && now - lastBgPaint >= 33;
       const changed = st.playing || settle > 0 || bgTick;
       if (!changed) return;
       if (bgTick) lastBgPaint = now;

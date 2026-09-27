@@ -21,15 +21,23 @@
 export type ShaderId =
   | 'aurora' | 'drift' | 'waves' | 'nebula' | 'silk' | 'dusk'
   | 'fire' | 'electric' | 'rays' | 'beam' | 'ripple' | 'peaks' | 'smoke'
-  | 'cyber' | 'aura' | 'noir';
+  | 'cyber' | 'aura' | 'noir'
+  | 'cs-horizon' | 'cs-arch' | 'cs-ribbon' | 'cs-magenta' | 'cs-prism' | 'cs-noir';
 
 export const SHADER_IDS: ShaderId[] = [
+  'cs-horizon', 'cs-arch', 'cs-ribbon', 'cs-magenta', 'cs-prism', 'cs-noir',
   'aurora', 'drift', 'waves', 'nebula', 'silk', 'dusk',
   'fire', 'electric', 'rays', 'beam', 'ripple', 'peaks', 'smoke',
   'cyber', 'aura', 'noir'
 ];
 
 export const SHADER_LABELS: Record<ShaderId, string> = {
+  'cs-horizon': 'Horizon Wave',
+  'cs-arch': 'Lilac Arch',
+  'cs-ribbon': 'Fluid Ribbon',
+  'cs-magenta': 'Neo Magenta',
+  'cs-prism': 'Chromatic Prism',
+  'cs-noir': 'Obsidian Noir',
   aurora: 'Aurora',
   drift: 'Drift',
   waves: 'Waves',
@@ -425,6 +433,121 @@ const FRAGMENTS: Record<ShaderId, string> = {
     vec3 streak = vec3(0.20, 0.24, 0.32) * sweep * vignette;
     vec3 blueCore = vec3(0.08, 0.16, 0.28) * pow(sweep, 2.0) * 0.45;
     gl_FragColor = vec4(base + streak + blueCore, 1.0);
+  }`,
+
+  // CleanShot Horizon Wave: Wide layered blue-violet horizon with dynamic illuminated crests
+  'cs-horizon': `
+  void main() {
+    vec2 p = space();
+    float t = uTime * 0.45;
+    float y = p.y;
+    float wave1 = sin(p.x * 2.8 + t * 1.2) * 0.18 + cos(p.x * 1.5 - t * 0.8) * 0.12;
+    float wave2 = sin(p.x * 4.2 - t * 1.5) * 0.10 + cos(p.x * 2.2 + t * 0.9) * 0.08;
+    float crest = smoothstep(0.04, 0.0, abs(y - wave1)) * 0.75 + smoothstep(0.06, 0.0, abs(y - wave2)) * 0.5;
+    vec3 deepNavy = vec3(0.03, 0.05, 0.14);
+    vec3 royalBlue = vec3(0.12, 0.28, 0.82);
+    vec3 neonCyan = vec3(0.18, 0.72, 0.98);
+    vec3 purpleHaze = vec3(0.55, 0.18, 0.92);
+    float grad = smoothstep(-0.8, 0.8, y + wave1 * 0.5);
+    vec3 c = mix(deepNavy, mix(purpleHaze, royalBlue, sin(p.x * 1.8 + t) * 0.5 + 0.5), grad);
+    c += neonCyan * crest;
+    c = c / (c + 0.48);
+    gl_FragColor = vec4(c, 1.0);
+  }`,
+
+  // CleanShot Lilac Arch: Elegant glowing arch with soft lilac-indigo gradients
+  'cs-arch': `
+  void main() {
+    vec2 p = space();
+    float t = uTime * 0.35;
+    vec2 archCenter = vec2(sin(t * 0.5) * 0.15, -0.65 + cos(t * 0.4) * 0.08);
+    float d = length(p - archCenter);
+    float ring1 = smoothstep(0.12, 0.0, abs(d - 0.92 - sin(p.x * 3.0 + t) * 0.06));
+    float ring2 = smoothstep(0.16, 0.0, abs(d - 1.28 + cos(p.x * 2.2 - t * 0.7) * 0.08));
+    vec3 darkViolet = vec3(0.06, 0.03, 0.15);
+    vec3 softLilac = vec3(0.72, 0.52, 0.96);
+    vec3 electricPurple = vec3(0.58, 0.16, 0.88);
+    vec3 glowPink = vec3(0.94, 0.42, 0.76);
+    vec3 c = mix(darkViolet, electricPurple * 0.5, smoothstep(0.2, 1.6, d));
+    c += softLilac * ring1 * 0.85 + glowPink * ring2 * 0.65;
+    float ambient = exp(-length(p) * 1.4);
+    c += softLilac * ambient * 0.25;
+    c = c / (c + 0.52);
+    gl_FragColor = vec4(c, 1.0);
+  }`,
+
+  // CleanShot Fluid Ribbon: Silk ribbons dancing across dark space
+  'cs-ribbon': `
+  void main() {
+    vec2 p = space();
+    float t = uTime * 0.55;
+    float ribbon = 0.0;
+    vec3 col = vec3(0.02, 0.03, 0.08);
+    for (float i = 0.0; i < 4.0; i++) {
+      float ph = i * 1.4 + t;
+      float py = sin(p.x * (1.8 + i * 0.4) + ph) * (0.28 - i * 0.04);
+      float thick = 0.06 + sin(p.x * 3.0 + ph * 1.5) * 0.03;
+      float d = abs(p.y - py);
+      float intensity = smoothstep(thick, 0.0, d);
+      vec3 tint = mix(vec3(0.15, 0.45, 0.95), vec3(0.92, 0.25, 0.65), i / 3.0);
+      col += tint * intensity * (0.75 - i * 0.12);
+    }
+    col = col / (col + 0.5);
+    gl_FragColor = vec4(col, 1.0);
+  }`,
+
+  // CleanShot Neo Magenta: Vibrant magenta and amber chromatic glow
+  'cs-magenta': `
+  void main() {
+    vec2 p = space();
+    float t = uTime * 0.4;
+    vec2 c1 = vec2(cos(t * 0.8) * 0.35, sin(t * 0.6) * 0.25);
+    vec2 c2 = vec2(sin(t * 0.5 + 1.8) * 0.38, cos(t * 0.7 + 1.2) * 0.22);
+    float d1 = length(p - c1);
+    float d2 = length(p - c2);
+    vec3 g1 = vec3(0.96, 0.12, 0.55) * exp(-d1 * 2.1);
+    vec3 g2 = vec3(0.98, 0.52, 0.15) * exp(-d2 * 2.3);
+    vec3 g3 = vec3(0.45, 0.08, 0.78) * exp(-length(p) * 2.6);
+    vec3 bg = vec3(0.07, 0.015, 0.08);
+    vec3 c = bg + g1 * 0.9 + g2 * 0.75 + g3 * 0.5;
+    c = c / (c + 0.45);
+    gl_FragColor = vec4(c, 1.0);
+  }`,
+
+  // CleanShot Chromatic Prism: Multi-spectrum refracted geometric rays
+  'cs-prism': `
+  void main() {
+    vec2 p = space();
+    float t = uTime * 0.3;
+    float a = atan(p.y, p.x);
+    float r = length(p);
+    float rays = sin(a * 8.0 + t * 2.0 + sin(r * 4.0)) * 0.5 + 0.5;
+    rays = pow(rays, 3.0);
+    vec3 red = vec3(0.95, 0.18, 0.35) * sin(a + t);
+    vec3 green = vec3(0.15, 0.92, 0.65) * sin(a + t + 2.094);
+    vec3 blue = vec3(0.22, 0.45, 0.98) * sin(a + t + 4.188);
+    vec3 spectrum = max(vec3(0.0), red + green + blue + 0.6);
+    vec3 darkBg = vec3(0.02, 0.02, 0.05);
+    vec3 c = mix(darkBg, spectrum, rays * 0.75 * smoothstep(1.5, 0.1, r));
+    c += spectrum * 0.15 * smoothstep(0.6, 0.0, r);
+    c = c / (c + 0.5);
+    gl_FragColor = vec4(c, 1.0);
+  }`,
+
+  // CleanShot Obsidian Noir: Ultra-sleek minimalist carbon with glowing edge
+  'cs-noir': `
+  void main() {
+    vec2 p = space();
+    float t = uTime * 0.25;
+    float diagonal = p.x * 0.8 + p.y * 0.6;
+    float sheen = sin(diagonal * 3.5 - t * 0.8) * 0.5 + 0.5;
+    sheen = pow(sheen, 4.0);
+    float rim = smoothstep(0.85, 0.3, length(p));
+    vec3 carbon = vec3(0.015, 0.016, 0.022);
+    vec3 silverGlow = vec3(0.28, 0.32, 0.42);
+    vec3 accent = vec3(0.35, 0.42, 0.68);
+    vec3 c = carbon + silverGlow * sheen * 0.35 + accent * sheen * rim * 0.25;
+    gl_FragColor = vec4(c, 1.0);
   }`
 };
 
@@ -595,7 +718,13 @@ export const SHADER_FALLBACK: Record<ShaderId, string> = {
   smoke: '#14161a',
   cyber: '#080b18',
   aura: '#0f0c22',
-  noir: '#08090c'
+  noir: '#08090c',
+  'cs-horizon': '#070f2b',
+  'cs-arch': '#120a2a',
+  'cs-ribbon': '#060a1e',
+  'cs-magenta': '#1d051f',
+  'cs-prism': '#090b1c',
+  'cs-noir': '#05070a'
 };
 
 // ── Mesh gradients (static) ────────────────────────────────────────────────
