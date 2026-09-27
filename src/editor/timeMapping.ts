@@ -28,19 +28,22 @@ export function timelineToVideoMs(
   let shift = 0;
   for (const card of cards) {
     if (timelineMs < card.startMs) {
-      if (card === cards[0] && card.startMs <= 150 && timelineMs >= 0) {
+      if (card === cards[0] && card.startMs <= 800 && timelineMs >= 0) {
         return { videoMs: 0, isPaused: true, activeTitleCard: card };
       }
       break;
     }
     if (timelineMs < card.endMs) {
-      const videoMs = Math.max(0, card.startMs - shift);
-      return { videoMs, isPaused: true, activeTitleCard: card };
+      const isIntro = card === cards[0] && card.startMs <= 800;
+      const insertVideoMs = isIntro ? 0 : Math.max(0, card.startMs - shift);
+      return { videoMs: insertVideoMs, isPaused: true, activeTitleCard: card };
     }
     shift += Math.max(0, card.endMs - card.startMs);
   }
 
-  const videoMs = Math.max(0, timelineMs - shift);
+  const isFirstCardIntro = cards[0] && cards[0].startMs <= 800;
+  const effectiveTimeline = isFirstCardIntro && cards[0] ? timelineMs - cards[0].startMs : timelineMs;
+  const videoMs = Math.max(0, effectiveTimeline - shift);
   return { videoMs, isPaused: false };
 }
 
@@ -58,7 +61,10 @@ export function videoToTimelineMs(
 
   let shift = 0;
   for (const card of cards) {
-    const cardVideoStart = card.startMs - shift;
+    let cardVideoStart = card.startMs - shift;
+    if (card === cards[0] && card.startMs <= 800) {
+      cardVideoStart = 0;
+    }
     if (videoMs < cardVideoStart) {
       break;
     }

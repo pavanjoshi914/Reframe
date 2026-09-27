@@ -306,6 +306,7 @@ export function Preview() {
     const target = videoMs / 1000;
 
     if (!playing) {
+      if (!v.paused) v.pause();
       if (Math.abs(v.currentTime - target) > 0.02) {
         v.currentTime = target;
       }
@@ -574,13 +575,13 @@ export function Preview() {
       // that 60 times a second forever is what made two open editors stutter
       // the desktop on software GL.
       const animatedBg = st.background.mode === 'shader' || st.background.mode === 'field';
-      const firstPausingCard = st.items
-        .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
+      const firstTitleCard = st.items
+        .filter((it) => it.kind === 'titleCard')
         .sort((a, b) => a.startMs - b.startMs)[0];
       const activeCard = st.items.find(
         (it) => it.kind === 'titleCard' && (
           (st.currentMs >= it.startMs && st.currentMs <= it.endMs) ||
-          (it === firstPausingCard && it.startMs <= 150 && st.currentMs >= 0 && st.currentMs <= it.endMs)
+          (it === firstTitleCard && it.startMs <= 800 && st.currentMs >= 0 && st.currentMs <= it.endMs)
         )
       );
       const cardAnimatedBg = activeCard && (

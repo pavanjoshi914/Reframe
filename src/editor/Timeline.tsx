@@ -182,7 +182,9 @@ export function Timeline() {
     if (!track) return 0;
     const r = track.getBoundingClientRect();
     const ratio = (clientX - r.left) / r.width;
-    return Math.max(0, Math.min(durationMs, ratio * durationMs));
+    const rawMs = Math.max(0, Math.min(durationMs, ratio * durationMs));
+    if (clientX - r.left < 20 || rawMs < 80) return 0;
+    return rawMs;
   }
 
   // Smooth scrubbing — pointer-down/move/up across the ruler or any empty
@@ -475,15 +477,16 @@ function ItemChip({
     const dxMs = ((e.clientX - d.startX) / pixelsPerSecond) * 1000;
     let nextStart = d.startMs;
     let nextEnd = d.endMs;
+    const snapThresholdMs = Math.max(800, (30 / pixelsPerSecond) * 1000);
     if (d.kind === 'move') {
       const len = d.endMs - d.startMs;
       let rawStart = d.startMs + dxMs;
-      if (rawStart < 150) rawStart = 0;
+      if (rawStart < snapThresholdMs) rawStart = 0;
       nextStart = Math.max(0, Math.min(durationMs - len, rawStart));
       nextEnd = nextStart + len;
     } else if (d.kind === 'left') {
       let rawStart = d.startMs + dxMs;
-      if (rawStart < 150) rawStart = 0;
+      if (rawStart < snapThresholdMs) rawStart = 0;
       nextStart = Math.max(0, Math.min(d.endMs - 100, rawStart));
     } else {
       nextEnd = Math.max(d.startMs + 100, item.kind === 'titleCard' ? d.endMs + dxMs : Math.min(durationMs, d.endMs + dxMs));
