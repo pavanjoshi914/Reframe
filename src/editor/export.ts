@@ -767,7 +767,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
 
     let prevCardsDurGif = 0;
     const cardScheduleGif = pausingCardsGif.map((card) => {
-      const insertVideoMs = (card === pausingCardsGif[0] && card.startMs <= 1500) ? 0 : Math.max(0, card.startMs - prevCardsDurGif);
+      const insertVideoMs = (card === pausingCardsGif[0] && card.startMs <= 800) ? 0 : Math.max(0, card.startMs - prevCardsDurGif);
       const cardDurMs = Math.max(100, card.endMs - card.startMs);
       prevCardsDurGif += cardDurMs;
       return { card, insertVideoMs, cardDurMs, emitted: false };
@@ -1027,7 +1027,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
 
   let prevCardsDur = 0;
   const cardSchedule = pausingCards.map((card) => {
-    const insertVideoMs = (card === pausingCards[0] && card.startMs <= 1500) ? 0 : Math.max(0, card.startMs - prevCardsDur);
+    const insertVideoMs = (card === pausingCards[0] && card.startMs <= 800) ? 0 : Math.max(0, card.startMs - prevCardsDur);
     const cardDurMs = Math.max(100, card.endMs - card.startMs);
     prevCardsDur += cardDurMs;
     return { card, insertVideoMs, cardDurMs, emitted: false };
@@ -1271,7 +1271,7 @@ async function buildTimelineAudio(
 
   let prevCardsDurAudio = 0;
   const cardAudioSchedule = pausingCards.map((card, idx) => {
-    const insertVideoMs = (idx === 0 && card.startMs <= 1500) ? 0 : Math.max(0, card.startMs - prevCardsDurAudio);
+    const insertVideoMs = (idx === 0 && card.startMs <= 800) ? 0 : Math.max(0, card.startMs - prevCardsDurAudio);
     const cardDurMs = Math.max(100, card.endMs - card.startMs);
     const silenceSamples = Math.round((cardDurMs / 1000) * sr);
     prevCardsDurAudio += cardDurMs;
@@ -1282,7 +1282,7 @@ async function buildTimelineAudio(
   let shiftAcc = 0;
   const precomputedCards = pausingCards.map((card, idx) => {
     let cardVideoStart = card.startMs - shiftAcc;
-    if (idx === 0 && card.startMs <= 1500) {
+    if (idx === 0 && card.startMs <= 800) {
       cardVideoStart = 0;
     }
     const duration = Math.max(0, card.endMs - card.startMs);
@@ -1803,7 +1803,7 @@ export function drawFrame(
   const activeTitleCard = items.find(
     (it) => it.kind === 'titleCard' && (
       (ms >= it.startMs && ms <= it.endMs) ||
-      (it === firstTitleCard && it.startMs <= 1500 && ms >= 0 && ms <= it.endMs)
+      (it === firstTitleCard && it.startMs <= 800 && ms >= 0 && ms <= it.endMs)
     )
   );
 
@@ -1817,7 +1817,7 @@ export function drawFrame(
     const elapsed = Math.max(0, ms - activeTitleCard.startMs);
     const fadeMs = Math.min(300, dur * 0.25);
 
-    const isTimelineStart = activeTitleCard.startMs <= 1500;
+    const isTimelineStart = activeTitleCard.startMs <= 800;
     if (!isTimelineStart && elapsed < fadeMs) {
       titleCardPresence = elapsed / fadeMs;
     } else if (elapsed > dur - fadeMs) {
@@ -3330,7 +3330,7 @@ function drawTitleCard(
   const elapsed = Math.max(0, ms - item.startMs);
   const transMs = Math.min(380, dur * 0.3);
 
-  const isTimelineStart = item.startMs <= 1500;
+  const isTimelineStart = item.startMs <= 800;
   let enterP = 1.0;
   let exitP = 1.0;
   if (!isTimelineStart && elapsed < transMs) {
