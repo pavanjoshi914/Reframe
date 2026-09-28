@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart, Sun, Moon, ChevronUp, ChevronDown, Camera, Check, Crop, Copy, Image as ImageIcon } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart, Sun, Moon, ChevronUp, ChevronDown, Camera, Check, Crop, Copy, Upload } from 'lucide-react';
 import { SPONSOR_URL } from '@shared/sponsor';
 import { Preview } from './Preview';
 import { Sidebar } from './Sidebar';
@@ -54,7 +54,39 @@ export function EditorApp() {
   const isCropped =
     cropRegion.x !== 0 || cropRegion.y !== 0 || cropRegion.width !== 1 || cropRegion.height !== 1;
 
-  async function hydrateForImage(img: import('@shared/ipc').ImageMeta) {
+  const loadCursor = useCallback(async (rec: import('@shared/ipc').RecordingMeta) => {
+    const data = rec.cursorFilePath ? await window.api.getCursorData(rec.cursorFilePath) : null;
+    useEditor.getState().setCursorSamples(data?.samples ?? []);
+    useEditor.getState().setCursorClicks(data?.clicks ?? []);
+    useEditor.getState().setCursorKinds(data?.kinds ?? []);
+  }, []);
+
+  const hydrateForRecording = useCallback(async (rec: import('@shared/ipc').RecordingMeta) => {
+    if (!rec) return;
+    const url = await window.api.getRecordingFileUrl(rec.filePath);
+    const webcamUrl = rec.webcamFilePath ? await window.api.getRecordingFileUrl(rec.webcamFilePath) : null;
+    setRecording(rec, url, webcamUrl);
+    if (rec.hideCursor) useEditor.getState().setCursorFx({ enabled: true });
+    void loadCursor(rec);
+
+    try {
+      const existing = await window.api.findProjectForRecording(rec.filePath);
+      if (existing) {
+        const loaded = await window.api.loadProjectAt(existing);
+        if (loaded) {
+          useEditor.getState().hydrate(loaded.state as SerializedProject);
+          useEditor.getState().setCurrentProjectPath(existing);
+          return;
+        }
+      }
+      const projectPath = await window.api.initialProjectPath(rec.filePath);
+      useEditor.getState().setCurrentProjectPath(projectPath);
+    } catch (err) {
+      console.warn('[editor] failed to find project for recording', err);
+    }
+  }, [setRecording, loadCursor]);
+
+  const hydrateForImage = useCallback(async (img: import('@shared/ipc').ImageMeta) => {
     if (!img) return;
     const fileUrl = img.filePath ? (await window.api.getRecordingFileUrl(img.filePath).catch(() => img.fileUrl)) : img.fileUrl;
     const resolved = { ...img, fileUrl: fileUrl || img.fileUrl };
@@ -74,43 +106,21 @@ export function EditorApp() {
     } catch (err) {
       console.warn('[editor] failed to find project for image', err);
     }
-  }
+  }, []);
+
+  const handleOpenMedia = useCallback(async () => {
+    const res = await window.api.pickMediaForEditing();
+    if (!res) return;
+    if (res.type === 'video') {
+      await hydrateForRecording(res.recording);
+    } else if (res.type === 'image') {
+      await hydrateForImage(res.image);
+    }
+  }, [hydrateForRecording, hydrateForImage]);
 
   // Load recording/image on first mount + listen for new recordings, opened
   // images & opened projects.
   useEffect(() => {
-    // Load the recording's cursor sidecar (if any) so "Suggest Zooms" works.
-    async function loadCursor(rec: import('@shared/ipc').RecordingMeta) {
-      const data = rec.cursorFilePath ? await window.api.getCursorData(rec.cursorFilePath) : null;
-      useEditor.getState().setCursorSamples(data?.samples ?? []);
-      useEditor.getState().setCursorClicks(data?.clicks ?? []);
-      useEditor.getState().setCursorKinds(data?.kinds ?? []);
-    }
-
-    async function hydrateForRecording(rec: import('@shared/ipc').RecordingMeta) {
-      if (!rec) return;
-      const url = await window.api.getRecordingFileUrl(rec.filePath);
-      const webcamUrl = rec.webcamFilePath ? await window.api.getRecordingFileUrl(rec.webcamFilePath) : null;
-      setRecording(rec, url, webcamUrl);
-      if (rec.hideCursor) useEditor.getState().setCursorFx({ enabled: true });
-      void loadCursor(rec);
-
-      try {
-        const existing = await window.api.findProjectForRecording(rec.filePath);
-        if (existing) {
-          const loaded = await window.api.loadProjectAt(existing);
-          if (loaded) {
-            useEditor.getState().hydrate(loaded.state as SerializedProject);
-            useEditor.getState().setCurrentProjectPath(existing);
-            return;
-          }
-        }
-        const projectPath = await window.api.initialProjectPath(rec.filePath);
-        useEditor.getState().setCurrentProjectPath(projectPath);
-      } catch (err) {
-        console.warn('[editor] failed to find project for recording', err);
-      }
-    }
 
     async function hydrateForProject(p: { state: unknown; path: string; recording: import('@shared/ipc').RecordingMeta | null; image?: import('@shared/ipc').ImageMeta | null; mediaType?: 'video' | 'image' }) {
       if (!p) return;
@@ -176,7 +186,25 @@ export function EditorApp() {
       const files = e.dataTransfer?.files;
       if (!files || files.length === 0) return;
       const file = files[0];
-      if (file.type.startsWith('image/')) {
+      const filePath = (file as any).path as string | undefined;
+      if (filePath) {
+        const res = await window.api.importMediaByPath(filePath);
+        if (res) {
+          if (res.type === 'video') {
+            await hydrateForRecording(res.recording);
+          } else {
+            await hydrateForImage(res.image);
+          }
+          return;
+        }
+      }
+      if (file.type.startsWith('video/')) {
+        const buf = await file.arrayBuffer();
+        const rec = await window.api.importVideoBuffer(buf, file.name);
+        if (rec) {
+          await hydrateForRecording(rec);
+        }
+      } else if (file.type.startsWith('image/')) {
         const buf = await file.arrayBuffer();
         const imgMeta = await window.api.importImageBuffer(buf, file.name);
         if (imgMeta) {
@@ -340,7 +368,7 @@ export function EditorApp() {
       }
       if (mod && (e.key === 'i' || e.key === 'I')) {
         e.preventDefault();
-        void handleOpenImage();
+        void handleOpenMedia();
         return;
       }
       if (typing) return;
@@ -356,7 +384,7 @@ export function EditorApp() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [setPlaying]);
+  }, [setPlaying, handleOpenMedia]);
 
   const previewWrapRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -366,13 +394,6 @@ export function EditorApp() {
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
-
-  async function handleOpenImage() {
-    const img = await window.api.pickImageForEditing();
-    if (img) {
-      await hydrateForImage(img);
-    }
-  }
 
   async function handleSaveProject() {
     const project: ProjectFile = {
@@ -430,7 +451,7 @@ export function EditorApp() {
             style={{ filter: 'var(--wordmark)' }}
           />
           <Divider />
-          <FileMenu onSave={handleSaveProject} onLoad={handleLoadProject} onOpenImage={handleOpenImage} onCrop={() => setCropModalOpen(true)} />
+          <FileMenu onSave={handleSaveProject} onLoad={handleLoadProject} onOpenMedia={handleOpenMedia} onCrop={() => setCropModalOpen(true)} />
           <Divider />
           <div className="flex items-center gap-1">
             <button
@@ -482,7 +503,14 @@ export function EditorApp() {
             <option value="auto">Auto</option>
           </select>
           <Divider />
-          <button onClick={handleOpenImage} className="rounded-full bg-[var(--fill)] px-3 py-1 text-xs font-medium hover:bg-[var(--fill-hover)]">{t('editor.openImage')}</button>
+          <button
+            onClick={handleOpenMedia}
+            className="flex items-center gap-1.5 rounded-full bg-[var(--fill)] px-3 py-1 text-xs font-medium text-[var(--muted)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)] transition"
+            title={`${t('editor.uploadMedia')} (Ctrl+I)`}
+          >
+            <Upload size={13} className="text-[var(--accent)]" />
+            <span>{t('editor.uploadMediaShort')}</span>
+          </button>
           <button onClick={handleLoadProject} className="rounded-full bg-[var(--fill)] px-3 py-1 text-xs font-medium hover:bg-[var(--fill-hover)]">{t('editor.loadProject')}</button>
           <button onClick={handleSaveProject} className="rounded-full bg-[var(--fill)] px-3 py-1 text-xs font-medium hover:bg-[var(--fill-hover)]">{t('editor.saveProjectBtn')}</button>
           <Divider />
@@ -634,8 +662,8 @@ export function EditorApp() {
       {isDragOver && (
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-[var(--accent)] bg-[var(--panel)] p-8 text-[var(--text)] shadow-2xl">
-            <ImageIcon size={48} className="text-[var(--accent)] animate-bounce" />
-            <span className="text-base font-semibold">{t('editor.dropImageHint')}</span>
+            <Upload size={48} className="text-[var(--accent)] animate-bounce" />
+            <span className="text-base font-semibold">{t('editor.dropMediaHint')}</span>
           </div>
         </div>
       )}
@@ -647,12 +675,12 @@ export function EditorApp() {
 function FileMenu({
   onSave,
   onLoad,
-  onOpenImage,
+  onOpenMedia,
   onCrop
 }: {
   onSave: () => void;
   onLoad: () => void;
-  onOpenImage?: () => void;
+  onOpenMedia?: () => void;
   onCrop?: () => void;
 }) {
   const t = useT();
@@ -661,7 +689,7 @@ function FileMenu({
       <MenuItem
         label={t('editor.file')}
         items={[
-          ...(onOpenImage ? [{ label: t('editor.openImage'), onClick: onOpenImage, shortcut: 'Ctrl+I' }] : []),
+          ...(onOpenMedia ? [{ label: t('editor.uploadMedia'), onClick: onOpenMedia, shortcut: 'Ctrl+I' }] : []),
           { label: t('editor.openProject'), onClick: onLoad, shortcut: 'Ctrl+O' },
           { label: t('editor.saveProject'), onClick: onSave, shortcut: 'Ctrl+S' }
         ]}

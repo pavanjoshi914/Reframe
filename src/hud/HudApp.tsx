@@ -19,7 +19,7 @@ import {
   MdKeyboardArrowUp,
   MdCheck,
   MdMouse,
-  MdImage
+  MdFileUpload
 } from 'react-icons/md';
 import type { DesktopSource, Region } from '@shared/ipc';
 import { useT } from '../i18n';
@@ -474,12 +474,17 @@ export function HudApp() {
         </IconBtn>
         <IconBtn
           onClick={async () => {
-            const img = await window.api.pickImageForEditing();
-            if (img) await window.api.openEditorForImage(img);
+            const res = await window.api.pickMediaForEditing();
+            if (!res) return;
+            if (res.type === 'video') {
+              await window.api.openEditor(res.recording);
+            } else if (res.type === 'image') {
+              await window.api.openEditorForImage(res.image);
+            }
           }}
-          title={t('hud.openImage')}
+          title={t('hud.uploadMedia')}
         >
-          <MdImage size={18} />
+          <MdFileUpload size={18} />
         </IconBtn>
         <IconBtn onClick={() => window.api.openExportsFolder()} title={t('hud.openExports')}>
           <MdFolderOpen size={18} />

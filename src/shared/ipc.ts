@@ -98,6 +98,10 @@ export type ImageMeta = {
   height: number;
 };
 
+export type MediaFileResult =
+  | { type: 'image'; image: ImageMeta }
+  | { type: 'video'; recording: RecordingMeta };
+
 export type ProjectFile = {
   version: 1;
   recording: RecordingMeta | null;
@@ -168,7 +172,10 @@ export type Api = {
   openExportsFolder: () => Promise<void>;
   pickImageFile: () => Promise<{ dataUrl: string; name: string } | null>;
   pickImageForEditing: () => Promise<ImageMeta | null>;
+  pickMediaForEditing: () => Promise<MediaFileResult | null>;
   importImageBuffer: (data: ArrayBuffer, name: string) => Promise<ImageMeta>;
+  importVideoBuffer: (data: ArrayBuffer, name: string) => Promise<RecordingMeta>;
+  importMediaByPath: (filePath: string) => Promise<MediaFileResult | null>;
   copyImageToClipboard: (pngData: ArrayBuffer) => Promise<{ ok: boolean; error?: string }>;
   saveImageExport: (req: { name: string; data: ArrayBuffer; format: 'png' | 'jpeg' | 'webp' }) => Promise<{ saved: boolean; path?: string; error?: string }>;
   openEditorForImage: (image: ImageMeta) => Promise<void>;

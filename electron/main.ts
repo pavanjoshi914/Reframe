@@ -101,6 +101,13 @@ let projectsDir = '';
 let exportsDir = '';
 let stillsDir = '';
 
+const allowedMediaPaths = new Set<string>();
+function allowMediaPath(p: string) {
+  try {
+    if (p) allowedMediaPaths.add(path.resolve(p));
+  } catch {}
+}
+
 // Is `target` inside `dir`? Used to fence the media:// handler and the cursor
 // sidecar loader to the recordings dir. Windows compares paths
 // case-insensitively, so fold case there — otherwise a drive letter or user
@@ -737,6 +744,7 @@ ipcMain.handle('project:lastLoaded', () => {
 });
 
 ipcMain.handle('recording:fileUrl', (_evt, filePath: string) => {
+  allowMediaPath(filePath);
   // Serve via the custom `media://` scheme so the editor (http origin in dev)
   // can load it. pathname keeps the absolute path; host stays empty.
   return `media://local${pathToFileURL(filePath).pathname}`;
@@ -2019,12 +2027,87 @@ ipcMain.handle('image:pick', async (evt) => {
   return { dataUrl: `data:${mime};base64,${buf.toString('base64')}`, name: path.basename(filePath) };
 });
 
+function isVideoFile(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  return ['.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.wmv', '.flv'].includes(ext);
+}
+
+function isImageFile(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  return ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.gif', '.bmp', '.avif'].includes(ext);
+}
+
+async function processVideoFile(srcPath: string): Promise<import('../src/shared/ipc.js').RecordingMeta> {
+  let resolved = path.resolve(srcPath);
+  allowMediaPath(resolved);
+  const baseName = path.basename(resolved);
+
+  // If it's a container like MKV or AVI that HTML5 <video> cannot directly decode,
+  // remux to MP4 instantly via stream copy (-c copy).
+  const ext = path.extname(resolved).toLowerCase();
+  if (ext !== '.mp4' && ext !== '.webm' && ext !== '.mov') {
+    const videosDir = path.join(recordingsTempDir, 'imported');
+    fs.mkdirSync(videosDir, { recursive: true });
+    const remuxedPath = path.join(videosDir, `${Date.now()}-${baseName.replace(/\.[^.]+$/, '')}.mp4`);
+    try {
+      const remuxRes = spawnSync(ffmpegBin(), [
+        '-v', 'error', '-y', '-i', resolved,
+        '-c', 'copy',
+        '-movflags', '+faststart',
+        remuxedPath
+      ]);
+      if (remuxRes.status === 0 && fs.existsSync(remuxedPath)) {
+        resolved = remuxedPath;
+        allowMediaPath(resolved);
+      }
+    } catch (remuxErr) {
+      console.warn('[main] remux to mp4 failed, using original file', remuxErr);
+    }
+  }
+
+  let width = 1920;
+  let height = 1080;
+  let durationMs = 5000;
+
+  try {
+    const probe = execFileSync(ffprobeBin(), [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height:format=duration',
+      '-of', 'json',
+      resolved
+    ], { encoding: 'utf8' });
+    const info = JSON.parse(probe);
+    const stream = info?.streams?.[0];
+    if (stream?.width && stream?.height) {
+      width = Number(stream.width);
+      height = Number(stream.height);
+    }
+    const durSec = parseFloat(info?.format?.duration);
+    if (Number.isFinite(durSec) && durSec > 0) {
+      durationMs = Math.round(durSec * 1000);
+    }
+  } catch (err) {
+    console.warn('[main] ffprobe failed for video file, using defaults', err);
+  }
+
+  return {
+    filePath: resolved,
+    durationMs,
+    width,
+    height,
+    startedAt: Date.now(),
+    region: { x: 0, y: 0, width: 1, height: 1 }
+  };
+}
+
 function processImageFile(srcPath: string): import('../src/shared/ipc.js').ImageMeta {
   const baseName = path.basename(srcPath);
   const imagesDir = path.join(recordingsTempDir, 'images');
   fs.mkdirSync(imagesDir, { recursive: true });
   const destPath = path.join(imagesDir, `${Date.now()}-${baseName}`);
   fs.copyFileSync(srcPath, destPath);
+  allowMediaPath(destPath);
   const url = `media://local${pathToFileURL(destPath).pathname}`;
   const nImg = nativeImage.createFromPath(destPath);
   const size = nImg.getSize();
@@ -2051,12 +2134,60 @@ ipcMain.handle('image:pickForEditing', async (evt) => {
   return processImageFile(res.filePaths[0]);
 });
 
+ipcMain.handle('media:pickForEditing', async (evt) => {
+  const win = BrowserWindow.fromWebContents(evt.sender) ?? liveEditor() ?? hudWindow ?? undefined;
+  const res = await dialog.showOpenDialog(win!, {
+    title: 'Open Image or Video for Editing',
+    filters: [
+      {
+        name: 'All Supported Media',
+        extensions: ['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v', 'png', 'jpg', 'jpeg', 'webp', 'svg', 'gif', 'bmp', 'avif']
+      },
+      { name: 'Videos', extensions: ['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v'] },
+      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif', 'bmp', 'avif'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  });
+  if (res.canceled || res.filePaths.length === 0) return null;
+  const filePath = res.filePaths[0];
+  if (isVideoFile(filePath)) {
+    const recording = await processVideoFile(filePath);
+    return { type: 'video' as const, recording };
+  } else {
+    const image = processImageFile(filePath);
+    return { type: 'image' as const, image };
+  }
+});
+
+ipcMain.handle('media:importPath', async (_evt, filePath: string) => {
+  if (!fs.existsSync(filePath)) return null;
+  if (isVideoFile(filePath)) {
+    const recording = await processVideoFile(filePath);
+    return { type: 'video' as const, recording };
+  } else if (isImageFile(filePath)) {
+    const image = processImageFile(filePath);
+    return { type: 'image' as const, image };
+  }
+  return null;
+});
+
+ipcMain.handle('video:importBuffer', async (_evt, data: ArrayBuffer, name: string) => {
+  const baseName = (name || `video-${Date.now()}.mp4`).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const videosDir = path.join(recordingsTempDir, 'imported');
+  fs.mkdirSync(videosDir, { recursive: true });
+  const destPath = path.join(videosDir, `${Date.now()}-${baseName}`);
+  fs.writeFileSync(destPath, Buffer.from(data));
+  return processVideoFile(destPath);
+});
+
 ipcMain.handle('image:importBuffer', async (_evt, data: ArrayBuffer, name: string) => {
   const baseName = (name || `image-${Date.now()}.png`).replace(/[^a-zA-Z0-9._-]/g, '_');
   const imagesDir = path.join(recordingsTempDir, 'images');
   fs.mkdirSync(imagesDir, { recursive: true });
   const destPath = path.join(imagesDir, `${Date.now()}-${baseName}`);
   fs.writeFileSync(destPath, Buffer.from(data));
+  allowMediaPath(destPath);
   const url = `media://local${pathToFileURL(destPath).pathname}`;
   const nImg = nativeImage.createFromBuffer(Buffer.from(data));
   const size = nImg.getSize();
@@ -2376,6 +2507,8 @@ app.whenReady().then(async () => {
     const ext = path.extname(p).toLowerCase();
     if (ext === '.mp4' || ext === '.m4v') return 'video/mp4';
     if (ext === '.mov') return 'video/quicktime';
+    if (ext === '.webm') return 'video/webm';
+    if (ext === '.mkv') return 'video/x-matroska';
     if (ext === '.mp3') return 'audio/mpeg';
     if (ext === '.wav') return 'audio/wav';
     if (ext === '.m4a' || ext === '.aac') return 'audio/mp4';
@@ -2406,8 +2539,8 @@ app.whenReady().then(async () => {
     } catch {
       return new Response('bad request', { status: 400 });
     }
-    // Only allow paths under the temp recordings dir.
-    if (!isInsideDir(recordingsTempDir, resolved)) {
+    // Only allow paths under the temp recordings dir or explicitly allowed media paths.
+    if (!isInsideDir(recordingsTempDir, resolved) && !allowedMediaPaths.has(resolved)) {
       return new Response('forbidden', { status: 403 });
     }
     try {
