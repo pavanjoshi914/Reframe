@@ -55,6 +55,91 @@ const inst = (partial: Partial<SceneInstance>): SceneInstance => ({
 
 // ── All Cinematic Animation Presets ──────────────────────────────────────────
 export const SCENES: Record<string, Gen> = {
+  // ── CINEMATIC MOVES ──
+  // Slow cinematic camera pan to the left with subtle natural perspective.
+  slowPanLeft: (p) => {
+    const w = sweepBell(p);
+    return [inst({
+      ox: -0.14 * w,
+      oy: 0,
+      oz: 0.05 * w,
+      rx: 0.8 * w,
+      ry: -3.5 * w,
+      rz: 0.5 * w,
+      s: 1.0 + 0.03 * w
+    })];
+  },
+
+  // Slow cinematic camera pan to the right with subtle natural perspective.
+  slowPanRight: (p) => {
+    const w = sweepBell(p);
+    return [inst({
+      ox: 0.14 * w,
+      oy: 0,
+      oz: 0.05 * w,
+      rx: 0.8 * w,
+      ry: 3.5 * w,
+      rz: -0.5 * w,
+      s: 1.0 + 0.03 * w
+    })];
+  },
+
+  // Slow cinematic push-in (slow punch-in), smooth and focused without extreme tilt.
+  slowZoomIn: (p) => {
+    const w = sweepBell(p);
+    return [inst({
+      ox: 0,
+      oy: 0,
+      oz: 0.22 * w,
+      rx: 1.5 * w,
+      ry: 0,
+      rz: 0,
+      s: 1.0 + 0.10 * w
+    })];
+  },
+
+  // Slow cinematic pull-back, revealing wider context with smooth deceleration.
+  slowZoomOut: (p) => {
+    const w = sweepBell(p);
+    return [inst({
+      ox: 0,
+      oy: 0,
+      oz: -0.18 * w,
+      rx: -1.2 * w,
+      ry: 0,
+      rz: 0,
+      s: 1.0 - 0.07 * w
+    })];
+  },
+
+  // Slow cinematic vertical pan upwards (slow top), smoothly highlighting the upper region.
+  slowPanUp: (p) => {
+    const w = sweepBell(p);
+    return [inst({
+      ox: 0,
+      oy: 0.12 * w,
+      oz: 0.05 * w,
+      rx: -3.0 * w,
+      ry: 0,
+      rz: 0,
+      s: 1.0 + 0.03 * w
+    })];
+  },
+
+  // Slow cinematic vertical pan downwards (slow down), smoothly highlighting the lower region.
+  slowPanDown: (p) => {
+    const w = sweepBell(p);
+    return [inst({
+      ox: 0,
+      oy: -0.12 * w,
+      oz: 0.05 * w,
+      rx: 3.0 * w,
+      ry: 0,
+      rz: 0,
+      s: 1.0 + 0.03 * w
+    })];
+  },
+
   // ── ENTRANCES (INTROS) ──
   // Dramatic depth entrance: flies in from depth with pitch and soft deceleration, smoothly landing flat at center.
   heroFlyIn: (p) => {
@@ -542,6 +627,7 @@ export const SCENE_IDS = Object.keys(SCENES) as SceneId[];
 
 // Grouping for the palette UI.
 export const SCENE_GROUPS: { key: string; ids: string[] }[] = [
+  { key: 'cinematic', ids: ['slowPanLeft', 'slowPanRight', 'slowZoomIn', 'slowZoomOut', 'slowPanUp', 'slowPanDown'] },
   { key: 'entrances', ids: ['heroFlyIn', 'elevateLand', 'glideInL', 'glideInR', 'cornerSwoop', 'springPop', 'riseTilt'] },
   { key: 'sweeps', ids: ['orbitLR', 'orbitRL', 'turntable3D', 'isometricPan', 'dynamicPerspective', 'dutchSweep'] },
   { key: 'focus', ids: ['zoomTiltTL', 'zoomTiltTR', 'centerDive', 'cornerSpotlight', 'detailFocus'] },
@@ -564,10 +650,14 @@ export const SCENE_SHAPE_RATIO: Record<Exclude<SceneShape, 'auto'>, number> = {
   '1:1': 1, '4:3': 4 / 3, '3:2': 3 / 2, '16:9': 16 / 9, '9:16': 9 / 16
 };
 
+export const CINEMATIC_PRESETS = new Set([
+  'slowPanLeft', 'slowPanRight', 'slowZoomIn', 'slowZoomOut', 'slowPanUp', 'slowPanDown'
+]);
 export const ENTRANCE_PRESETS = new Set([
   'heroFlyIn', 'elevateLand', 'glideInL', 'glideInR', 'cornerSwoop', 'springPop', 'riseTilt'
 ]);
 export const SWEEPS_AND_FOCUS = new Set([
+  ...CINEMATIC_PRESETS,
   'orbitLR', 'orbitRL', 'turntable3D', 'isometricPan', 'dynamicPerspective', 'dutchSweep',
   'zoomTiltTL', 'zoomTiltTR', 'centerDive', 'cornerSpotlight', 'detailFocus'
 ]);

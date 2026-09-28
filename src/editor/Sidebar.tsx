@@ -3,7 +3,7 @@ import { ChevronDown, Download, Upload, X, Loader2, Circle, Square, RectangleHor
 import { BORDER_IDS, BORDER_LABELS, BORDER_COLORS, BORDER_DEFAULTS, type BorderId } from './borders';
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem, type CursorStyle } from './store';
 import { runExport, cancelExport, saveStillNow, copyImageToClipboardNow } from './export';
-import { SCENE_GROUPS, DEFAULT_SCENE_SETTINGS, sceneInstances } from './scenes';
+import { SCENE_GROUPS, DEFAULT_SCENE_SETTINGS, sceneInstances, ENTRANCE_PRESETS, EXIT_PRESETS } from './scenes';
 import { MESH_PRESETS, meshPreset, renderMeshBackground, FIELD_PRESETS, FIELD_VARIANTS, FIELD_VARIANT_LABELS, fieldStyleOf, renderFieldBackground, bgClockMs, type FieldVariant, type FieldStyle, SHADER_IDS, SHADER_LABELS, SHADER_FALLBACK, renderShaderBackground, type ShaderId } from './shaders';
 import { CURSOR_GLYPHS, CURSOR_STYLE_IDS } from './cursorGlyphs';
 import type { SceneInstance } from './card3d';
@@ -3164,9 +3164,9 @@ const thumbCache = new Map<string, SceneInstance[]>();
 function thumbInstances(id: string): SceneInstance[] {
   let v = thumbCache.get(id);
   if (!v) {
-    const isExit = id.toLowerCase().includes('exit') || id.toLowerCase().includes('out') || id === 'fallbackOut' || id === 'horizonFade';
-    const isEntrance = id.toLowerCase().includes('in') || id.toLowerCase().includes('land') || id.toLowerCase().includes('swoop') || id.toLowerCase().includes('pop') || id.toLowerCase().includes('rise');
-    const p = isExit ? 0.5 : (isEntrance ? 0.35 : 0.4);
+    const isExit = EXIT_PRESETS.has(id);
+    const isEntrance = ENTRANCE_PRESETS.has(id);
+    const p = isExit ? 0.5 : (isEntrance ? 0.35 : 0.5);
     v = (sceneInstances(id, p) ?? []).slice().sort((a, b) => a.oz - b.oz);
     thumbCache.set(id, v);
   }
