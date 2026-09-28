@@ -1829,7 +1829,7 @@ export function drawFrame(
     titleCardEasedPresence = titleCardPresence * (2 - titleCardPresence);
 
     if (backdrop === 'hideVideo') {
-      videoAlpha = isTimelineStart ? 0.0 : (1.0 - titleCardEasedPresence);
+      videoAlpha = 1.0 - titleCardEasedPresence;
     } else if (backdrop === 'dimVideo') {
       videoAlpha = 1.0 - titleCardEasedPresence * 0.75;
     } else if (backdrop === 'blurVideo') {
@@ -3398,8 +3398,6 @@ function drawTitleCard(
   const titleFont = `700 ${titleFontSize}px ${fontStack}`;
   const subtitleFont = `500 ${subtitleFontSize}px ${fontStack}`;
   const badgeFont = `600 ${badgeFontSize}px ${fontStack}`;
-
-  ctx.save();
   ctx.font = titleFont;
   const maxTitleW = outW * 0.78;
 

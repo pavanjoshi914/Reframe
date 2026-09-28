@@ -1037,8 +1037,10 @@ export const useEditor = create<EditorState>((set, get) => ({
           });
         } else if (nowPaused) {
           // Remained a pausing card: adjust ripple delta if endMs was resized
-          if (effectivePatch.endMs !== undefined && effectivePatch.startMs === undefined && effectivePatch.endMs !== target.endMs) {
-            const delta = effectivePatch.endMs - target.endMs;
+          const newStart = effectivePatch.startMs !== undefined ? effectivePatch.startMs : target.startMs;
+          const newEnd = effectivePatch.endMs !== undefined ? effectivePatch.endMs : target.endMs;
+          if (newStart === target.startMs && newEnd !== target.endMs) {
+            const delta = newEnd - target.endMs;
             nextItems = nextItems.map((it) => {
               if (it.id !== id && it.startMs >= target.endMs) {
                 return { ...it, startMs: it.startMs + delta, endMs: it.endMs + delta };

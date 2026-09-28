@@ -1085,6 +1085,46 @@ function TitleCardEditor({ item }: { item: LaneItem }) {
         </span>
       </div>
 
+      {/* Duration Control */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <Label>Duration</Label>
+          <div className="flex items-center gap-1">
+            {[2, 3, 4, 5].map((sec) => (
+              <button
+                key={sec}
+                onClick={() => set({ endMs: item.startMs + sec * 1000 })}
+                className={
+                  'rounded px-1.5 py-0.5 text-[9px] font-mono transition ' +
+                  (Math.abs((item.endMs - item.startMs) - sec * 1000) < 150
+                    ? 'bg-indigo-500/20 text-indigo-300 font-semibold ring-1 ring-indigo-500/40'
+                    : 'bg-[var(--panel-2)] text-[var(--muted)] hover:text-[var(--text)]')
+                }
+              >
+                {sec}s
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min={1}
+            max={10}
+            step={0.5}
+            value={Math.round(((item.endMs - item.startMs) / 1000) * 2) / 2}
+            onChange={(e) => {
+              const sec = parseFloat(e.target.value);
+              set({ endMs: item.startMs + Math.round(sec * 1000) });
+            }}
+            className="flex-1 accent-[var(--accent)] cursor-pointer"
+          />
+          <span className="w-10 text-right font-mono text-xs text-[var(--muted)]">
+            {((item.endMs - item.startMs) / 1000).toFixed(1)}s
+          </span>
+        </div>
+      </div>
+
       {/* Product Demo Presets */}
       <div>
         <div className="flex items-center justify-between mb-1">
