@@ -140,14 +140,16 @@ export function Preview() {
     }
 
     const { currentMs, durationMs, setCurrent } = useEditor.getState();
+    let effectiveMs = currentMs;
     if (durationMs > 0 && currentMs >= durationMs - 50) {
       setCurrent(0);
+      effectiveMs = 0;
     }
 
     let frameId: number;
     let lastTime = performance.now();
 
-    const initialMapping = timelineToVideoMs(useEditor.getState().currentMs, useEditor.getState().items);
+    const initialMapping = timelineToVideoMs(effectiveMs, useEditor.getState().items);
     if (initialMapping.isPaused) {
       v.pause();
       const targetSec = initialMapping.videoMs / 1000;
@@ -581,7 +583,7 @@ export function Preview() {
       const activeCard = st.items.find(
         (it) => it.kind === 'titleCard' && (
           (st.currentMs >= it.startMs && st.currentMs <= it.endMs) ||
-          (it === firstTitleCard && it.startMs <= 800 && st.currentMs >= 0 && st.currentMs <= it.endMs)
+          (it === firstTitleCard && it.startMs <= 1500 && st.currentMs >= 0 && st.currentMs <= it.endMs)
         )
       );
       const cardAnimatedBg = activeCard && (

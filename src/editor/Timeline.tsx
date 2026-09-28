@@ -477,7 +477,7 @@ function ItemChip({
     const dxMs = ((e.clientX - d.startX) / pixelsPerSecond) * 1000;
     let nextStart = d.startMs;
     let nextEnd = d.endMs;
-    const snapThresholdMs = Math.max(800, (30 / pixelsPerSecond) * 1000);
+    const snapThresholdMs = Math.max(1500, (30 / pixelsPerSecond) * 1000);
     if (d.kind === 'move') {
       const len = d.endMs - d.startMs;
       let rawStart = d.startMs + dxMs;

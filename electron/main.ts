@@ -2243,10 +2243,25 @@ ipcMain.handle('export:rawBegin', (_evt, req: { width: number; height: number; f
 // applies backpressure instead of the frames piling up in memory.
 ipcMain.handle('export:rawFrame', async (_evt, id: string, data: ArrayBuffer) => {
   const enc = rawEncoders.get(id);
-  if (!enc || !enc.proc.stdin || enc.proc.stdin.destroyed) return { ok: false };
+  const stdin = enc?.proc.stdin;
+  if (!enc || !stdin || stdin.destroyed) return { ok: false };
   const buf = Buffer.from(data);
-  if (!enc.proc.stdin.write(buf)) {
-    await new Promise<void>((r) => enc.proc.stdin!.once('drain', () => r()));
+  if (!stdin.write(buf)) {
+    let ok = true;
+    await new Promise<void>((r) => {
+      const onDrain = () => { cleanup(); r(); };
+      const onClose = () => { ok = false; cleanup(); r(); };
+      const onError = () => { ok = false; cleanup(); r(); };
+      const cleanup = () => {
+        stdin.off('drain', onDrain);
+        enc.proc.off('close', onClose);
+        stdin.off('error', onError);
+      };
+      stdin.once('drain', onDrain);
+      enc.proc.once('close', onClose);
+      stdin.once('error', onError);
+    });
+    if (!ok) return { ok: false };
   }
   return { ok: true };
 });

@@ -756,7 +756,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     return { currentMs: ms };
   }),
-  setPlaying: (p) => set({ playing: p }),
+  setPlaying: (p) => set((s) => {
+    if (p && s.durationMs > 0 && s.currentMs >= s.durationMs - 50) {
+      return { playing: true, currentMs: 0 };
+    }
+    return { playing: p };
+  }),
   setAspect: (a) => set({ aspect: a }),
   setBackground: (b) => set({ background: b }),
   setBorder: (b) => set({ border: b }),
@@ -883,7 +888,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
     if (kind === 'titleCard') {
       const desiredLen = 3000;
-      const targetStart = validAt < 800 ? 0 : Math.max(0, validAt);
+      const targetStart = validAt < 1500 ? 0 : Math.max(0, validAt);
       const targetEnd = targetStart + desiredLen;
 
       // Ripple shift existing items at or after targetStart by desiredLen so they stay on the same video frames

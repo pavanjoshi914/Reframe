@@ -761,21 +761,25 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     let outMs = 0;
     let nextEmitMs = 0;
     let lastProgress = 0;
-    let gifFrameCount = 0;
-    let gifTotalEst = totalSrcFrames;
-    let gifPreviewPct = -100;
-
     const pausingCardsGif = items
       .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
       .sort((a, b) => a.startMs - b.startMs);
 
     let prevCardsDurGif = 0;
     const cardScheduleGif = pausingCardsGif.map((card) => {
-      const insertVideoMs = (card === pausingCardsGif[0] && card.startMs <= 800) ? 0 : Math.max(0, card.startMs - prevCardsDurGif);
+      const insertVideoMs = (card === pausingCardsGif[0] && card.startMs <= 1500) ? 0 : Math.max(0, card.startMs - prevCardsDurGif);
       const cardDurMs = Math.max(100, card.endMs - card.startMs);
       prevCardsDurGif += cardDurMs;
       return { card, insertVideoMs, cardDurMs, emitted: false };
     });
+
+    const totalGifTitleCardFrames = cardScheduleGif.reduce(
+      (sum, c) => sum + Math.max(1, Math.round(c.cardDurMs / gifFrameMs)),
+      0
+    );
+    let gifProcessedFrames = 0;
+    let gifTotalEst = (totalSrcFrames > 0 ? totalSrcFrames : (sourceDurationSec > 0 ? Math.round(sourceDurationSec * GIF_FPS) : 0)) + totalGifTitleCardFrames;
+    let gifPreviewPct = -100;
 
     const emitGifTitleCard = (cardItem: typeof cardScheduleGif[0], currentSrc: FrameSource | null) => {
       const cardStartMs = cardItem.card.startMs;
@@ -794,6 +798,16 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
         enc.writeFrame(index, outW, outH, { palette, delay: gifFrameMs });
         outMs += gifFrameMs;
         nextEmitMs += gifFrameMs;
+        gifProcessedFrames++;
+        const pct = gifTotalEst
+          ? Math.min(99, Math.round((gifProcessedFrames / gifTotalEst) * 100))
+          : 0;
+        if (pct - lastProgress >= 1) {
+          lastProgress = pct;
+          let preview: string | undefined;
+          if (pct - gifPreviewPct >= 4) { gifPreviewPct = pct; preview = snapshotPreview(canvas); }
+          onProgress('Encoding GIF', pct, { frame: gifProcessedFrames, totalFrames: gifTotalEst, preview });
+        }
       }
       cardItem.emitted = true;
     };
@@ -803,8 +817,10 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
       const { canvas: srcCanvas, timestamp, duration } = wrapped;
       const ms = timestamp * 1000;
       const frameDuration = duration || 1 / 30;
-      if (!gifTotalEst && sourceDurationSec > 0) gifTotalEst = Math.max(1, Math.round(sourceDurationSec / frameDuration));
-      gifFrameCount++;
+      if (!gifTotalEst && sourceDurationSec > 0) {
+        gifTotalEst = Math.max(1, Math.round(sourceDurationSec / frameDuration)) + totalGifTitleCardFrames;
+      }
+      gifProcessedFrames++;
 
       for (const item of cardScheduleGif) {
         if (!item.emitted && ms >= item.insertVideoMs) {
@@ -813,7 +829,16 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
       }
 
       const mappedTimelineMs = videoToTimelineMs(ms, items);
-      if (items.some((it) => it.kind === 'trim' && mappedTimelineMs >= it.startMs && mappedTimelineMs < it.endMs)) continue;
+      if (items.some((it) => it.kind === 'trim' && mappedTimelineMs >= it.startMs && mappedTimelineMs < it.endMs)) {
+        const pct = gifTotalEst
+          ? Math.min(99, Math.round((gifProcessedFrames / gifTotalEst) * 100))
+          : sourceDurationSec > 0 ? Math.min(99, Math.round((timestamp / sourceDurationSec) * 100)) : 0;
+        if (pct - lastProgress >= 1) {
+          lastProgress = pct;
+          onProgress('Encoding GIF', pct, { frame: gifProcessedFrames, totalFrames: gifTotalEst });
+        }
+        continue;
+      }
       const speed = items.find((it) => it.kind === 'speed' && mappedTimelineMs >= it.startMs && mappedTimelineMs <= it.endMs);
       const speedFactor = speed?.speed ?? 1;
       const endOut = outMs + (frameDuration / speedFactor) * 1000;
@@ -837,13 +862,13 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
       outMs = endOut;
       {
         const pct = gifTotalEst
-          ? Math.min(99, (gifFrameCount / gifTotalEst) * 100)
-          : sourceDurationSec > 0 ? Math.min(99, (timestamp / sourceDurationSec) * 100) : 0;
+          ? Math.min(99, Math.round((gifProcessedFrames / gifTotalEst) * 100))
+          : sourceDurationSec > 0 ? Math.min(99, Math.round((timestamp / sourceDurationSec) * 100)) : 0;
         if (pct - lastProgress >= 1) {
           lastProgress = pct;
           let preview: string | undefined;
           if (pct - gifPreviewPct >= 4) { gifPreviewPct = pct; preview = snapshotPreview(canvas); }
-          onProgress('Encoding GIF', pct, { frame: gifFrameCount, totalFrames: gifTotalEst, preview });
+          onProgress('Encoding GIF', pct, { frame: gifProcessedFrames, totalFrames: gifTotalEst, preview });
         }
       }
     }
@@ -996,21 +1021,25 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   // Frame counters + preview throttle for the progress modal. totalFramesEst
   // prefers the exact packet count; only if that wasn't available do we fall
   // back to a per-frame-duration estimate.
-  let srcFrameCount = 0;
-  let totalFramesEst = totalSrcFrames;
-  let lastPreviewPct = -100;
-
   const pausingCards = items
     .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
     .sort((a, b) => a.startMs - b.startMs);
 
   let prevCardsDur = 0;
   const cardSchedule = pausingCards.map((card) => {
-    const insertVideoMs = (card === pausingCards[0] && card.startMs <= 800) ? 0 : Math.max(0, card.startMs - prevCardsDur);
+    const insertVideoMs = (card === pausingCards[0] && card.startMs <= 1500) ? 0 : Math.max(0, card.startMs - prevCardsDur);
     const cardDurMs = Math.max(100, card.endMs - card.startMs);
     prevCardsDur += cardDurMs;
     return { card, insertVideoMs, cardDurMs, emitted: false };
   });
+
+  const totalTitleCardFrames = cardSchedule.reduce(
+    (sum, c) => sum + Math.max(1, Math.round((c.cardDurMs / 1000) * outFps)),
+    0
+  );
+  let processedFrames = 0;
+  let totalFramesEst = (totalSrcFrames > 0 ? totalSrcFrames : (sourceDurationSec > 0 ? Math.round(sourceDurationSec * outFps) : 0)) + totalTitleCardFrames;
+  let lastPreviewPct = -100;
 
   const emitTitleCardFrames = async (cardItem: typeof cardSchedule[0], currentSrcCanvas: FrameSource | null) => {
     const cardStartMs = cardItem.card.startMs;
@@ -1027,6 +1056,20 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
         await videoSource.add(outTs, stepSec);
       }
       outTs += stepSec;
+      processedFrames++;
+
+      const pct = totalFramesEst
+        ? Math.min(99, Math.round((processedFrames / totalFramesEst) * 100))
+        : 0;
+      if (pct - lastProgress >= 1) {
+        lastProgress = pct;
+        let preview: string | undefined;
+        if (pct - lastPreviewPct >= 4) {
+          lastPreviewPct = pct;
+          preview = snapshotPreview(canvas);
+        }
+        onProgress('Encoding', pct, { frame: processedFrames, totalFrames: totalFramesEst, preview });
+      }
     }
     cardItem.emitted = true;
   };
@@ -1037,9 +1080,9 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     const ms = timestamp * 1000;
     const frameDuration = duration || 1 / 30;
     if (!totalFramesEst && sourceDurationSec > 0) {
-      totalFramesEst = Math.max(1, Math.round(sourceDurationSec / frameDuration));
+      totalFramesEst = Math.max(1, Math.round(sourceDurationSec / frameDuration)) + totalTitleCardFrames;
     }
-    srcFrameCount++;
+    processedFrames++;
 
     for (const item of cardSchedule) {
       if (!item.emitted && ms >= item.insertVideoMs) {
@@ -1053,7 +1096,16 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     const inTrim = items.some(
       (it) => it.kind === 'trim' && mappedTimelineMs >= it.startMs && mappedTimelineMs < it.endMs
     );
-    if (inTrim) continue;
+    if (inTrim) {
+      const pct = totalFramesEst
+        ? Math.min(99, Math.round((processedFrames / totalFramesEst) * 100))
+        : sourceDurationSec > 0 ? Math.min(99, Math.round((timestamp / sourceDurationSec) * 100)) : 0;
+      if (pct - lastProgress >= 1) {
+        lastProgress = pct;
+        onProgress('Encoding', pct, { frame: processedFrames, totalFrames: totalFramesEst });
+      }
+      continue;
+    }
 
     // Speed region containing this source frame, if any.
     const speed = items.find(
@@ -1101,8 +1153,8 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     // Drive progress off frames processed when we know the total (exact, never
     // saturates); fall back to the timestamp ratio only if we have no count.
     const pct = totalFramesEst
-      ? Math.min(99, (srcFrameCount / totalFramesEst) * 100)
-      : sourceDurationSec > 0 ? Math.min(99, (timestamp / sourceDurationSec) * 100) : 0;
+      ? Math.min(99, Math.round((processedFrames / totalFramesEst) * 100))
+      : sourceDurationSec > 0 ? Math.min(99, Math.round((timestamp / sourceDurationSec) * 100)) : 0;
     if (pct - lastProgress >= 1) {
       lastProgress = pct;
       // A small JPEG snapshot every ~4% gives the modal a live "frame being
@@ -1112,7 +1164,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
         lastPreviewPct = pct;
         preview = snapshotPreview(canvas);
       }
-      onProgress('Encoding', pct, { frame: srcFrameCount, totalFrames: totalFramesEst, preview });
+      onProgress('Encoding', pct, { frame: processedFrames, totalFrames: totalFramesEst, preview });
     }
   }
 
@@ -1125,7 +1177,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   // Make sure the counter lands on the true total even if the last 1% tick fell
   // a few frames short of the end.
   if (!cancelRequested && totalFramesEst) {
-    onProgress('Encoding', 99, { frame: srcFrameCount, totalFrames: totalFramesEst });
+    onProgress('Encoding', 99, { frame: processedFrames, totalFrames: totalFramesEst });
   }
 
   if (cancelRequested) {
@@ -1204,21 +1256,51 @@ async function buildTimelineAudio(
 
   const trims = items.filter((it) => it.kind === 'trim');
   const speeds = items.filter((it) => it.kind === 'speed');
-  const speedAt = (ms: number) => speeds.find((s) => ms >= s.startMs && ms <= s.endMs)?.speed ?? 1;
-  const inTrim = (ms: number) => trims.some((t) => ms >= t.startMs && ms < t.endMs);
+  const hasTrims = trims.length > 0;
+  const hasSpeeds = speeds.length > 0;
+  const speedAt = hasSpeeds
+    ? (ms: number) => speeds.find((s) => ms >= s.startMs && ms <= s.endMs)?.speed ?? 1
+    : () => 1;
+  const inTrim = hasTrims
+    ? (ms: number) => trims.some((t) => ms >= t.startMs && ms < t.endMs)
+    : () => false;
 
   const pausingCards = items
     .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
     .sort((a, b) => a.startMs - b.startMs);
 
   let prevCardsDurAudio = 0;
-  const cardAudioSchedule = pausingCards.map((card) => {
-    const insertVideoMs = (card === pausingCards[0] && card.startMs <= 800) ? 0 : Math.max(0, card.startMs - prevCardsDurAudio);
+  const cardAudioSchedule = pausingCards.map((card, idx) => {
+    const insertVideoMs = (idx === 0 && card.startMs <= 1500) ? 0 : Math.max(0, card.startMs - prevCardsDurAudio);
     const cardDurMs = Math.max(100, card.endMs - card.startMs);
     const silenceSamples = Math.round((cardDurMs / 1000) * sr);
     prevCardsDurAudio += cardDurMs;
     return { insertVideoMs, silenceSamples, handled: false };
   });
+
+  // Precompute pausing cards for fast videoToTimeline mapping without allocating arrays on every sample
+  let shiftAcc = 0;
+  const precomputedCards = pausingCards.map((card, idx) => {
+    let cardVideoStart = card.startMs - shiftAcc;
+    if (idx === 0 && card.startMs <= 1500) {
+      cardVideoStart = 0;
+    }
+    const duration = Math.max(0, card.endMs - card.startMs);
+    shiftAcc += duration;
+    return { cardVideoStart, duration };
+  });
+
+  const fastVideoToTimelineMs = (videoMs: number): number => {
+    let shift = 0;
+    for (let c = 0; c < precomputedCards.length; c++) {
+      const pc = precomputedCards[c];
+      if (videoMs < pc.cardVideoStart) {
+        return videoMs + shift;
+      }
+      shift += pc.duration;
+    }
+    return videoMs + shift;
+  };
 
   const totalSilenceSamples = cardAudioSchedule.reduce((sum, c) => sum + c.silenceSamples, 0);
 
@@ -1228,7 +1310,7 @@ async function buildTimelineAudio(
     let total = totalSilenceSamples, ffDebt = 0, prevF = 1;
     for (let i = 0; i < len; i++) {
       const ms = (i / sr) * 1000;
-      const timelineMs = videoToTimelineMs(ms, items);
+      const timelineMs = fastVideoToTimelineMs(ms);
       if (inTrim(timelineMs)) continue;
       const f = speedAt(timelineMs);
       if (f !== prevF) { ffDebt = 0; prevF = f; }
@@ -1250,7 +1332,7 @@ async function buildTimelineAudio(
   let w = 0, ffDebt = 0, prevF = 1;
   for (let i = 0; i < len; i++) {
     const ms = (i / sr) * 1000;
-    const timelineMs = videoToTimelineMs(ms, items);
+    const timelineMs = fastVideoToTimelineMs(ms);
 
     for (const card of cardAudioSchedule) {
       if (!card.handled && ms >= card.insertVideoMs) {
@@ -1721,7 +1803,7 @@ export function drawFrame(
   const activeTitleCard = items.find(
     (it) => it.kind === 'titleCard' && (
       (ms >= it.startMs && ms <= it.endMs) ||
-      (it === firstTitleCard && it.startMs <= 800 && ms >= 0 && ms <= it.endMs)
+      (it === firstTitleCard && it.startMs <= 1500 && ms >= 0 && ms <= it.endMs)
     )
   );
 
@@ -1735,7 +1817,7 @@ export function drawFrame(
     const elapsed = Math.max(0, ms - activeTitleCard.startMs);
     const fadeMs = Math.min(300, dur * 0.25);
 
-    const isTimelineStart = activeTitleCard.startMs <= 800;
+    const isTimelineStart = activeTitleCard.startMs <= 1500;
     if (!isTimelineStart && elapsed < fadeMs) {
       titleCardPresence = elapsed / fadeMs;
     } else if (elapsed > dur - fadeMs) {
@@ -3248,7 +3330,7 @@ function drawTitleCard(
   const elapsed = Math.max(0, ms - item.startMs);
   const transMs = Math.min(380, dur * 0.3);
 
-  const isTimelineStart = item.startMs <= 800;
+  const isTimelineStart = item.startMs <= 1500;
   let enterP = 1.0;
   let exitP = 1.0;
   if (!isTimelineStart && elapsed < transMs) {
