@@ -5,7 +5,7 @@ import { isTextEntry } from './textEntry';
 import { useT } from '../i18n';
 
 const LANES: { kind: LaneKind; label: string; key: string; icon: LucideIcon; color: string; chip: string }[] = [
-  { kind: 'titleCard', label: 'Scene Text', key: 'C', icon: Heading, color: 'border-indigo-400', chip: 'bg-indigo-500/30' },
+  { kind: 'titleCard', label: 'Scene Text', key: 'X', icon: Heading, color: 'border-indigo-400', chip: 'bg-indigo-500/30' },
   { kind: 'scene', label: 'Animations', key: 'D', icon: Film, color: 'border-teal-400', chip: 'bg-teal-500/30' },
   { kind: 'zoom', label: 'Zoom', key: 'Z', icon: ZoomIn, color: 'border-[var(--accent)]', chip: 'bg-[var(--accent)]/30' },
   { kind: 'trim', label: 'Trim', key: 'T', icon: Scissors, color: 'border-rose-400', chip: 'bg-rose-500/30' },
@@ -105,7 +105,7 @@ export function Timeline() {
       // Let modifier combos through (Ctrl+Z undo, Ctrl+S save, …) — only bare
       // letter keys add lane items.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      const map: Record<string, LaneKind> = { z: 'zoom', t: 'trim', a: 'annotation', s: 'speed', m: 'magnify', l: 'spotlight', b: 'blur', r: 'rotation', d: 'scene', c: 'titleCard' };
+      const map: Record<string, LaneKind> = { z: 'zoom', t: 'trim', a: 'annotation', s: 'speed', m: 'magnify', l: 'spotlight', b: 'blur', r: 'rotation', d: 'scene', x: 'titleCard', h: 'titleCard' };
       const k = e.key.toLowerCase();
       // Shift+L / Shift+M apply a cursor-tracked spotlight/magnify to the WHOLE
       // video (bare L / M still drop a region on part of it).
