@@ -75,6 +75,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.6.1" date="2026-09-28">
+      <description>
+        <p>Video Upload for Editing: import existing videos and recordings via a unified Upload button in the HUD and Editor toolbar (Ctrl+I) or drag-and-drop directly onto the editor canvas, with fast background remuxing for MKV/AVI. Resolved keyboard shortcut collision between Crop (C) and Scene Text (now X and H). Tightened intro title card duration threshold to eliminate play/pause startup flickers and stabilized video export preparation.</p>
+      </description>
+    </release>
     <release version="0.6.0" date="2026-09-21">
       <description>
         <p>Cinematic 3D Scene Animations with six categories: Entrances, Sweeps, Focus moves, Ambient hover, Exits, and Multi-card Decks featuring physics-based easing and zero-shuffle landing. OpenShaders-quality multi-layer sparkle glints with glowing core and anamorphic cross rays. Background music library with built-in royalty-free ambient and lofi tracks, volume mixing, and visual audio trimming modal. Image studio mode supporting 3D card tilt, animated shaders, and video export. Option to completely hide the cursor. Enhanced timeline element placement at video end.</p>

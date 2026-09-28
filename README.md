@@ -13,8 +13,8 @@ A cross-platform desktop screen recorder + post-recording editor. Record your sc
 | | |
 | --- | --- |
 | **Linux** | `.deb` (Debian/Ubuntu), `.AppImage` (any distro, no install), or `.flatpak` |
-| **Windows** | `Reframe.Setup.0.6.0.exe` |
-| **macOS** | `Reframe-0.6.0-arm64.dmg` (Apple Silicon) or `Reframe-0.6.0.dmg` (Intel) |
+| **Windows** | `Reframe.Setup.0.6.1.exe` |
+| **macOS** | `Reframe-0.6.1-arm64.dmg` (Apple Silicon) or `Reframe-0.6.1.dmg` (Intel) |
 
 Per-platform steps, permissions and troubleshooting are in [INSTALL.md](INSTALL.md), and there are download instructions on the [website](https://getreframe.vercel.app).
 
