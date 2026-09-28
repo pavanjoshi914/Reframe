@@ -5,6 +5,7 @@ import { Preview } from './Preview';
 import { Sidebar } from './Sidebar';
 import { Timeline } from './Timeline';
 import { CropModal } from './CropModal';
+import { StillExportedModal } from './StillExportedModal';
 import { useEditor, type SerializedProject } from './store';
 import { isTextEntry } from './textEntry';
 import type { ProjectFile } from '@shared/ipc';
@@ -659,6 +660,7 @@ export function EditorApp() {
         <Sidebar />
       </div>
       {cropModalOpen && <CropModal onClose={() => setCropModalOpen(false)} />}
+      <StillExportedModal />
       {isDragOver && (
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-[var(--accent)] bg-[var(--panel)] p-8 text-[var(--text)] shadow-2xl">

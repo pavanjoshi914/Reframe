@@ -411,6 +411,10 @@ export default {
   'export.cheer3': 'Looking sharp — hang tight…',
   'export.cheer4': 'Almost there…',
   'export.cheer5': 'Just about done…',
+  'export.stillSavedTitle': 'Image exported successfully',
+  'export.stillSavedDesc': 'Frame saved to your pictures folder:',
+  'export.openFolder': 'Open in folder',
+  'export.close': 'Done',
 
   // Timeline
   'tl.titleCard': 'Scene Text',

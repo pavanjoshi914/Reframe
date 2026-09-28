@@ -2460,8 +2460,6 @@ function CursorStyleBtn({ active, onClick, label }: { active: boolean; onClick: 
 
 function ExportSection() {
   const t = useT();
-  const mediaType = useEditor((s) => s.mediaType);
-  const isImage = mediaType === 'image';
   const fmt = useEditor((s) => s.exportFormat);
   const setFmt = useEditor((s) => s.setExportFormat);
   const q = useEditor((s) => s.exportQuality);
@@ -2495,10 +2493,6 @@ function ExportSection() {
   async function handleExport() {
     if (!fileUrl) {
       alert(t('editor.noRecording'));
-      return;
-    }
-    if (isImage) {
-      await handleCaptureStill();
       return;
     }
     if (busy) return;
@@ -2569,17 +2563,17 @@ function ExportSection() {
       <div className="flex items-center gap-2 px-3 pb-3 pt-1">
         <button
           onClick={handleExport}
-          disabled={!!busy || !fileUrl || (isImage && shotBusy)}
+          disabled={!!busy || !fileUrl}
           className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-[var(--accent)] text-sm font-semibold text-[var(--accent-fg)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy || (isImage && shotBusy) ? (
+          {busy ? (
             <Loader2 size={15} className="animate-spin" />
           ) : exportFlash ? (
             <Check size={15} />
           ) : (
             <Download size={15} />
           )}
-          {busy ? `${Math.round(busy.pct)}%` : exportFlash ? t('editor.saved') : (isImage ? t('side.exportImage') : t('side.exportVideo'))}
+          {busy ? `${Math.round(busy.pct)}%` : exportFlash ? t('editor.saved') : t('side.exportVideo')}
         </button>
         <button
           onClick={handleCaptureStill}

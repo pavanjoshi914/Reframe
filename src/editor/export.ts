@@ -588,22 +588,79 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
 
   onProgress('Preparing', 0);
 
-  // ── Open the source recording(s) ────────────────────────────────────────
-  // fetch() works on the media:// scheme (registered with supportFetchAPI).
-  // mediabunny reads the resulting Blob entirely in-memory, so there's no
-  // dependence on HTTP range support or <video> playback quirks.
-  // Read the recording into an ArrayBuffer rather than a Blob: `.blob()` parks
-  // the body in Chromium's blob store, whose quota shrinks with free memory and
-  // disk — on a stressed machine a ~40 MB recording fails with a bare
-  // "Failed to fetch". An ArrayBuffer lives in this renderer and has no quota.
-  const screenBuf = await (await fetch(fileUrl)).arrayBuffer();
-  const screenInput = new Input({ source: new BufferSource(screenBuf), formats: ALL_FORMATS });
-  const screenTrack = await screenInput.getPrimaryVideoTrack();
-  if (!screenTrack) throw new Error('Recording has no video track.');
-  const screenSink = new CanvasSink(screenTrack);
+  async function* generateImageFrames(
+    src: FrameSource,
+    durationSec: number,
+    fps: number
+  ): AsyncGenerator<{ canvas: FrameSource; timestamp: number; duration: number }> {
+    const frameDuration = 1 / fps;
+    const count = Math.max(1, Math.round(durationSec * fps));
+    for (let i = 0; i < count; i++) {
+      if (cancelRequested) break;
+      yield {
+        canvas: src,
+        timestamp: i * frameDuration,
+        duration: frameDuration
+      };
+    }
+  }
+
+  // ── Open the source recording(s) or image ────────────────────────────────
+  const isImage = state.mediaType === 'image';
+  let imgEl: HTMLImageElement | null = null;
+  let srcCanvasForExport: FrameSource | null = null;
+  let intrinsic = { w: 1920, h: 1080 };
+  let sourceDurationSec = 0;
+  let totalSrcFrames = 0;
+  let screenSink: CanvasSink | null = null;
+  let screenInput: Input | null = null;
+  let screenBuf: ArrayBuffer | null = null;
+
+  if (isImage) {
+    if (state.mainImageEl && state.mainImageEl.naturalWidth > 0) {
+      imgEl = state.mainImageEl;
+    } else {
+      imgEl = new Image();
+      imgEl.src = fileUrl;
+      await new Promise<void>((resolve, reject) => {
+        imgEl!.onload = () => resolve();
+        imgEl!.onerror = () => reject(new Error('Failed to load image for export.'));
+      });
+    }
+    intrinsic = {
+      w: imgEl.naturalWidth || 1920,
+      h: imgEl.naturalHeight || 1080
+    };
+    sourceDurationSec = Math.max(0.1, (state.rawDurationMs || state.durationMs || 5000) / 1000);
+    try {
+      const staticCanvas = document.createElement('canvas');
+      staticCanvas.width = intrinsic.w;
+      staticCanvas.height = intrinsic.h;
+      const sctx = staticCanvas.getContext('2d');
+      if (sctx) {
+        sctx.drawImage(imgEl, 0, 0);
+        srcCanvasForExport = staticCanvas;
+      } else {
+        srcCanvasForExport = imgEl;
+      }
+    } catch {
+      srcCanvasForExport = imgEl;
+    }
+  } else {
+    screenBuf = await (await fetch(fileUrl)).arrayBuffer();
+    screenInput = new Input({ source: new BufferSource(screenBuf), formats: ALL_FORMATS });
+    const screenTrack = await screenInput.getPrimaryVideoTrack();
+    if (!screenTrack) throw new Error('Recording has no video track.');
+    screenSink = new CanvasSink(screenTrack);
+    intrinsic = { w: screenTrack.displayWidth || 1920, h: screenTrack.displayHeight || 1080 };
+    sourceDurationSec = await screenTrack.computeDuration();
+    try {
+      totalSrcFrames = (await screenTrack.computePacketStats()).packetCount;
+    } catch { /* fall back to the duration estimate below */ }
+  }
 
   let webcamSink: CanvasSink | null = null;
-  if (webcamFileUrl && webcam.enabled) {
+  if (!isImage && webcamFileUrl && webcam.enabled) {
     try {
       const webcamBuf = await (await fetch(webcamFileUrl)).arrayBuffer();
       const webcamInput = new Input({ source: new BufferSource(webcamBuf), formats: ALL_FORMATS });
@@ -615,19 +672,6 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   }
 
   // Sequential webcam follower — ONE decoder for the whole export.
-  //
-  // The obvious call, webcamSink.getCanvas(timestamp) once per composited
-  // frame, creates and destroys a fresh VideoDecoder on EVERY call (mediabunny
-  // treats each one-shot getCanvas as its own decode session). A 30s webcam
-  // export is ~900 hardware-decoder create/destroy cycles; Windows' D3D11
-  // decoder pool degrades under that churn and eventually a create fails
-  // mid-export, which surfaced as "Export failed: Decoding error." on Windows
-  // (and could hang the tail of the export). The export loop only ever moves
-  // FORWARD through source time — trims and speed regions skip frames but
-  // never rewind — so a single sequential canvases() iteration can follow it:
-  // hold the current webcam frame until the screen timeline passes the next
-  // one's timestamp. CanvasSink's default poolSize of 0 allocates a fresh
-  // canvas per frame, so holding `current` while reading ahead is safe.
   function makeWebcamFollower(sink: CanvasSink) {
     type Wrapped = { canvas: FrameSource; timestamp: number };
     const iter = sink.canvases()[Symbol.asyncIterator]();
@@ -646,8 +690,6 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
           else break;
         }
       } catch (err) {
-        // A webcam decode failure must never kill the export — match the old
-        // getCanvas().catch(() => null) behaviour and just stop following.
         console.warn('[export] webcam follower stopped', err);
         done = true;
       }
@@ -656,19 +698,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   }
   const webcamFrameAt = webcamSink ? makeWebcamFollower(webcamSink) : null;
 
-  const sourceDurationSec = await screenTrack.computeDuration();
-  // The real number of source frames (= encoded packets). MediaRecorder WebMs
-  // often carry an unreliable duration, so driving progress off timestamps can
-  // saturate at 99% partway through and freeze the frame counter. The packet
-  // count is exact, so we drive both the percentage AND the "frame X / N"
-  // counter off frames actually processed.
-  let totalSrcFrames = 0;
-  try {
-    totalSrcFrames = (await screenTrack.computePacketStats()).packetCount;
-  } catch { /* fall back to the duration estimate below */ }
-
   // ── Output dimensions ───────────────────────────────────────────────────
-  const intrinsic = { w: screenTrack.displayWidth || 1920, h: screenTrack.displayHeight || 1080 };
   const ratio =
     aspect === 'auto' ? intrinsic.w / intrinsic.h : ASPECT_RATIOS[aspect] ?? intrinsic.w / intrinsic.h;
   const preset = QUALITY_PRESETS[exportQuality];
@@ -812,7 +842,11 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
       cardItem.emitted = true;
     };
 
-    for await (const wrapped of screenSink.canvases()) {
+    const gifFrameStream = isImage
+      ? generateImageFrames(srcCanvasForExport!, sourceDurationSec, GIF_FPS)
+      : screenSink!.canvases();
+
+    for await (const wrapped of gifFrameStream) {
       if (cancelRequested) break;
       const { canvas: srcCanvas, timestamp, duration } = wrapped;
       const ms = timestamp * 1000;
@@ -937,7 +971,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   // On the ffmpeg path the audio is muxed by ffmpeg from a WAV, so no
   // mediabunny audio track is added — but the timeline audio is still rebuilt.
   try {
-    if (!videoMuted) {
+    if (!videoMuted && !isImage && screenInput && screenBuf) {
       const audioTrack = await screenInput.getPrimaryAudioTrack();
       if (audioTrack) {
         outAudioBuffer = await buildTimelineAudio(screenBuf, items, videoVolume);
@@ -989,12 +1023,15 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
 
   // Start the ffmpeg encoder (if selected) before the first frame is drawn.
   let rawId: string | null = null;
-  // rawvideo has no timestamps, so ffmpeg needs the rate up front. The output
-  // keeps the source's frame rate (speed regions skip/duplicate frames rather
-  // than changing it), so derive it from the source instead of assuming 30.
-  const outFps = Math.max(1, Math.min(120, Math.round(
-    totalSrcFrames > 0 && sourceDurationSec > 0 ? totalSrcFrames / sourceDurationSec : 30
-  )));
+  const imageFps = exportQuality === 'high' ? 60 : 30;
+  const outFps = isImage
+    ? imageFps
+    : Math.max(1, Math.min(120, Math.round(
+        totalSrcFrames > 0 && sourceDurationSec > 0 ? totalSrcFrames / sourceDurationSec : 30
+      )));
+  if (isImage) {
+    totalSrcFrames = Math.round(sourceDurationSec * outFps);
+  }
   if (useFfmpeg) {
     const started = await window.api.rawEncodeBegin({
       width: outW, height: outH, fps: outFps, bitrate: preset.bitrate
@@ -1074,7 +1111,11 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     cardItem.emitted = true;
   };
 
-  for await (const wrapped of screenSink.canvases()) {
+  const videoFrameStream = isImage
+    ? generateImageFrames(srcCanvasForExport!, sourceDurationSec, outFps)
+    : screenSink!.canvases();
+
+  for await (const wrapped of videoFrameStream) {
     if (cancelRequested) break;
     const { canvas: srcCanvas, timestamp, duration } = wrapped;
     const ms = timestamp * 1000;
@@ -1666,7 +1707,18 @@ export async function saveStillNow(): Promise<string | null> {
   if (!shot) return null;
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const res = await window.api.saveStill({ name: `reframe-${stamp}`, data: shot.data });
-  return res?.saved && res.path ? res.path : null;
+  if (res?.saved && res.path) {
+    let previewUrl: string | undefined;
+    try {
+      const blob = new Blob([shot.data], { type: `image/${shot.format || 'png'}` });
+      previewUrl = URL.createObjectURL(blob);
+    } catch {
+      /* ignore */
+    }
+    useEditor.getState().setExportedStillNotice({ path: res.path, previewUrl });
+    return res.path;
+  }
+  return null;
 }
 
 /** Copy the composited frame/image directly to the OS clipboard. */
@@ -1689,7 +1741,18 @@ export async function exportImageNow(format: 'png' | 'jpeg' | 'webp' = 'png', sc
     data: shot.data,
     format
   });
-  return res?.saved && res.path ? res.path : null;
+  if (res?.saved && res.path) {
+    let previewUrl: string | undefined;
+    try {
+      const blob = new Blob([shot.data], { type: `image/${shot.format || format || 'png'}` });
+      previewUrl = URL.createObjectURL(blob);
+    } catch {
+      /* ignore */
+    }
+    useEditor.getState().setExportedStillNotice({ path: res.path, previewUrl });
+    return res.path;
+  }
+  return null;
 }
 
 export function drawFrame(

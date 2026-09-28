@@ -205,6 +205,8 @@ export type EditorState = {
   setTheme: (t: 'dark' | 'light') => void;
   mainVideoEl: HTMLVideoElement | null;
   mainImageEl: HTMLImageElement | null;
+  exportedStillNotice: { path: string; previewUrl?: string } | null;
+  setExportedStillNotice: (notice: { path: string; previewUrl?: string } | null) => void;
 
   aspect: AspectRatio;
 
@@ -588,6 +590,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   mainVideoEl: null,
   mainImageEl: null,
+  exportedStillNotice: null,
 
   aspect: '16:9',
 
@@ -696,6 +699,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     }),
 
   setMainImageEl: (el) => set({ mainImageEl: el }),
+  setExportedStillNotice: (notice) => set({ exportedStillNotice: notice }),
   setImageExportFormat: (f) => set({ imageExportFormat: f }),
   setImageExportScale: (s) => set({ imageExportScale: s }),
 
