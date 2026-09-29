@@ -458,6 +458,8 @@ function ItemChip({
   const updateItem = useEditor((s) => s.updateItem);
   const selectItem = useEditor((s) => s.selectItem);
 
+  const items = useEditor((s) => s.items);
+
   const left = (item.startMs / 1000) * pixelsPerSecond;
   const width = Math.max(8, ((item.endMs - item.startMs) / 1000) * pixelsPerSecond);
 
@@ -477,19 +479,68 @@ function ItemChip({
     const dxMs = ((e.clientX - d.startX) / pixelsPerSecond) * 1000;
     let nextStart = d.startMs;
     let nextEnd = d.endMs;
-    const snapThresholdMs = Math.max(800, (30 / pixelsPerSecond) * 1000);
+    const snapThresholdMs = Math.max(400, (24 / pixelsPerSecond) * 1000);
+    const otherItems = items.filter((it) => it.kind === item.kind && it.id !== item.id);
+
     if (d.kind === 'move') {
       const len = d.endMs - d.startMs;
       let rawStart = d.startMs + dxMs;
-      if (rawStart < snapThresholdMs) rawStart = 0;
-      nextStart = Math.max(0, Math.min(durationMs - len, rawStart));
+
+      let bestStart = rawStart;
+      let minDiff = snapThresholdMs;
+
+      if (Math.abs(rawStart) < minDiff) {
+        bestStart = 0;
+        minDiff = Math.abs(rawStart);
+      }
+
+      for (const other of otherItems) {
+        // Snap this start to other's end
+        const diffEnd = Math.abs(rawStart - other.endMs);
+        if (diffEnd < minDiff) {
+          bestStart = other.endMs;
+          minDiff = diffEnd;
+        }
+        // Snap this end to other's start
+        const diffStart = Math.abs((rawStart + len) - other.startMs);
+        if (diffStart < minDiff) {
+          bestStart = other.startMs - len;
+          minDiff = diffStart;
+        }
+      }
+
+      nextStart = Math.max(0, Math.min(durationMs - len, bestStart));
       nextEnd = nextStart + len;
     } else if (d.kind === 'left') {
       let rawStart = d.startMs + dxMs;
-      if (rawStart < snapThresholdMs) rawStart = 0;
-      nextStart = Math.max(0, Math.min(d.endMs - 100, rawStart));
+      let bestStart = rawStart;
+      let minDiff = snapThresholdMs;
+
+      if (Math.abs(rawStart) < minDiff) {
+        bestStart = 0;
+        minDiff = Math.abs(rawStart);
+      }
+      for (const other of otherItems) {
+        const diff = Math.abs(rawStart - other.endMs);
+        if (diff < minDiff) {
+          bestStart = other.endMs;
+          minDiff = diff;
+        }
+      }
+      nextStart = Math.max(0, Math.min(d.endMs - 100, bestStart));
     } else {
-      nextEnd = Math.max(d.startMs + 100, item.kind === 'titleCard' ? d.endMs + dxMs : Math.min(durationMs, d.endMs + dxMs));
+      let rawEnd = item.kind === 'titleCard' ? d.endMs + dxMs : Math.min(durationMs, d.endMs + dxMs);
+      let bestEnd = rawEnd;
+      let minDiff = snapThresholdMs;
+
+      for (const other of otherItems) {
+        const diff = Math.abs(rawEnd - other.startMs);
+        if (diff < minDiff) {
+          bestEnd = other.startMs;
+          minDiff = diff;
+        }
+      }
+      nextEnd = Math.max(d.startMs + 100, bestEnd);
     }
     updateItem(item.id, { startMs: nextStart, endMs: nextEnd });
   }

@@ -367,6 +367,11 @@ export function EditorApp() {
         useEditor.getState().redo();
         return;
       }
+      if (mod && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        window.location.reload();
+        return;
+      }
       if (mod && (e.key === 'i' || e.key === 'I')) {
         e.preventDefault();
         void handleOpenMedia();

@@ -25,24 +25,31 @@ export function timelineToVideoMs(
     .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
     .sort((a, b) => a.startMs - b.startMs);
 
+  const introCard = cards.length > 0 && cards[0].startMs <= 800 ? cards[0] : null;
+
   let shift = 0;
-  for (const card of cards) {
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    const isIntro = card === introCard;
+
     if (timelineMs < card.startMs) {
-      if (card === cards[0] && card.startMs <= 800 && timelineMs >= 0) {
+      if (isIntro && timelineMs >= 0) {
         return { videoMs: 0, isPaused: true, activeTitleCard: card };
       }
       break;
     }
     if (timelineMs < card.endMs) {
-      const isIntro = card === cards[0] && card.startMs <= 800;
-      const insertVideoMs = isIntro ? 0 : Math.max(0, card.startMs - shift);
+      const insertVideoMs = isIntro
+        ? 0
+        : Math.max(0, card.startMs - (introCard ? introCard.endMs + shift : shift));
       return { videoMs: insertVideoMs, isPaused: true, activeTitleCard: card };
     }
-    shift += Math.max(0, card.endMs - card.startMs);
+    if (!isIntro) {
+      shift += Math.max(0, card.endMs - card.startMs);
+    }
   }
 
-  const isFirstCardIntro = cards[0] && cards[0].startMs <= 800;
-  const effectiveTimeline = isFirstCardIntro && cards[0] ? timelineMs - cards[0].startMs : timelineMs;
+  const effectiveTimeline = introCard ? Math.max(0, timelineMs - introCard.endMs) : timelineMs;
   const videoMs = Math.max(0, effectiveTimeline - shift);
   return { videoMs, isPaused: false };
 }
@@ -59,16 +66,16 @@ export function videoToTimelineMs(
     .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
     .sort((a, b) => a.startMs - b.startMs);
 
+  const introCard = cards.length > 0 && cards[0].startMs <= 800 ? cards[0] : null;
+
   let shift = 0;
   for (const card of cards) {
-    let cardVideoStart = card.startMs - shift;
-    if (card === cards[0] && card.startMs <= 800) {
-      cardVideoStart = 0;
-    }
+    if (card === introCard) continue;
+    const cardVideoStart = Math.max(0, card.startMs - (introCard ? introCard.endMs + shift : shift));
     if (videoMs < cardVideoStart) {
       break;
     }
     shift += Math.max(0, card.endMs - card.startMs);
   }
-  return videoMs + shift;
+  return videoMs + (introCard ? introCard.endMs : 0) + shift;
 }

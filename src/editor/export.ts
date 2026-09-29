@@ -795,11 +795,17 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
       .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
       .sort((a, b) => a.startMs - b.startMs);
 
-    let prevCardsDurGif = 0;
+    const introCardGif = pausingCardsGif.length > 0 && pausingCardsGif[0].startMs <= 800 ? pausingCardsGif[0] : null;
+    let otherCardsDurGif = 0;
     const cardScheduleGif = pausingCardsGif.map((card) => {
-      const insertVideoMs = (card === pausingCardsGif[0] && card.startMs <= 800) ? 0 : Math.max(0, card.startMs - prevCardsDurGif);
+      const isIntro = card === introCardGif;
+      const insertVideoMs = isIntro
+        ? 0
+        : Math.max(0, card.startMs - (introCardGif ? introCardGif.endMs + otherCardsDurGif : otherCardsDurGif));
       const cardDurMs = Math.max(100, card.endMs - card.startMs);
-      prevCardsDurGif += cardDurMs;
+      if (!isIntro) {
+        otherCardsDurGif += cardDurMs;
+      }
       return { card, insertVideoMs, cardDurMs, emitted: false };
     });
 
@@ -1062,11 +1068,17 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
     .sort((a, b) => a.startMs - b.startMs);
 
-  let prevCardsDur = 0;
+  const introCard = pausingCards.length > 0 && pausingCards[0].startMs <= 800 ? pausingCards[0] : null;
+  let otherCardsDur = 0;
   const cardSchedule = pausingCards.map((card) => {
-    const insertVideoMs = (card === pausingCards[0] && card.startMs <= 800) ? 0 : Math.max(0, card.startMs - prevCardsDur);
+    const isIntro = card === introCard;
+    const insertVideoMs = isIntro
+      ? 0
+      : Math.max(0, card.startMs - (introCard ? introCard.endMs + otherCardsDur : otherCardsDur));
     const cardDurMs = Math.max(100, card.endMs - card.startMs);
-    prevCardsDur += cardDurMs;
+    if (!isIntro) {
+      otherCardsDur += cardDurMs;
+    }
     return { card, insertVideoMs, cardDurMs, emitted: false };
   });
 
@@ -1310,24 +1322,32 @@ async function buildTimelineAudio(
     .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
     .sort((a, b) => a.startMs - b.startMs);
 
-  let prevCardsDurAudio = 0;
-  const cardAudioSchedule = pausingCards.map((card, idx) => {
-    const insertVideoMs = (idx === 0 && card.startMs <= 800) ? 0 : Math.max(0, card.startMs - prevCardsDurAudio);
+  const introCardAudio = pausingCards.length > 0 && pausingCards[0].startMs <= 800 ? pausingCards[0] : null;
+  let otherCardsDurAudio = 0;
+  const cardAudioSchedule = pausingCards.map((card) => {
+    const isIntro = card === introCardAudio;
+    const insertVideoMs = isIntro
+      ? 0
+      : Math.max(0, card.startMs - (introCardAudio ? introCardAudio.endMs + otherCardsDurAudio : otherCardsDurAudio));
     const cardDurMs = Math.max(100, card.endMs - card.startMs);
     const silenceSamples = Math.round((cardDurMs / 1000) * sr);
-    prevCardsDurAudio += cardDurMs;
+    if (!isIntro) {
+      otherCardsDurAudio += cardDurMs;
+    }
     return { insertVideoMs, silenceSamples, handled: false };
   });
 
   // Precompute pausing cards for fast videoToTimeline mapping without allocating arrays on every sample
   let shiftAcc = 0;
-  const precomputedCards = pausingCards.map((card, idx) => {
-    let cardVideoStart = card.startMs - shiftAcc;
-    if (idx === 0 && card.startMs <= 800) {
-      cardVideoStart = 0;
-    }
+  const precomputedCards = pausingCards.map((card) => {
+    const isIntro = card === introCardAudio;
+    const cardVideoStart = isIntro
+      ? 0
+      : Math.max(0, card.startMs - (introCardAudio ? introCardAudio.endMs + shiftAcc : shiftAcc));
     const duration = Math.max(0, card.endMs - card.startMs);
-    shiftAcc += duration;
+    if (!isIntro) {
+      shiftAcc += duration;
+    }
     return { cardVideoStart, duration };
   });
 
@@ -1859,39 +1879,82 @@ export function drawFrame(
     paintBgConfig(c, background, blurPx);
   };
 
-  const firstTitleCard = items
+  const allTitleCards = items
     .filter((it) => it.kind === 'titleCard')
-    .sort((a, b) => a.startMs - b.startMs)[0];
+    .sort((a, b) => a.startMs - b.startMs);
 
-  const activeTitleCard = items.find(
-    (it) => it.kind === 'titleCard' && (
-      (ms >= it.startMs && ms <= it.endMs) ||
-      (it === firstTitleCard && it.startMs <= 800 && ms >= 0 && ms <= it.endMs)
-    )
+  const firstTitleCard = allTitleCards[0];
+
+  let activeTitleCard = allTitleCards.find(
+    (it) => (ms >= it.startMs && ms <= it.endMs) ||
+            (it === firstTitleCard && it.startMs <= 800 && ms >= 0 && ms <= it.endMs)
   );
+
+  // Micro-bridge between consecutive hideVideo title cards (e.g. gap <= 400ms)
+  let inMicroBridge = false;
+  if (!activeTitleCard && allTitleCards.length > 1) {
+    for (let i = 0; i < allTitleCards.length - 1; i++) {
+      const c1 = allTitleCards[i];
+      const c2 = allTitleCards[i + 1];
+      const gap = c2.startMs - c1.endMs;
+      const c1Hide = (c1.titleBackdrop ?? 'hideVideo') === 'hideVideo';
+      const c2Hide = (c2.titleBackdrop ?? 'hideVideo') === 'hideVideo';
+      if (gap > 0 && gap <= 400 && ms >= c1.endMs && ms <= c2.startMs && (c1Hide || c2Hide)) {
+        inMicroBridge = true;
+        activeTitleCard = (ms - c1.endMs < c2.startMs - ms) ? c1 : c2;
+        break;
+      }
+    }
+  }
 
   let videoAlpha = 1.0;
   let videoBlurPx = 0;
   let titleCardPresence = 0;
   let titleCardEasedPresence = 0;
+  let prevAdjacentCard: LaneItem | null = null;
+  let nextAdjacentCard: LaneItem | null = null;
+
   if (activeTitleCard) {
+    const activeCardIdx = allTitleCards.indexOf(activeTitleCard);
+    const prevC = activeCardIdx > 0 ? allTitleCards[activeCardIdx - 1] : null;
+    const nextC = activeCardIdx >= 0 && activeCardIdx < allTitleCards.length - 1 ? allTitleCards[activeCardIdx + 1] : null;
+
+    if (prevC && (prevC.titleBackdrop ?? 'hideVideo') === 'hideVideo' && Math.abs(activeTitleCard.startMs - prevC.endMs) <= 400) {
+      prevAdjacentCard = prevC;
+    }
+    if (nextC && (nextC.titleBackdrop ?? 'hideVideo') === 'hideVideo' && Math.abs(nextC.startMs - activeTitleCard.endMs) <= 400) {
+      nextAdjacentCard = nextC;
+    }
+
     const backdrop = activeTitleCard.titleBackdrop ?? 'hideVideo';
     const dur = Math.max(1, activeTitleCard.endMs - activeTitleCard.startMs);
     const elapsed = Math.max(0, ms - activeTitleCard.startMs);
     const fadeMs = Math.min(300, dur * 0.25);
 
     const isTimelineStart = activeTitleCard.startMs <= 800;
-    if (!isTimelineStart && elapsed < fadeMs) {
-      titleCardPresence = elapsed / fadeMs;
-    } else if (elapsed > dur - fadeMs) {
-      titleCardPresence = (dur - elapsed) / fadeMs;
-    } else {
+
+    if (inMicroBridge) {
       titleCardPresence = 1.0;
+    } else {
+      let enterPresence = 1.0;
+      let exitPresence = 1.0;
+
+      // Only fade in from underlying video if there is NO preceding adjacent text screen
+      if (!isTimelineStart && !prevAdjacentCard && elapsed < fadeMs) {
+        enterPresence = elapsed / fadeMs;
+      }
+      // Only fade out to underlying video if there is NO succeeding adjacent text screen
+      if (!nextAdjacentCard && elapsed > dur - fadeMs) {
+        exitPresence = (dur - elapsed) / fadeMs;
+      }
+
+      titleCardPresence = Math.min(enterPresence, exitPresence);
     }
+
     titleCardPresence = Math.max(0, Math.min(1, titleCardPresence));
     titleCardEasedPresence = titleCardPresence * (2 - titleCardPresence);
 
-    if (backdrop === 'hideVideo') {
+    if (backdrop === 'hideVideo' || inMicroBridge || prevAdjacentCard || nextAdjacentCard) {
       videoAlpha = 1.0 - titleCardEasedPresence;
     } else if (backdrop === 'dimVideo') {
       videoAlpha = 1.0 - titleCardEasedPresence * 0.75;
@@ -1929,6 +1992,28 @@ export function drawFrame(
         activeTitleCard.titleFieldStyle
       );
       ctx.restore();
+    }
+
+    // If transitioning to adjacent next card with different background, crossfade smoothly
+    if (nextAdjacentCard) {
+      const distToNext = nextAdjacentCard.startMs - ms;
+      const xfadeDur = 300;
+      if (distToNext >= 0 && distToNext <= xfadeDur) {
+        const nextBgMode = nextAdjacentCard.titleBgMode ?? 'shader';
+        const nextBgValue = nextAdjacentCard.titleBgValue ?? 'cs-horizon';
+        if (nextBgMode !== tBgMode || nextBgValue !== tBgValue) {
+          const crossfadeP = 1.0 - distToNext / xfadeDur;
+          ctx.save();
+          ctx.globalAlpha = crossfadeP * titleCardEasedPresence;
+          paintBgConfig(
+            ctx,
+            { mode: nextBgMode as BackgroundMode, value: nextBgValue },
+            0,
+            nextAdjacentCard.titleFieldStyle
+          );
+          ctx.restore();
+        }
+      }
     }
   }
 
@@ -3435,6 +3520,10 @@ function drawTitleCard(
     } else if (exitP < 1.0) {
       scale = 1.0 - 0.08 * (1.0 - exitEased);
     }
+  } else if (anim === 'slowZoom') {
+    const progress = Math.min(1.0, Math.max(0, elapsed / dur));
+    // Cinematic slow-motion push in: starts at 0.93, continuously zooms in to 1.07 across duration
+    scale = 0.93 + 0.14 * progress;
   } else {
     // 'fadeBlur', 'shimmer', 'typewriter', 'wordStagger', 'glitch'
     if (enterP < 1.0) {
@@ -3470,18 +3559,37 @@ function drawTitleCard(
   let subAnimAlpha = 1.0;
 
   if (anim === 'typewriter') {
-    const typeDur = Math.min(1200, dur * 0.55);
-    const typeP = Math.min(1.0, Math.max(0, elapsed / typeDur));
+    const speed = item.typewriterSpeed ?? 'normal';
+    let cps = 28;
+    let minFloor = 450;
+    let durCapFraction = 0.55;
+
+    if (speed === 'slow') {
+      cps = 15;
+      minFloor = 700;
+      durCapFraction = 0.75;
+    } else if (speed === 'fast') {
+      cps = 50;
+      minFloor = 280;
+      durCapFraction = 0.35;
+    }
+
+    const maxTypeDur = Math.max(300, dur - transMs - 350);
+    const rawTargetDur = rawTitle.length > 0 ? (rawTitle.length / cps) * 1000 : 400;
+    const typeDur = Math.min(maxTypeDur, Math.max(minFloor, Math.min(rawTargetDur, dur * durCapFraction)));
+    const typeP = Math.min(1.0, Math.max(0, elapsed / Math.max(1, typeDur)));
     const typeChars = Math.floor(typeP * rawTitle.length);
     displayTitleText = rawTitle.slice(0, typeChars);
-    typewriterCaret = typeP < 1.0 || (Math.floor(elapsed / 380) % 2 === 0 && exitP === 1.0);
+    // Cursor is active only while actively typing; stops & disappears cleanly once completed (no end flickering!)
+    typewriterCaret = typeP < 1.0;
     subAnimAlpha = Math.max(0, Math.min(1, (typeP - 0.7) / 0.3));
   }
 
-  let titleLines = wrapText(ctx, displayTitleText, maxTitleW);
-  if (typewriterCaret && titleLines.length) {
-    titleLines[titleLines.length - 1] += ' ▏';
-  }
+  const titleLines = wrapText(ctx, displayTitleText, maxTitleW);
+  const fullTitleLines = wrapText(ctx, rawTitle, maxTitleW);
+  const activeTitleLineCount = anim === 'typewriter'
+    ? (rawTitle ? Math.max(1, fullTitleLines.length) : 0)
+    : titleLines.length;
 
   ctx.font = subtitleFont;
   const maxSubtitleW = outW * 0.72;
@@ -3499,16 +3607,15 @@ function drawTitleCard(
     badgeW = ctx.measureText(badgeText).width + badgePadX * 2;
   }
 
-  const gapBadgeToTitle = badgeText && titleLines.length ? 18 * baseScale : 0;
-  const gapTitleToSub = titleLines.length && subtitleLines.length ? 16 * baseScale : 0;
+  const gapBadgeToTitle = badgeText && activeTitleLineCount ? 18 * baseScale : 0;
+  const gapTitleToSub = activeTitleLineCount && subtitleLines.length ? 16 * baseScale : 0;
 
-  const totalTitleH = titleLines.length * titleLineH;
+  const totalTitleH = activeTitleLineCount * titleLineH;
   const totalSubtitleH = subtitleLines.length * subtitleLineH;
   const totalStackH = badgeH + gapBadgeToTitle + totalTitleH + gapTitleToSub + totalSubtitleH;
 
   // Full raw title lines for bounding box calculation so layout doesn't jump during typing
   ctx.font = titleFont;
-  const fullTitleLines = wrapText(ctx, rawTitle, maxTitleW);
   let maxBlockW = badgeW;
   for (const l of fullTitleLines) {
     maxBlockW = Math.max(maxBlockW, ctx.measureText(l).width);
@@ -3609,7 +3716,7 @@ function drawTitleCard(
   }
 
   // Headline lines
-  if (titleLines.length) {
+  if (titleLines.length || (anim === 'typewriter' && rawTitle)) {
     ctx.save();
     ctx.font = titleFont;
     ctx.textBaseline = 'middle';
@@ -3687,6 +3794,29 @@ function drawTitleCard(
         const l = titleLines[i];
         const ly = curY + titleLineH * (i + 0.5);
         ctx.fillText(l, cx, ly);
+      }
+      if (anim === 'typewriter' && typewriterCaret) {
+        const caretW = Math.max(2.5, Math.round(3.5 * baseScale));
+        const caretH = Math.round(titleFontSize * 0.88);
+        if (titleLines.length === 0) {
+          const ly = curY + titleLineH * 0.5;
+          ctx.save();
+          ctx.fillStyle = fillStyle;
+          roundedRectPath(ctx, cx - caretW / 2, ly - caretH / 2, caretW, caretH, caretW / 2);
+          ctx.fill();
+          ctx.restore();
+        } else {
+          const lastIdx = titleLines.length - 1;
+          const lastLine = titleLines[lastIdx];
+          const lw = ctx.measureText(lastLine).width;
+          const caretX = cx + lw / 2 + 4 * baseScale;
+          const ly = curY + titleLineH * (lastIdx + 0.5);
+          ctx.save();
+          ctx.fillStyle = fillStyle;
+          roundedRectPath(ctx, caretX, ly - caretH / 2, caretW, caretH, caretW / 2);
+          ctx.fill();
+          ctx.restore();
+        }
       }
     }
     ctx.restore();

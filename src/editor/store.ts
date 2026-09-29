@@ -11,7 +11,8 @@ import defaultWallpaperUrl from '../../assets/wallpapers/wallpaper-00.jpg';
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '9:16' | 'auto';
 export type LaneKind = 'zoom' | 'trim' | 'annotation' | 'speed' | 'magnify' | 'spotlight' | 'blur' | 'rotation' | 'scene' | 'titleCard';
 export type TitleBackdrop = 'hideVideo' | 'blurVideo' | 'dimVideo' | 'overlay' | 'auraGlow' | 'spotlightPlate';
-export type TitleAnim = 'fadeBlur' | 'slideUp' | 'scalePop' | 'typewriter' | 'wordStagger' | 'shimmer' | 'punchIn' | 'glitch';
+export type TitleAnim = 'fadeBlur' | 'slideUp' | 'scalePop' | 'typewriter' | 'slowZoom' | 'wordStagger' | 'shimmer' | 'punchIn' | 'glitch';
+export type TypewriterSpeed = 'slow' | 'normal' | 'fast';
 export type TitleSize = 'sm' | 'md' | 'lg' | 'hero';
 export type TitleAlign = 'center' | 'bottom';
 export type TitleGradient = 'none' | 'sunset' | 'ocean' | 'aurora' | 'purple' | 'silver';
@@ -137,6 +138,7 @@ export type LaneItem = {
   badge?: string;
   titleBackdrop?: TitleBackdrop;
   titleAnim?: TitleAnim;
+  typewriterSpeed?: TypewriterSpeed;
   titleSize?: TitleSize;
   titleAlign?: TitleAlign;
   titleGradient?: TitleGradient;

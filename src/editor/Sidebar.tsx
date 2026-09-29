@@ -18,7 +18,15 @@ const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 3, 5];
 
 export function Sidebar() {
   const [tab, setTab] = useState('canvas');
+  const selectedItemId = useEditor((s) => s.selectedItemId);
   const selectedItem = useEditor((s) => s.items.find((it) => it.id === s.selectedItemId) ?? null);
+
+  useEffect(() => {
+    if (selectedItemId) {
+      setTab('selection');
+    }
+  }, [selectedItemId]);
+
   const showSelection = selectedItem && (
     selectedItem.kind === 'zoom' ||
     selectedItem.kind === 'speed' ||
@@ -995,6 +1003,20 @@ const TITLE_CARD_PRESETS = [
     size: 'lg' as const
   },
   {
+    name: 'Cinematic Flow',
+    icon: '🎬',
+    title: 'Designed with Precision',
+    sub: 'Crafted for seamless cinematic elegance',
+    badge: 'CINEMATIC',
+    anim: 'slowZoom' as const,
+    backdrop: 'hideVideo' as const,
+    pauseVideo: true,
+    bgMode: 'shader' as const,
+    bgValue: 'cs-horizon',
+    grad: 'aurora' as const,
+    size: 'hero' as const
+  },
+  {
     name: 'Chromatic Prism',
     icon: '💎',
     title: 'Smooth Motion',
@@ -1067,10 +1089,20 @@ function TitleCardEditor({ item }: { item: LaneItem }) {
   const badge = item.badge ?? '';
   const backdrop = item.titleBackdrop ?? 'hideVideo';
   const anim = item.titleAnim ?? 'fadeBlur';
+  const typewriterSpeed = item.typewriterSpeed ?? 'normal';
   const size = item.titleSize ?? 'lg';
   const align = item.titleAlign ?? 'center';
   const grad = item.titleGradient ?? 'none';
   const glow = item.titleGlowColor ?? '#6366f1';
+
+  const allCards = useEditor((s) => s.items)
+    .filter((it) => it.kind === 'titleCard')
+    .sort((a, b) => a.startMs - b.startMs);
+  const myIndex = allCards.findIndex((c) => c.id === item.id);
+  const prevCard = myIndex > 0 ? allCards[myIndex - 1] : null;
+  const nextCard = myIndex >= 0 && myIndex < allCards.length - 1 ? allCards[myIndex + 1] : null;
+  const gapBefore = prevCard ? item.startMs - prevCard.endMs : null;
+  const gapAfter = nextCard ? nextCard.startMs - item.endMs : null;
 
   const set = (patch: Partial<LaneItem>) => updateItem(item.id, patch);
 
@@ -1125,6 +1157,84 @@ function TitleCardEditor({ item }: { item: LaneItem }) {
         </div>
       </div>
 
+      {/* Screen Continuity / Gap Status */}
+      {prevCard && (
+        <div>
+          {gapBefore !== null && gapBefore > 15 && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-200">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-[11px] text-amber-300">Gap Before Screen</span>
+                <span className="font-mono text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded text-amber-200 font-semibold">
+                  {(gapBefore / 1000).toFixed(2)}s video gap
+                </span>
+              </div>
+              <p className="mt-1 text-[10px] text-amber-200/80 leading-normal">
+                Video is visible during this gap between the two text screens.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  const dur = item.endMs - item.startMs;
+                  set({ startMs: prevCard.endMs, endMs: prevCard.endMs + dur });
+                }}
+                className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-md bg-amber-500/25 hover:bg-amber-500/35 border border-amber-500/40 py-1 px-2 text-[11px] font-medium text-amber-100 transition shadow-sm"
+              >
+                🔗 Close Gap (Attach to Previous Screen)
+              </button>
+            </div>
+          )}
+          {gapBefore !== null && Math.abs(gapBefore) <= 15 && (
+            <div className="flex items-center gap-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 text-[10px] text-emerald-300 font-medium">
+              <span>✓</span>
+              <span>Seamlessly connected to previous text screen (0s gap)</span>
+            </div>
+          )}
+          {gapBefore !== null && gapBefore < -15 && (
+            <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2 text-xs text-rose-200">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-[10px] text-rose-300">Overlaps Previous Screen</span>
+                <span className="font-mono text-[10px] bg-rose-500/20 px-1.5 py-0.5 rounded text-rose-200 font-semibold">
+                  {(-gapBefore / 1000).toFixed(2)}s
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const dur = item.endMs - item.startMs;
+                  set({ startMs: prevCard.endMs, endMs: prevCard.endMs + dur });
+                }}
+                className="mt-1.5 w-full rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 py-0.5 px-2 text-[10px] font-medium text-rose-100 transition"
+              >
+                Fix Overlap
+              </button>
+            </div>
+          )}
+
+          {nextCard && gapAfter !== null && gapAfter > 15 && (
+            <div className="mt-2 rounded-lg border border-slate-700/60 bg-[var(--panel-2)] p-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-[var(--muted)]">Gap to Next Screen</span>
+                <span className="font-mono text-[10px] text-[var(--muted)] font-medium">
+                  {(gapAfter / 1000).toFixed(2)}s
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  updateItem(nextCard.id, {
+                    startMs: item.endMs,
+                    endMs: item.endMs + (nextCard.endMs - nextCard.startMs)
+                  });
+                }}
+                className="mt-1.5 w-full flex items-center justify-center gap-1.5 rounded-md bg-[var(--field)] hover:bg-[var(--line)] border border-[var(--line)] py-1 px-2 text-[10px] font-medium text-[var(--text)] transition"
+              >
+                🔗 Pull Next Screen Flush
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Product Demo Presets */}
       <div>
         <div className="flex items-center justify-between mb-1">
@@ -1140,6 +1250,7 @@ function TitleCardEditor({ item }: { item: LaneItem }) {
                   subtitle: p.sub,
                   badge: p.badge,
                   titleAnim: p.anim,
+                  typewriterSpeed: (p as any).typewriterSpeed ?? 'normal',
                   titleBackdrop: p.backdrop,
                   pauseVideo: p.pauseVideo,
                   titleBgMode: (p as any).bgMode ?? 'project',
@@ -1213,11 +1324,12 @@ function TitleCardEditor({ item }: { item: LaneItem }) {
       {/* Motion Animation preset */}
       <div>
         <Label>{t('side.titleCard.animation')}</Label>
-        <div className="grid grid-cols-4 gap-1 mt-1">
+        <div className="grid grid-cols-3 gap-1 mt-1">
           {[
             { id: 'fadeBlur', label: 'Fade & Blur' },
-            { id: 'wordStagger', label: 'Kinetic' },
+            { id: 'slowZoom', label: 'Slow Zoom' },
             { id: 'typewriter', label: 'Typewriter' },
+            { id: 'wordStagger', label: 'Kinetic' },
             { id: 'shimmer', label: 'Shimmer' },
             { id: 'punchIn', label: 'Punch In' },
             { id: 'scalePop', label: 'Scale Pop' },
@@ -1238,6 +1350,37 @@ function TitleCardEditor({ item }: { item: LaneItem }) {
             </button>
           ))}
         </div>
+
+        {anim === 'typewriter' && (
+          <div className="mt-2 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-medium text-[var(--muted)]">{t('side.titleCard.typewriterSpeed')}</span>
+              <span className="text-[10px] font-mono text-[var(--accent)] font-semibold">
+                {typewriterSpeed === 'slow' ? t('side.titleCard.speedSlow') : typewriterSpeed === 'fast' ? t('side.titleCard.speedFast') : t('side.titleCard.speedNormal')}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-1">
+              {[
+                { id: 'slow', label: t('side.titleCard.speedSlow') },
+                { id: 'normal', label: t('side.titleCard.speedNormal') },
+                { id: 'fast', label: t('side.titleCard.speedFast') }
+              ].map((sp) => (
+                <button
+                  key={sp.id}
+                  onClick={() => set({ typewriterSpeed: sp.id as any })}
+                  className={
+                    'h-6 rounded-[5px] px-1 text-[10px] font-medium leading-none transition-colors ' +
+                    (typewriterSpeed === sp.id
+                      ? 'bg-[var(--accent)] text-[var(--accent-fg)] shadow-sm'
+                      : 'glass glass-hover text-[var(--muted)]')
+                  }
+                >
+                  {sp.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Backdrop mode */}
