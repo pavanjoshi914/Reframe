@@ -1937,6 +1937,9 @@ function CompositionSection() {
   const setCropRegion = useEditor((s) => s.setCropRegion);
   const fileUrl = useEditor((s) => s.fileUrl);
   const videoIntrinsicSize = useEditor((s) => s.videoIntrinsicSize);
+  const rawDurationMs = useEditor((s) => s.rawDurationMs);
+  const setRecordingDuration = useEditor((s) => s.setRecordingDuration);
+  const items = useEditor((s) => s.items);
   const [cropOpen, setCropOpen] = useState(false);
 
   const cropActive =
@@ -1993,6 +1996,44 @@ function CompositionSection() {
         )}
         {cropOpen && <CropModal onClose={() => setCropOpen(false)} />}
       </div>
+
+      {isImage && (
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <Label>{t('side.timelineDuration') || 'Timeline Duration'}</Label>
+            <button
+              onClick={() => {
+                const nonTrim = items.filter((it) => it.kind !== 'trim');
+                const maxEnd = nonTrim.length > 0 ? Math.max(...nonTrim.map((it) => it.endMs)) : 5000;
+                const pauseMs = items
+                  .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
+                  .reduce((sum, it) => sum + Math.max(0, it.endMs - it.startMs), 0);
+                const neededRaw = Math.max(1000, Math.ceil((maxEnd - pauseMs + 1000) / 1000) * 1000);
+                setRecordingDuration(neededRaw);
+              }}
+              className="text-[10px] font-medium text-[var(--accent)] hover:underline"
+              title="Automatically fit timeline duration to the last element"
+            >
+              Fit to content
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={600}
+              step={1}
+              value={Math.round((rawDurationMs || 5000) / 1000)}
+              onChange={(e) => {
+                const sec = Math.max(1, Math.min(600, Number(e.target.value) || 5));
+                setRecordingDuration(sec * 1000);
+              }}
+              className="w-20 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2.5 py-1.5 text-xs font-mono text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+            />
+            <span className="text-xs text-[var(--muted)]">seconds (base duration)</span>
+          </div>
+        </div>
+      )}
 
       {!isImage && (
         <>

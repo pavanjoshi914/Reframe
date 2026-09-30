@@ -103,6 +103,7 @@ export default {
   'side.fullScreen': 'Full screen',
   'side.fullScreenHint': 'Recording fills the frame — no background, padding, corners or shadow.',
   'side.image': 'Image',
+  'side.timelineDuration': 'Timeline Duration',
   'side.color': 'Color',
   'side.gradient': 'Gradient',
   'side.mesh': 'Mesh',

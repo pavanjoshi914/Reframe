@@ -427,6 +427,7 @@ export type SerializedProject = {
   imageExportScale?: EditorState['imageExportScale'];
   mediaType?: EditorState['mediaType'];
   imageMeta?: EditorState['imageMeta'];
+  rawDurationMs?: number;
   durationMs?: number;
   items: LaneItem[];
   cursorFx?: EditorState['cursorFx'];
@@ -528,6 +529,7 @@ function docOf(s: EditorState): SerializedProject {
     imageExportScale: s.imageExportScale,
     mediaType: s.mediaType,
     imageMeta: s.imageMeta,
+    rawDurationMs: s.rawDurationMs,
     durationMs: s.durationMs,
     items: s.items,
     cursorFx: s.cursorFx,
@@ -1158,11 +1160,22 @@ export const useEditor = create<EditorState>((set, get) => ({
       imageExportScale: data.imageExportScale ?? 2,
       mediaType: data.mediaType ?? (data.imageMeta ? 'image' : 'video'),
       imageMeta: data.imageMeta ?? null,
-      rawDurationMs: data.durationMs ?? (data.mediaType === 'image' || data.imageMeta ? 5000 : s.rawDurationMs || s.recording?.durationMs || s.durationMs),
-      durationMs: computeTotalDuration(
-        data.durationMs ?? (data.mediaType === 'image' || data.imageMeta ? 5000 : s.rawDurationMs || s.recording?.durationMs || s.durationMs),
-        data.items
-      ),
+      ...(() => {
+        const isImg = (data.mediaType ?? (data.imageMeta ? 'image' : 'video')) === 'image';
+        const pauseMs = data.items
+          .filter((it) => it.kind === 'titleCard' && it.pauseVideo !== false)
+          .reduce((sum, it) => sum + Math.max(0, it.endMs - it.startMs), 0);
+        const rawDur =
+          s.recording?.durationMs ??
+          data.rawDurationMs ??
+          (data.durationMs != null
+            ? Math.max(1000, data.durationMs - pauseMs)
+            : (isImg ? 5000 : s.rawDurationMs || 5000));
+        return {
+          rawDurationMs: rawDur,
+          durationMs: computeTotalDuration(rawDur, data.items)
+        };
+      })(),
       ...((data.mediaType === 'image' || (!data.mediaType && data.imageMeta)) && data.imageMeta
         ? {
             fileUrl: data.imageMeta.fileUrl,
@@ -1185,7 +1198,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   // selection beyond validity). Used by undo/redo and never recorded itself.
   applyDoc: (snap) =>
     set((s) => {
-      const rawDur = s.rawDurationMs || s.recording?.durationMs || s.durationMs;
+      const rawDur = snap.rawDurationMs ?? (s.rawDurationMs || s.recording?.durationMs || s.durationMs);
       return {
         aspect: snap.aspect,
         cropRegion: snap.cropRegion ?? DEFAULT_CROP_REGION,
@@ -1208,6 +1221,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         mediaType: snap.mediaType ?? s.mediaType,
         imageMeta: snap.imageMeta ?? s.imageMeta,
         items: snap.items,
+        rawDurationMs: rawDur,
         durationMs: computeTotalDuration(rawDur, snap.items),
         cursorFx: snap.cursorFx ?? s.cursorFx,
         videoVolume: snap.videoVolume ?? s.videoVolume,

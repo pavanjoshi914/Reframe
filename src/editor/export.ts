@@ -38,7 +38,7 @@ import {
   type SceneSettings, type SceneShape
 } from './scenes';
 import { CURSOR_GLYPHS, KIND_GLYPHS, CURSOR_IDLE_MS, CURSOR_IDLE_FADE_MS, CURSOR_MOVE_EPS_SQ } from './cursorGlyphs';
-import { videoToTimelineMs, timelineToVideoMs } from './timeMapping';
+import { videoToTimelineMs, timelineToVideoMs, computeTotalDuration } from './timeMapping';
 
 // Export pipeline — frame-accurate, NOT real-time.
 //
@@ -500,6 +500,33 @@ function computeOutputDurationSec(sourceDurationSec: number, items: ReturnType<t
   return Math.max(0.1, outMs / 1000 + pauseSec);
 }
 
+function computeMaxUntrimmedTimelineMs(
+  totalTimelineMs: number,
+  items: ReturnType<typeof useEditor.getState>['items']
+): number {
+  const trims = items.filter((it) => it.kind === 'trim');
+  if (trims.length === 0) return totalTimelineMs;
+  const sorted = [...trims].sort((a, b) => a.startMs - b.startMs);
+  const merged: { startMs: number; endMs: number }[] = [];
+  for (const t of sorted) {
+    if (merged.length === 0) {
+      merged.push({ startMs: t.startMs, endMs: t.endMs });
+    } else {
+      const prev = merged[merged.length - 1];
+      if (t.startMs <= prev.endMs + 100) {
+        prev.endMs = Math.max(prev.endMs, t.endMs);
+      } else {
+        merged.push({ startMs: t.startMs, endMs: t.endMs });
+      }
+    }
+  }
+  const last = merged[merged.length - 1];
+  if (last && last.endMs >= totalTimelineMs - 200) {
+    return last.startMs;
+  }
+  return totalTimelineMs;
+}
+
 async function mixWithBackgroundAudio({
   timelineAudio,
   backgroundAudio,
@@ -809,12 +836,13 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
       return { card, insertVideoMs, cardDurMs, emitted: false };
     });
 
-    const totalGifTitleCardFrames = cardScheduleGif.reduce(
-      (sum, c) => sum + Math.max(1, Math.round(c.cardDurMs / gifFrameMs)),
-      0
-    );
-    let gifProcessedFrames = 0;
-    let gifTotalEst = (totalSrcFrames > 0 ? totalSrcFrames : (sourceDurationSec > 0 ? Math.round(sourceDurationSec * GIF_FPS) : 0)) + totalGifTitleCardFrames;
+    const totalTimelineMsGif = computeTotalDuration(sourceDurationSec * 1000, items);
+    const lastCardEndMsGif = cardScheduleGif.length > 0 ? Math.max(0, ...cardScheduleGif.map((c) => c.card.endMs)) : 0;
+    const maxActiveTimelineMsGif = Math.max(lastCardEndMsGif, computeMaxUntrimmedTimelineMs(totalTimelineMsGif, items));
+
+    const outputDurationSecGif = computeOutputDurationSec(sourceDurationSec, items);
+    let gifTotalEst = Math.max(1, Math.round(outputDurationSecGif * GIF_FPS));
+    let gifEncodedFrames = 0;
     let gifPreviewPct = -100;
 
     const emitGifTitleCard = (cardItem: typeof cardScheduleGif[0], currentSrc: FrameSource | null) => {
@@ -834,22 +862,22 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
         enc.writeFrame(index, outW, outH, { palette, delay: gifFrameMs });
         outMs += gifFrameMs;
         nextEmitMs += gifFrameMs;
-        gifProcessedFrames++;
+        gifEncodedFrames++;
         const pct = gifTotalEst
-          ? Math.min(99, Math.round((gifProcessedFrames / gifTotalEst) * 100))
+          ? Math.min(99, Math.round((gifEncodedFrames / gifTotalEst) * 100))
           : 0;
         if (pct - lastProgress >= 1) {
           lastProgress = pct;
           let preview: string | undefined;
           if (pct - gifPreviewPct >= 4) { gifPreviewPct = pct; preview = snapshotPreview(canvas); }
-          onProgress('Encoding GIF', pct, { frame: gifProcessedFrames, totalFrames: gifTotalEst, preview });
+          onProgress('Encoding GIF', pct, { frame: Math.min(gifEncodedFrames, gifTotalEst), totalFrames: gifTotalEst, preview });
         }
       }
       cardItem.emitted = true;
     };
 
     const gifFrameStream = isImage
-      ? generateImageFrames(srcCanvasForExport!, sourceDurationSec, GIF_FPS)
+      ? generateImageFrames(srcCanvasForExport!, Math.min(sourceDurationSec, Math.ceil(maxActiveTimelineMsGif / 1000) + 1), GIF_FPS)
       : screenSink!.canvases();
 
     for await (const wrapped of gifFrameStream) {
@@ -857,10 +885,6 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
       const { canvas: srcCanvas, timestamp, duration } = wrapped;
       const ms = timestamp * 1000;
       const frameDuration = duration || 1 / 30;
-      if (!gifTotalEst && sourceDurationSec > 0) {
-        gifTotalEst = Math.max(1, Math.round(sourceDurationSec / frameDuration)) + totalGifTitleCardFrames;
-      }
-      gifProcessedFrames++;
 
       for (const item of cardScheduleGif) {
         if (!item.emitted && ms >= item.insertVideoMs) {
@@ -870,12 +894,8 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
 
       const mappedTimelineMs = videoToTimelineMs(ms, items);
       if (items.some((it) => it.kind === 'trim' && mappedTimelineMs >= it.startMs && mappedTimelineMs < it.endMs)) {
-        const pct = gifTotalEst
-          ? Math.min(99, Math.round((gifProcessedFrames / gifTotalEst) * 100))
-          : sourceDurationSec > 0 ? Math.min(99, Math.round((timestamp / sourceDurationSec) * 100)) : 0;
-        if (pct - lastProgress >= 1) {
-          lastProgress = pct;
-          onProgress('Encoding GIF', pct, { frame: gifProcessedFrames, totalFrames: gifTotalEst });
+        if (mappedTimelineMs >= maxActiveTimelineMsGif && cardScheduleGif.every((c) => c.emitted)) {
+          break;
         }
         continue;
       }
@@ -897,18 +917,19 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
         while (endOut >= nextEmitMs) {
           enc.writeFrame(index, outW, outH, { palette, delay: gifFrameMs });
           nextEmitMs += gifFrameMs;
+          gifEncodedFrames++;
         }
       }
       outMs = endOut;
       {
         const pct = gifTotalEst
-          ? Math.min(99, Math.round((gifProcessedFrames / gifTotalEst) * 100))
-          : sourceDurationSec > 0 ? Math.min(99, Math.round((timestamp / sourceDurationSec) * 100)) : 0;
+          ? Math.min(99, Math.round((gifEncodedFrames / gifTotalEst) * 100))
+          : 0;
         if (pct - lastProgress >= 1) {
           lastProgress = pct;
           let preview: string | undefined;
           if (pct - gifPreviewPct >= 4) { gifPreviewPct = pct; preview = snapshotPreview(canvas); }
-          onProgress('Encoding GIF', pct, { frame: gifProcessedFrames, totalFrames: gifTotalEst, preview });
+          onProgress('Encoding GIF', pct, { frame: Math.min(gifEncodedFrames, gifTotalEst), totalFrames: gifTotalEst, preview });
         }
       }
     }
@@ -1082,12 +1103,13 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     return { card, insertVideoMs, cardDurMs, emitted: false };
   });
 
-  const totalTitleCardFrames = cardSchedule.reduce(
-    (sum, c) => sum + Math.max(1, Math.round((c.cardDurMs / 1000) * outFps)),
-    0
-  );
-  let processedFrames = 0;
-  let totalFramesEst = (totalSrcFrames > 0 ? totalSrcFrames : (sourceDurationSec > 0 ? Math.round(sourceDurationSec * outFps) : 0)) + totalTitleCardFrames;
+  const totalTimelineMs = computeTotalDuration(sourceDurationSec * 1000, items);
+  const lastCardEndMs = cardSchedule.length > 0 ? Math.max(0, ...cardSchedule.map((c) => c.card.endMs)) : 0;
+  const maxActiveTimelineMs = Math.max(lastCardEndMs, computeMaxUntrimmedTimelineMs(totalTimelineMs, items));
+
+  const outputDurationSec = computeOutputDurationSec(sourceDurationSec, items);
+  let totalFramesEst = Math.max(1, Math.round(outputDurationSec * outFps));
+  let encodedFrames = 0;
   let lastPreviewPct = -100;
 
   const emitTitleCardFrames = async (cardItem: typeof cardSchedule[0], currentSrcCanvas: FrameSource | null) => {
@@ -1105,10 +1127,10 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
         await videoSource.add(outTs, stepSec);
       }
       outTs += stepSec;
-      processedFrames++;
+      encodedFrames++;
 
       const pct = totalFramesEst
-        ? Math.min(99, Math.round((processedFrames / totalFramesEst) * 100))
+        ? Math.min(99, Math.round((encodedFrames / totalFramesEst) * 100))
         : 0;
       if (pct - lastProgress >= 1) {
         lastProgress = pct;
@@ -1117,14 +1139,14 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
           lastPreviewPct = pct;
           preview = snapshotPreview(canvas);
         }
-        onProgress('Encoding', pct, { frame: processedFrames, totalFrames: totalFramesEst, preview });
+        onProgress('Encoding', pct, { frame: Math.min(encodedFrames, totalFramesEst), totalFrames: totalFramesEst, preview });
       }
     }
     cardItem.emitted = true;
   };
 
   const videoFrameStream = isImage
-    ? generateImageFrames(srcCanvasForExport!, sourceDurationSec, outFps)
+    ? generateImageFrames(srcCanvasForExport!, Math.min(sourceDurationSec, Math.ceil(maxActiveTimelineMs / 1000) + 1), outFps)
     : screenSink!.canvases();
 
   for await (const wrapped of videoFrameStream) {
@@ -1132,10 +1154,6 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     const { canvas: srcCanvas, timestamp, duration } = wrapped;
     const ms = timestamp * 1000;
     const frameDuration = duration || 1 / 30;
-    if (!totalFramesEst && sourceDurationSec > 0) {
-      totalFramesEst = Math.max(1, Math.round(sourceDurationSec / frameDuration)) + totalTitleCardFrames;
-    }
-    processedFrames++;
 
     for (const item of cardSchedule) {
       if (!item.emitted && ms >= item.insertVideoMs) {
@@ -1150,12 +1168,8 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
       (it) => it.kind === 'trim' && mappedTimelineMs >= it.startMs && mappedTimelineMs < it.endMs
     );
     if (inTrim) {
-      const pct = totalFramesEst
-        ? Math.min(99, Math.round((processedFrames / totalFramesEst) * 100))
-        : sourceDurationSec > 0 ? Math.min(99, Math.round((timestamp / sourceDurationSec) * 100)) : 0;
-      if (pct - lastProgress >= 1) {
-        lastProgress = pct;
-        onProgress('Encoding', pct, { frame: processedFrames, totalFrames: totalFramesEst });
+      if (mappedTimelineMs >= maxActiveTimelineMs && cardSchedule.every((c) => c.emitted)) {
+        break;
       }
       continue;
     }
@@ -1201,13 +1215,13 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
         await videoSource.add(outTs, frameDuration);
       }
       outTs += frameDuration;
+      encodedFrames++;
     }
 
-    // Drive progress off frames processed when we know the total (exact, never
-    // saturates); fall back to the timestamp ratio only if we have no count.
+    // Drive progress off output frames encoded
     const pct = totalFramesEst
-      ? Math.min(99, Math.round((processedFrames / totalFramesEst) * 100))
-      : sourceDurationSec > 0 ? Math.min(99, Math.round((timestamp / sourceDurationSec) * 100)) : 0;
+      ? Math.min(99, Math.round((encodedFrames / totalFramesEst) * 100))
+      : 0;
     if (pct - lastProgress >= 1) {
       lastProgress = pct;
       // A small JPEG snapshot every ~4% gives the modal a live "frame being
@@ -1217,7 +1231,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
         lastPreviewPct = pct;
         preview = snapshotPreview(canvas);
       }
-      onProgress('Encoding', pct, { frame: processedFrames, totalFrames: totalFramesEst, preview });
+      onProgress('Encoding', pct, { frame: Math.min(encodedFrames, totalFramesEst), totalFrames: totalFramesEst, preview });
     }
   }
 
@@ -1230,7 +1244,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   // Make sure the counter lands on the true total even if the last 1% tick fell
   // a few frames short of the end.
   if (!cancelRequested && totalFramesEst) {
-    onProgress('Encoding', 99, { frame: processedFrames, totalFrames: totalFramesEst });
+    onProgress('Encoding', 99, { frame: totalFramesEst, totalFrames: totalFramesEst });
   }
 
   if (cancelRequested) {
