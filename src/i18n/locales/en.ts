@@ -442,7 +442,7 @@ export default {
   'tl.fit': 'Fit',
   'tl.fitWidth': 'Fit timeline to width',
   'tl.timelineZoom': 'Timeline zoom',
-  'tl.addHint': 'Press Z / T / A / S / C to add items',
+  'tl.addHint': 'Press shortcut keys to add items',
   'tl.zoomHint': 'Pinch / Ctrl+Scroll Zoom',
   'tl.pressToAdd': 'Press {key} to add {label}',
   'tl.cut': 'cut',

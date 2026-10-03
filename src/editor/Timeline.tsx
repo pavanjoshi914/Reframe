@@ -17,7 +17,7 @@ const LANES: { kind: LaneKind; label: string; key: string; icon: LucideIcon; col
   { kind: 'rotation', label: 'Rotation', key: 'R', icon: Rotate3d, color: 'border-orange-400', chip: 'bg-orange-500/30' }
 ];
 
-const LANE_LABEL_W = 100;
+const LANE_LABEL_W = 136;
 // Right-side breathing room past the last tick. The playhead line sits at
 // trackWidth exactly when currentMs === durationMs, and its diamond marker
 // extends ~5px on each side; this margin keeps both fully visible without
@@ -335,11 +335,11 @@ export function Timeline() {
                     className="sticky left-0 z-20 flex shrink-0 items-center justify-between border-r border-white/5 bg-[var(--bg)] px-2 text-[11px] text-[var(--muted)]"
                     style={{ width: LANE_LABEL_W }}
                   >
-                    <span className="flex items-center gap-1.5">
-                      <lane.icon size={12} />
-                      {t('tl.' + lane.kind)}
+                    <span className="flex min-w-0 items-center gap-1.5 truncate" title={t('tl.' + lane.kind)}>
+                      <lane.icon size={12} className="shrink-0 text-[var(--muted)]" />
+                      <span className="truncate">{t('tl.' + lane.kind)}</span>
                     </span>
-                    <span className="flex items-center gap-1">
+                    <span className="flex shrink-0 items-center gap-1">
                       {lane.kind === 'zoom' && (
                         <button
                           data-testid="suggest-zooms"
@@ -354,11 +354,14 @@ export function Timeline() {
                       )}
                       <button
                         onClick={() => addItem(lane.kind, currentMs)}
-                        className="flex h-5 w-5 items-center justify-center rounded bg-[var(--panel-2)] hover:bg-white/15"
+                        className="group flex h-5 items-center gap-1 rounded bg-[var(--panel-2)] px-1.5 text-[var(--muted)] transition hover:bg-white/15 hover:text-[var(--text)]"
                         title={`${t('tl.add', { label: t('tl.' + lane.kind) })} (${lane.key})`}
-                        aria-label={t('tl.add', { label: t('tl.' + lane.kind) })}
+                        aria-label={`${t('tl.add', { label: t('tl.' + lane.kind) })} (${lane.key})`}
                       >
                         <Plus size={10} />
+                        <kbd className="rounded bg-white/10 px-1 py-0.5 font-mono text-[9px] font-semibold leading-none text-[var(--muted)] group-hover:text-[var(--text)]">
+                          {lane.key}
+                        </kbd>
                       </button>
                     </span>
                   </div>
@@ -412,12 +415,12 @@ export function Timeline() {
             <span key={lane.kind} className="flex items-center">
               <button
                 onClick={() => addItem(lane.kind, currentMs)}
-                className="flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-white/[0.03] px-2 py-1 text-[11px] text-[var(--muted)] transition hover:border-[var(--line-2)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
+                className="group flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-white/[0.03] px-2 py-1 text-[11px] text-[var(--muted)] transition hover:border-[var(--line-2)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
                 title={`${t('tl.add', { label: t('tl.' + lane.kind) })} (${lane.key})`}
               >
                 <lane.icon size={11} />
                 {t('tl.' + lane.kind)}
-                <span className="text-[9px] text-[var(--faint)]">{lane.key}</span>
+                <kbd className="rounded bg-white/10 px-1 py-0.5 font-mono text-[9px] font-semibold leading-none text-[var(--faint)] group-hover:text-[var(--muted)]">{lane.key}</kbd>
               </button>
               {lane.kind === 'zoom' ? (
                 <button
