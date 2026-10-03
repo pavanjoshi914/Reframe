@@ -3221,17 +3221,9 @@ function SceneSection({ item }: { item: LaneItem }) {
   const updateItem = useEditor((s) => s.updateItem);
   const setCurrent = useEditor((s) => s.setCurrent);
   const setPlaying = useEditor((s) => s.setPlaying);
-  const paletteRef = useRef<HTMLDivElement>(null);
-  // Bring the PALETTE into view once, when a scene item is first selected —
-  // the sidebar may be scrolled anywhere when the chip is clicked.
-  //
-  // Browsing presets afterwards must not move the sidebar. Scrolling to the
-  // settings on every pick (the old behaviour) made comparing effects
-  // impossible: each click threw you down to Motion and you had to scroll back
-  // up for the next one. The settings sit directly under the palette, so
-  // they're one deliberate scroll away when you actually want them.
+  const topRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    paletteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [item.id]);
 
   const pick = (id: string) => {
@@ -3254,22 +3246,8 @@ function SceneSection({ item }: { item: LaneItem }) {
   const num = (v: number) => (Math.round(v * 100) / 100).toString();
   const anyMotion = [item.sceneSpeed, item.sceneZoom, item.sceneTiltX, item.sceneTiltY, item.sceneDepth, item.sceneSpacing, item.sceneRadius, item.sceneShape, item.scenePosX, item.scenePosY].some((v) => v !== undefined);
   return (
-    <div className="space-y-3">
-      <div ref={paletteRef}>
-        <span className="text-xs font-semibold text-[var(--text)]">{t('side.scenes')}</span>
-        <p className="mt-1 text-[11px] text-[var(--faint)]">{t('side.scenesTip')}</p>
-      </div>
-      {SCENE_GROUPS.map((g) => (
-        <div key={g.key}>
-          <Label>{t(`side.sceneGroup.${g.key}`)}</Label>
-          <div className="grid grid-cols-3 gap-1.5">
-            {g.ids.map((id) => (
-              <SceneThumb key={id} id={id} label={t(`side.scene.${id}`)} active={item.scene === id} onPick={() => pick(id)} />
-            ))}
-          </div>
-        </div>
-      ))}
-
+    <div ref={topRef} className="space-y-3">
+      {/* Animation & Position Settings on top */}
       <div className="space-y-1 rounded-lg border border-[var(--line)] p-3">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-[var(--text)]">{t('side.sceneMotion')}</span>
@@ -3306,6 +3284,22 @@ function SceneSection({ item }: { item: LaneItem }) {
         />
         <p className="text-[11px] text-[var(--faint)]">{t('side.scenePositionTip')}</p>
       </div>
+
+      {/* Preset thumbnails on bottom */}
+      <div>
+        <span className="text-xs font-semibold text-[var(--text)]">{t('side.scenes')}</span>
+        <p className="mt-1 text-[11px] text-[var(--faint)]">{t('side.scenesTip')}</p>
+      </div>
+      {SCENE_GROUPS.map((g) => (
+        <div key={g.key}>
+          <Label>{t(`side.sceneGroup.${g.key}`)}</Label>
+          <div className="grid grid-cols-3 gap-1.5">
+            {g.ids.map((id) => (
+              <SceneThumb key={id} id={id} label={t(`side.scene.${id}`)} active={item.scene === id} onPick={() => pick(id)} />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
