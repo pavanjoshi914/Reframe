@@ -59,6 +59,30 @@ export const CURSOR_GLYPHS: Record<string, CursorGlyph> = {
       'M 0.0 0.0 L 0.0 13.86 L 3.99 14.22 L 5.48 17.46 L 8.38 16.56 L 5.48 10.8 L 9.67 10.26 Z',
     view: '-1.5 -1.5 13 22'
   },
+  // macOS Big Sur / Tahoe fluid rounded pointer (Recordly flagship).
+  tahoe: {
+    weight: 1.0,
+    d:
+      'M 0 0.24 C 0 0.08 0.15 0 0.26 0.11 L 9.85 9.72 C 10.37 10.24 10.0 11.14 9.26 11.14 L 5.98 11.14 ' +
+      'L 8.16 16.32 C 8.44 16.97 8.13 17.73 7.48 18.0 C 6.82 18.28 6.07 17.97 5.8 17.32 L 3.59 12.07 ' +
+      'L 1.34 14.07 C 0.84 14.52 0.06 14.21 0 13.57 Z',
+    view: '-1.5 -1.5 14 22'
+  },
+  // Windows 11 Fluent design pointer (from Recordly Windows asset).
+  windows11: {
+    weight: 1.0,
+    d:
+      'M 0 0 L 12.04 12.11 L 6.86 12.11 L 8.99 16.43 L 5.9 18.0 L 3.53 13.14 L 0 16.57 Z',
+    view: '-1.5 -1.5 16 22'
+  },
+  // Minimal / Figma multiplayer wedge pointer (from Recordly custom/minimal asset).
+  figma: {
+    weight: 0.9,
+    d:
+      'M 0 0.6 C -0.1 0.2 0.2 -0.1 0.6 0.1 L 15.65 8.73 C 16.03 8.95 15.97 9.52 15.55 9.65 L 8.23 11.9 ' +
+      'C 8.11 11.94 8.01 12.01 7.95 12.11 L 4.29 17.76 C 4.04 18.13 3.46 18.03 3.37 17.58 L 0 0.6 Z',
+    view: '-2 -2 20 22'
+  },
   // Bolder, stylized arrow.
   arrow: {
     d: 'M0 0 L0 19 L4.6 14.8 L7.4 21 L10.2 19.8 L7.3 13.9 L13.2 12.2 Z',
@@ -84,36 +108,24 @@ export const CURSOR_GLYPHS: Record<string, CursorGlyph> = {
       'L8.6 10.4 L8.6 8.2 L6.4 8.2 L6.4 6 L4.2 6 L4.2 3.8 L2 3.8 L2 1.6 Z',
     view: '-1.5 -1.5 14 23'
   },
-  // Pointing hand: index finger up (hotspot at the fingertip), three folded
-  // knuckles to its right and a thumb bulge on the left.
+  // Pointing hand: authentic macOS Big Sur / Tahoe pointing hand (matched to Recordly).
   hand: {
-    // Pointing hand, matched to the macOS link cursor.
-    //
-    // FOUR fingers, not a mitten: a tilted index raised on the left (both its
-    // edges move right as they descend, so the tip sits left of the knuckle —
-    // that lean is what makes it read as pointing), then three curled fingers
-    // as separate raised shapes with deep notches, merging into the palm around
-    // 0.42 of the height. A thumb reaches the far left at mid-height and the
-    // base carries a notch. The bars are the finger separations.
-    //
-    // Aspect h/w is ~1.41, deliberately narrower than the reference's 1.077
-    // bounding box. Matching that number looked squat: the reference gets its
-    // slim read from a longer, thinner index finger, which makes its palm
-    // smaller at the same overall size. Narrowing the whole glyph reaches the
-    // same impression without redrawing the finger. Settled by looking at the
-    // rendered result at real cursor size, not by the measurement — the
-    // bounding-box number matched long before the glyph actually looked right.
-    //
-    // DRAWN, not copied. The SVG sets carrying this artwork are either Apple's
-    // own (Apple User Agreement) or GPL-3.0; neither can be redistributed
-    // inside an MIT app.
-    //
-    // Origin is the HOTSPOT, at the index fingertip.
     weight: 0.9,
-    detail: 'M 2.76 9.63 L 2.76 14.94 M 4.56 9.63 L 4.56 14.94 M 6.35 9.63 L 6.35 14.94',
     d:
-      'M 0.0 7.2 L -0.7 0.99 Q -0.02 -0.45 0.74 0.72 L 1.67 6.84 Q 2.09 7.92 2.52 6.75 L 2.52 6.75 L 2.52 5.17 Q 3.36 4.36 4.2 5.17 L 4.2 6.75 Q 4.61 7.92 5.04 6.75 L 5.04 6.75 L 5.04 5.17 Q 5.91 4.36 6.77 5.17 L 6.77 6.75 Q 7.23 8.1 7.61 6.93 L 7.61 8.1 L 7.61 6.53 Q 8.18 5.72 8.75 6.53 L 8.75 8.1 L 8.75 10.08 Q 8.57 13.86 7.37 15.57 Q 6.89 16.83 6.35 16.65 Q 5.57 15.84 4.73 16.83 Q 3.12 17.37 1.55 16.65 Q 0.12 15.84 -0.84 13.32 Q -2.16 10.44 -3.17 8.73 Q -2.64 7.11 -1.44 7.56 Q -0.53 7.74 0.0 7.2 Z',
-    view: '-5 -2 14 20'
+      'M 2.51 18.0 C 1.02 18.0 -0.25 17.6 -1.3 16.8 C -2.35 16.0 -3.15 14.81 -3.7 13.24 ' +
+      'L -5.27 8.82 C -5.32 8.68 -5.35 8.54 -5.38 8.38 C -5.4 8.23 -5.42 8.09 -5.42 7.97 ' +
+      'C -5.42 7.52 -5.27 7.16 -4.96 6.91 C -4.66 6.66 -4.3 6.54 -3.89 6.54 ' +
+      'C -3.6 6.54 -3.33 6.62 -3.09 6.8 C -2.85 6.97 -2.66 7.23 -2.51 7.57 ' +
+      'L -1.82 9.28 C -1.8 9.32 -1.78 9.34 -1.74 9.34 C -1.69 9.34 -1.67 9.31 -1.67 9.26 ' +
+      'V 1.73 C -1.67 1.2 -1.51 0.78 -1.2 0.47 C -0.88 0.16 -0.48 0.0 0.0 0.0 ' +
+      'C 0.48 0.0 0.87 0.16 1.19 0.47 C 1.5 0.78 1.65 1.2 1.65 1.73 ' +
+      'V 4.72 C 1.88 4.65 2.1 4.62 2.32 4.62 C 2.69 4.62 3.01 4.72 3.27 4.91 ' +
+      'C 3.54 5.11 3.72 5.38 3.83 5.72 C 4.09 5.62 4.36 5.57 4.61 5.57 ' +
+      'C 4.97 5.57 5.28 5.67 5.53 5.85 C 5.77 6.03 5.95 6.28 6.04 6.6 ' +
+      'C 6.83 6.6 7.45 6.88 7.88 7.44 C 8.32 7.99 8.53 8.77 8.53 9.77 ' +
+      'V 11.6 C 8.53 12.96 8.28 14.11 7.77 15.06 C 7.26 16.02 6.56 16.75 5.65 17.25 ' +
+      'C 4.75 17.75 3.7 18.0 2.51 18.0 Z',
+    view: '-7 -1.5 17 21'
   },
   // Text I-beam, centred on the hotspot. Modelled on the macOS text cursor:
   // thin serifs that flare out at top and bottom with a DEEP concave sweep into
@@ -180,6 +192,9 @@ export type CursorStyleId =
   // data (anything recorded before capture existed, or a Wayland session), so
   // it is safe as the default. Every other id is a fixed glyph.
   | 'system'
+  | 'tahoe'
+  | 'windows11'
+  | 'figma'
   | 'arrow'
   | 'modern'
   | 'sleek'
@@ -191,11 +206,14 @@ export type CursorStyleId =
   | 'paw'
   | 'emoji';
 
-/** Picker order — plain pointers first, then shapes, then the playful ones. */
+/** Picker order — main pointer designs and shapes available to the user.
+ *  Note: Contextual cursors ('hand' for links, 'beam' for text) are not picked here;
+ *  they appear automatically when hovering buttons/text during playback.
+ */
 export const CURSOR_STYLE_IDS: CursorStyleId[] = [
-  'system', 'arrow', 'modern', 'sleek',
-  'retro', 'hand', 'beam', 'ring',
-  'dot', 'paw', 'emoji'
+  'system', 'tahoe', 'windows11', 'figma',
+  'arrow', 'modern', 'sleek', 'retro',
+  'ring', 'dot', 'paw', 'emoji'
 ];
 
 // How long the pointer must sit still before it starts fading, and how long

@@ -2325,6 +2325,9 @@ function VideoEffectsSection() {
 // signature "smooth cursor" look of polished demo videos.
 const CURSOR_STYLE_LABEL: Record<CursorStyle, string> = {
   system: 'side.cursorStyleSystem',
+  tahoe: 'side.cursorStyleTahoe',
+  windows11: 'side.cursorStyleWindows11',
+  figma: 'side.cursorStyleFigma',
   arrow: 'side.cursorStyleArrow',
   modern: 'side.cursorStyleModern',
   sleek: 'side.cursorStyleSleek',
@@ -2346,7 +2349,44 @@ const CURSOR_STYLE_LABEL: Record<CursorStyle, string> = {
 // emoji keyboard works in it too. Kept to a single glyph — a cursor is one
 // symbol — using Intl.Segmenter so a ZWJ sequence counts as one character
 // rather than being cut in half.
-const EMOJI_QUICK = ['👆','👉','👋','🖐️','✌️','🤙','👀','✨','⭐','🔥','💡','🎯','❤️','🚀','🎉','🐱','🐶','🦊','🌈','☕'];
+const EMOJI_CATEGORIES = [
+  {
+    id: 'hands',
+    icon: '👆',
+    label: 'Hands',
+    emojis: ['👆','👉','👇','👈','☝️','🖐️','✋','🖖','🤙','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','✍️','💅','🤳','🤏','🤌','🤞','🤟','🤘']
+  },
+  {
+    id: 'smileys',
+    icon: '😀',
+    label: 'Smileys',
+    emojis: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👻','👽','👾','🤖']
+  },
+  {
+    id: 'reactions',
+    icon: '🔥',
+    label: 'Reactions',
+    emojis: ['🔥','✨','⭐','🌟','💫','💥','💢','💦','💨','🕳️','💣','💬','🗨️','🗯️','💭','💤','💯','🕊️','⚡','☄️','☀️','🌙','🪐','🌈','☁️','❄️','⛄','🎃','🎄','🎆','🎇','🧨','🎈','🎉','🎊','🎀','🎁','🏆','🥇','🥈','🥉','🏅','🎖️','🎫','🎟️','👑','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝']
+  },
+  {
+    id: 'objects',
+    icon: '💡',
+    label: 'Tech',
+    emojis: ['💡','🎯','🚀','💻','🖥️','📱','⌨️','🖱️','🖲️','🕹️','💾','💿','📷','📸','📹','🎥','📽️','🎞️','📞','☎️','📺','📻','🎙️','🎚️','🎛️','⏱️','⏲️','⏰','⏳','📡','🔋','🔌','🔍','🔎','🔬','🔭','💸','💰','💳','💎','🔨','🛠️','🔧','🪛','⚙️','🔑','🗝️','🔒','🔓','🔔','🔕','📌','📍','📎','✏️','✒️','🖋️','🖌️','🖍️','📝','📦','🏷️']
+  },
+  {
+    id: 'animals',
+    icon: '🐱',
+    label: 'Animals',
+    emojis: ['🐱','🐶','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🐢','🐍','🐙','🦑','🦐','🦞','🦀','🐠','🐬','🐳','🦈','🐊','🐅','🐆','🦓','🦍','🐘','🦛','🦏','🐪','🦒','🦘','🐎','🐑','🐐','🦌','🐕','🐈','🐓','🕊️','🐇','🐿️','🦔','🌸','🌺','🌻','🌹','🌷','🌼','🍀','🍁','🍂','🍃','🍄','🌴','🌲','🌳']
+  },
+  {
+    id: 'food',
+    icon: '☕',
+    label: 'Food',
+    emojis: ['☕','🍵','🧋','🥤','🧃','🥛','🍺','🍻','🍷','🥂','🥃','🍸','🍹','🍾','🍕','🍔','🍟','🌭','🍿','🥞','🧇','🥓','🥩','🍗','🥪','🌮','🌯','🥗','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🍤','🍙','🍦','🍧','🍨','🍩','🍪','🎂','🍰','🧁','🍫','🍬','🍭','🍓','🍒','🍎','🍉','🍇','🍌','🥑']
+  }
+];
 
 function firstGrapheme(v: string): string {
   const t = v.trim();
@@ -2359,39 +2399,128 @@ function firstGrapheme(v: string): string {
   }
 }
 
+function hexLuminance(hex: string): number {
+  const h = (hex || '#ffffff').replace('#', '');
+  if (h.length < 6) return 1;
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 function EmojiCursorPicker() {
   const t = useT();
   const emoji = useEditor((s) => s.cursorFx.emoji);
   const setCursorFx = useEditor((s) => s.setCursorFx);
+  const [activeCategory, setActiveCategory] = useState(0);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const isClickScrolling = useRef(false);
+
+  const handleScroll = () => {
+    if (isClickScrolling.current) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const containerTop = container.scrollTop;
+    let currentIdx = 0;
+    for (let i = 0; i < EMOJI_CATEGORIES.length; i++) {
+      const sec = sectionRefs.current[i];
+      if (sec && sec.offsetTop - container.offsetTop <= containerTop + 20) {
+        currentIdx = i;
+      }
+    }
+    setActiveCategory(currentIdx);
+  };
+
+  const scrollToCategory = (idx: number) => {
+    setActiveCategory(idx);
+    const container = containerRef.current;
+    const sec = sectionRefs.current[idx];
+    if (container && sec) {
+      isClickScrolling.current = true;
+      container.scrollTo({
+        top: sec.offsetTop - container.offsetTop,
+        behavior: 'smooth'
+      });
+      setTimeout(() => {
+        isClickScrolling.current = false;
+      }, 400);
+    }
+  };
+
   return (
     <div className="mt-2 rounded-md border border-[var(--line)] p-2">
-      <div className="mb-1.5 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between">
         <Label>{t('side.cursorEmoji')}</Label>
-        <span className="text-[19px] leading-none">{emoji || '👆'}</span>
+        <span className="text-[20px] leading-none">{emoji || '👆'}</span>
       </div>
-      <div className="grid grid-cols-10 gap-1">
-        {EMOJI_QUICK.map((e) => (
-          <button
-            key={e}
-            type="button"
-            title={e}
-            onClick={() => setCursorFx({ emoji: e })}
-            className={
-              'rounded text-[16px] leading-none transition ' +
-              (emoji === e ? 'bg-[var(--accent-dim)] ring-1 ring-[var(--accent)]/50' : 'hover:bg-[var(--panel-3)]')
-            }
+
+      {/* Category Tabs with prominent clickable highlighting */}
+      <div className="mb-2 flex items-center justify-between gap-1 rounded-lg bg-[var(--panel-2)] p-1 border border-[var(--line)] shadow-inner">
+        {EMOJI_CATEGORIES.map((cat, idx) => {
+          const isActive = activeCategory === idx;
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              title={cat.label}
+              onClick={() => scrollToCategory(idx)}
+              className={
+                'flex h-7 w-8 items-center justify-center rounded-md text-[15px] transition-all cursor-pointer ' +
+                (isActive
+                  ? 'bg-[var(--accent)] text-white shadow-sm ring-1 ring-[var(--accent)] font-semibold scale-105'
+                  : 'text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-white')
+              }
+            >
+              {cat.icon}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* General Continuous Scroll across all categories with section headers */}
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="max-h-48 overflow-y-auto pr-1 scroll-smooth"
+      >
+        {EMOJI_CATEGORIES.map((cat, idx) => (
+          <div
+            key={cat.id}
+            ref={(el) => { sectionRefs.current[idx] = el; }}
+            className="mb-3 last:mb-1"
           >
-            {e}
-          </button>
+            <div className="sticky top-0 z-10 mb-1 rounded bg-[var(--panel-1)]/95 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)] backdrop-blur-sm border-b border-[var(--line)]/50">
+              {cat.label}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {cat.emojis.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  title={e}
+                  onClick={() => setCursorFx({ emoji: e })}
+                  className={
+                    'flex h-7 w-7 items-center justify-center rounded text-[17px] leading-none transition ' +
+                    (emoji === e ? 'bg-[var(--accent-dim)] ring-1 ring-[var(--accent)]/50' : 'hover:bg-[var(--panel-3)]')
+                  }
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
+
       <input
         type="text"
         value={emoji}
         onChange={(e) => setCursorFx({ emoji: firstGrapheme(e.target.value) })}
         placeholder={t('side.cursorEmojiPlaceholder')}
         aria-label={t('side.cursorEmoji')}
-        className="mt-1.5 w-full rounded bg-[var(--panel-2)] px-2 py-1 text-center text-[16px] leading-relaxed outline-none ring-1 ring-[var(--line)] focus:ring-[var(--accent)]/50"
+        className="mt-2 w-full rounded bg-[var(--panel-2)] px-2 py-1 text-center text-[16px] leading-relaxed outline-none ring-1 ring-[var(--line)] focus:ring-[var(--accent)]/50"
       />
       <p className="mt-1 text-[11px] text-[var(--faint)]">{t('side.cursorEmojiTip')}</p>
     </div>
@@ -2402,7 +2531,8 @@ function CursorStyleTile({
   id, label, color, active, onClick, emojiPreview
 }: { id: CursorStyle; label: string; color: string; active: boolean; onClick: () => void; emojiPreview?: string }) {
   const g = CURSOR_GLYPHS[id];
-  const outline = 'rgba(0,0,0,0.7)';
+  const isDark = hexLuminance(color) < 0.45;
+  const outline = isDark ? 'rgba(255,255,255,0.92)' : 'rgba(0,0,0,0.75)';
   return (
     <button
       type="button"
@@ -2412,7 +2542,7 @@ function CursorStyleTile({
       className={
         'flex flex-col items-center gap-1 rounded-md border p-1.5 transition ' +
         (active
-          ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
+          ? 'border-[var(--accent)] bg-[var(--accent-dim)] shadow-sm'
           : 'border-[var(--line)] hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]')
       }
     >
@@ -2431,7 +2561,10 @@ function CursorStyleTile({
                       <path d={gg.d} fill="none" stroke={color} strokeWidth={gg.stroke} strokeLinecap="round" strokeLinejoin="round" />
                     </>
                   ) : (
-                    <path d={gg.d} fill={color} stroke={outline} strokeWidth="1.7" strokeLinejoin="round" paintOrder="stroke" />
+                    <>
+                      <path d={gg.d} fill={color} stroke={outline} strokeWidth={isDark ? "2.6" : "1.7"} strokeLinejoin="round" paintOrder="stroke" />
+                      <path d={gg.d} fill="none" stroke={color} strokeWidth="1.2" strokeLinejoin="round" />
+                    </>
                   )}
                 </svg>
               );
@@ -2439,12 +2572,29 @@ function CursorStyleTile({
           </span>
         ) : id === 'ring' || id === 'dot' ? (
           <svg viewBox="-10 -10 20 20" className="h-6 w-6" aria-hidden="true">
-            <circle
-              cx="0" cy="0" r={id === 'dot' ? 6.5 : 7}
-              fill={id === 'dot' ? color : 'none'}
-              stroke={id === 'dot' ? outline : color}
-              strokeWidth={id === 'dot' ? 1.2 : 2.6}
-            />
+            {id === 'dot' ? (
+              <circle
+                cx="0" cy="0" r={6.5}
+                fill={color}
+                stroke={outline}
+                strokeWidth={isDark ? 1.8 : 1.2}
+              />
+            ) : (
+              <>
+                <circle
+                  cx="0" cy="0" r={7}
+                  fill="none"
+                  stroke={outline}
+                  strokeWidth={isDark ? 3.8 : 3.4}
+                />
+                <circle
+                  cx="0" cy="0" r={7}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={2.4}
+                />
+              </>
+            )}
           </svg>
         ) : g?.char ? (
           <span className="text-[19px] leading-none">{id === 'emoji' ? emojiPreview || g.char : g.char}</span>
@@ -2459,7 +2609,7 @@ function CursorStyleTile({
               </>
             ) : (
               <>
-                <path d={g.d} fill={color} stroke={outline} strokeWidth={1.26 + 3.6 * (g.weight ?? 1)} strokeLinejoin="round" paintOrder="stroke" />
+                <path d={g.d} fill={color} stroke={outline} strokeWidth={isDark ? 1.6 + 3.4 * (g.weight ?? 1) : 1.26 + 3.6 * (g.weight ?? 1)} strokeLinejoin="round" paintOrder="stroke" />
                 <path d={g.d} fill="none" stroke={color} strokeWidth={1.26} strokeLinejoin="round" />
               </>
             )}
@@ -2469,7 +2619,7 @@ function CursorStyleTile({
           </svg>
         )}
       </span>
-      <span className={'w-full truncate text-center text-[10px] leading-tight ' + (active ? 'font-semibold text-[var(--accent)]' : 'text-[var(--muted)]')}>
+      <span className={'w-full truncate text-center text-[9.5px] leading-tight px-0.5 ' + (active ? 'font-semibold text-[var(--accent)]' : 'text-[var(--muted)]')}>
         {label}
       </span>
     </button>
