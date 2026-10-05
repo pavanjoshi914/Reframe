@@ -33,7 +33,7 @@ import type { CursorSample, ClickSample, CursorKindSample } from '@shared/ipc';
 import { renderCard3D, renderScene3D, projectCardPoint, type CardXform } from './card3d';
 import {
   sceneInstances, heroIndex, DEFAULT_SCENE_SETTINGS, SCENE_SHAPE_RATIO,
-  ENTRANCE_PRESETS, SWEEPS_AND_FOCUS, EXIT_PRESETS, DECK_PRESETS,
+  ENTRANCE_PRESETS, SWEEPS_AND_FOCUS, EXIT_PRESETS, DECK_PRESETS, SLOW_MOTION_PRESETS,
   easeOutGlide, sweepBell,
   type SceneSettings, type SceneShape
 } from './scenes';
@@ -260,7 +260,8 @@ function computeScene(items: ReturnType<typeof useEditor.getState>['items'], ms:
   const id = it.scene ?? 'heroFlyIn';
   const isEnt = ENTRANCE_PRESETS.has(id);
   const isExt = EXIT_PRESETS.has(id);
-  const isSelfContained = isEnt || SWEEPS_AND_FOCUS.has(id);
+  const isSlowMo = SLOW_MOTION_PRESETS.has(id);
+  const isSelfContained = isEnt || SWEEPS_AND_FOCUS.has(id) || isSlowMo;
   const regDur = Math.max(1, it.endMs - it.startMs);
   const transT = Math.min(ANIM_TRANSITION_MS, Math.max(80, regDur * 0.28));
 

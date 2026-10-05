@@ -55,85 +55,85 @@ const inst = (partial: Partial<SceneInstance>): SceneInstance => ({
 
 // ── All Cinematic Animation Presets ──────────────────────────────────────────
 export const SCENES: Record<string, Gen> = {
-  // ── CINEMATIC MOVES ──
-  // Slow cinematic camera pan to the left with subtle natural perspective.
+  // ── SLOW MOTION ──
+  // Continuous slow-motion drift / pan to the left (flat, no 3D tilt, no reversing).
   slowPanLeft: (p) => {
-    const w = sweepBell(p);
+    const w = Math.max(0, Math.min(1, p));
     return [inst({
-      ox: -0.14 * w,
+      ox: -0.10 * w,
       oy: 0,
-      oz: 0.05 * w,
-      rx: 0.8 * w,
-      ry: -3.5 * w,
-      rz: 0.5 * w,
+      oz: 0,
+      rx: 0,
+      ry: 0,
+      rz: 0,
       s: 1.0 + 0.03 * w
     })];
   },
 
-  // Slow cinematic camera pan to the right with subtle natural perspective.
+  // Continuous slow-motion drift / pan to the right (flat, no 3D tilt, no reversing).
   slowPanRight: (p) => {
-    const w = sweepBell(p);
+    const w = Math.max(0, Math.min(1, p));
     return [inst({
-      ox: 0.14 * w,
+      ox: 0.10 * w,
       oy: 0,
-      oz: 0.05 * w,
-      rx: 0.8 * w,
-      ry: 3.5 * w,
-      rz: -0.5 * w,
+      oz: 0,
+      rx: 0,
+      ry: 0,
+      rz: 0,
       s: 1.0 + 0.03 * w
     })];
   },
 
-  // Slow cinematic push-in (slow punch-in), smooth and focused without extreme tilt.
+  // Continuous slow-motion push-in (matching text screen slow zoom: flat, no 3D tilt, continuous push).
   slowZoomIn: (p) => {
-    const w = sweepBell(p);
+    const w = Math.max(0, Math.min(1, p));
     return [inst({
       ox: 0,
       oy: 0,
-      oz: 0.22 * w,
-      rx: 1.5 * w,
+      oz: 0,
+      rx: 0,
       ry: 0,
       rz: 0,
-      s: 1.0 + 0.10 * w
+      s: 1.0 + 0.12 * w
     })];
   },
 
-  // Slow cinematic pull-back, revealing wider context with smooth deceleration.
+  // Continuous slow-motion pull-back / zoom-out (flat, no 3D tilt, continuous zoom out).
   slowZoomOut: (p) => {
-    const w = sweepBell(p);
+    const w = Math.max(0, Math.min(1, p));
     return [inst({
       ox: 0,
       oy: 0,
-      oz: -0.18 * w,
-      rx: -1.2 * w,
+      oz: 0,
+      rx: 0,
       ry: 0,
       rz: 0,
-      s: 1.0 - 0.07 * w
+      s: 1.0 - 0.10 * w
     })];
   },
 
-  // Slow cinematic vertical pan upwards (slow top), smoothly highlighting the upper region.
+  // Continuous slow-motion vertical pan upwards (flat, no 3D tilt, no reversing).
   slowPanUp: (p) => {
-    const w = sweepBell(p);
+    const w = Math.max(0, Math.min(1, p));
     return [inst({
       ox: 0,
-      oy: 0.12 * w,
-      oz: 0.05 * w,
-      rx: -3.0 * w,
+      oy: 0.10 * w,
+      oz: 0,
+      rx: 0,
       ry: 0,
       rz: 0,
       s: 1.0 + 0.03 * w
     })];
   },
 
-  // Slow cinematic vertical pan downwards (slow down), smoothly highlighting the lower region.
+  // Continuous slow-motion vertical pan downwards (flat, no 3D tilt, no reversing).
   slowPanDown: (p) => {
-    const w = sweepBell(p);
+    const w = Math.max(0, Math.min(1, p));
     return [inst({
       ox: 0,
-      oy: -0.12 * w,
-      oz: 0.05 * w,
-      rx: 3.0 * w,
+      oy: -0.10 * w,
+      oz: 0,
+      rx: 0,
       ry: 0,
       rz: 0,
       s: 1.0 + 0.03 * w
@@ -627,7 +627,7 @@ export const SCENE_IDS = Object.keys(SCENES) as SceneId[];
 
 // Grouping for the palette UI.
 export const SCENE_GROUPS: { key: string; ids: string[] }[] = [
-  { key: 'cinematic', ids: ['slowPanLeft', 'slowPanRight', 'slowZoomIn', 'slowZoomOut', 'slowPanUp', 'slowPanDown'] },
+  { key: 'slowMotion', ids: ['slowPanLeft', 'slowPanRight', 'slowZoomIn', 'slowZoomOut', 'slowPanUp', 'slowPanDown'] },
   { key: 'entrances', ids: ['heroFlyIn', 'elevateLand', 'glideInL', 'glideInR', 'cornerSwoop', 'springPop', 'riseTilt'] },
   { key: 'sweeps', ids: ['orbitLR', 'orbitRL', 'turntable3D', 'isometricPan', 'dynamicPerspective', 'dutchSweep'] },
   { key: 'focus', ids: ['zoomTiltTL', 'zoomTiltTR', 'centerDive', 'cornerSpotlight', 'detailFocus'] },
@@ -650,14 +650,14 @@ export const SCENE_SHAPE_RATIO: Record<Exclude<SceneShape, 'auto'>, number> = {
   '1:1': 1, '4:3': 4 / 3, '3:2': 3 / 2, '16:9': 16 / 9, '9:16': 9 / 16
 };
 
-export const CINEMATIC_PRESETS = new Set([
+export const SLOW_MOTION_PRESETS = new Set([
   'slowPanLeft', 'slowPanRight', 'slowZoomIn', 'slowZoomOut', 'slowPanUp', 'slowPanDown'
 ]);
+export const CINEMATIC_PRESETS = SLOW_MOTION_PRESETS;
 export const ENTRANCE_PRESETS = new Set([
   'heroFlyIn', 'elevateLand', 'glideInL', 'glideInR', 'cornerSwoop', 'springPop', 'riseTilt'
 ]);
 export const SWEEPS_AND_FOCUS = new Set([
-  ...CINEMATIC_PRESETS,
   'orbitLR', 'orbitRL', 'turntable3D', 'isometricPan', 'dynamicPerspective', 'dutchSweep',
   'zoomTiltTL', 'zoomTiltTR', 'centerDive', 'cornerSpotlight', 'detailFocus'
 ]);
@@ -673,6 +673,7 @@ export const DECK_PRESETS = new Set([
 export const CYCLE_SEC = 8;
 const ONE_SHOT = new Set([
   ...ENTRANCE_PRESETS,
+  ...SLOW_MOTION_PRESETS,
   ...SWEEPS_AND_FOCUS,
   ...EXIT_PRESETS
 ]);
@@ -691,15 +692,17 @@ export function sceneInstances(id: string, p: number, st: SceneSettings = DEFAUL
   const isEnt = ENTRANCE_PRESETS.has(id);
   const isSweepOrFocus = SWEEPS_AND_FOCUS.has(id);
   const isExt = EXIT_PRESETS.has(id);
+  const isSlowMo = SLOW_MOTION_PRESETS.has(id);
   // Motion modifiers smoothly decay to neutral (0 tilt, 1.0 zoom) at landing so single-card presets
   // strictly touch down at the normal flat resting window position with zero snap.
   const mod = isEnt
     ? Math.max(0, 1 - easeOutGlide(pNorm))
     : (isSweepOrFocus ? sweepBell(pNorm) : (isExt ? Math.min(1, easeInCubic(pNorm)) : 1));
 
-  const effTiltX = st.tiltX * mod;
-  const effTiltY = st.tiltY * mod;
-  const effZoom = 1 + (st.zoom - 1) * mod;
+  // Slow motion presets are strictly flat (zero tilt) to match text screen slow zoom
+  const effTiltX = isSlowMo ? 0 : st.tiltX * mod;
+  const effTiltY = isSlowMo ? 0 : st.tiltY * mod;
+  const effZoom = isSlowMo ? (st.zoom ?? 1) : (1 + (st.zoom - 1) * mod);
 
   const gx = (effTiltX * Math.PI) / 180, gy = (effTiltY * Math.PI) / 180;
   const cx = Math.cos(gx), sx = Math.sin(gx), cy = Math.cos(gy), sy = Math.sin(gy);
