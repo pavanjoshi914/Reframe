@@ -1715,24 +1715,68 @@ function ColorPickRow({
 
 // The picker. Each swatch is a CSS approximation of what borders.ts paints on
 // the canvas — close enough to choose by, and far cheaper than running the real
-// compositor nine times in a sidebar.
+// compositor ten times in a sidebar.
 const BORDER_SWATCH: Record<BorderId, { box?: React.CSSProperties; layers?: React.CSSProperties[] }> = {
-  default: {},
-  darkGlass: { box: { boxShadow: 'inset 0 0 0 4px rgba(10,12,17,0.85), inset 0 0 0 5px rgba(255,255,255,0.22)' } },
-  liquidGlass: { box: { boxShadow: 'inset 0 0 0 4px rgba(255,255,255,0.85), inset 0 0 0 5px rgba(0,0,0,0.16)' } },
-  retro: { box: { boxShadow: '4px 4px 0 0 #0b0d12, inset 0 0 0 2px #0b0d12' } },
+  default: {
+    box: { border: '1.5px dashed rgba(255,255,255,0.25)', background: 'transparent' }
+  },
+  macWindow: {
+    layers: [
+      { top: 3.5, left: 5, width: 4.5, height: 4.5, borderRadius: '50%', background: '#ff5f56' },
+      { top: 3.5, left: 11.5, width: 4.5, height: 4.5, borderRadius: '50%', background: '#ffbd2e' },
+      { top: 3.5, left: 18, width: 4.5, height: 4.5, borderRadius: '50%', background: '#27c93f' }
+    ],
+    box: {
+      borderTop: '11px solid #1c1e24',
+      boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.18)'
+    }
+  },
+  liquidGlass: {
+    box: {
+      boxShadow:
+        'inset 0 0 0 3px rgba(255,255,255,0.85), inset 0 0 0 4.5px rgba(0,0,0,0.16), 0 0 8px rgba(255,255,255,0.25)'
+    }
+  },
+  darkGlass: {
+    box: {
+      boxShadow:
+        'inset 0 0 0 3.5px rgba(10,12,17,0.9), inset 0 0 0 5px rgba(255,255,255,0.25)'
+    }
+  },
+  gradient: {
+    box: {
+      boxShadow: '0 0 10px 1px rgba(139,92,246,0.6)',
+      border: '2.5px solid transparent',
+      background: 'linear-gradient(135deg, #06b6d4, #8b5cf6, #ec4899) border-box'
+    }
+  },
+  outline: {
+    box: {
+      boxShadow:
+        'inset 0 0 0 1.5px rgba(255,255,255,0.95), inset 0 0 0 3px transparent, inset 0 0 0 4px rgba(255,255,255,0.5)'
+    }
+  },
+  glow: {
+    box: {
+      boxShadow:
+        '0 0 14px 2px rgba(96,165,250,0.85), inset 0 0 0 2px rgba(147,197,253,0.95)'
+    }
+  },
+  retro: {
+    box: { boxShadow: '4px 4px 0 0 #0b0d12, inset 0 0 0 2px #0b0d12' }
+  },
   stack: {
     layers: [
       { top: -6, left: 8, right: 8, bottom: 6, background: 'rgba(255,255,255,0.22)' },
       { top: -3, left: 4, right: 4, bottom: 3, background: 'rgba(255,255,255,0.45)' }
     ],
-    box: { boxShadow: 'inset 0 0 0 1.5px rgba(255,255,255,0.9), inset 0 0 0 2.5px rgba(0,0,0,0.3)' }
+    box: {
+      boxShadow:
+        'inset 0 0 0 1.5px rgba(255,255,255,0.9), inset 0 0 0 2.5px rgba(0,0,0,0.3)'
+    }
   },
-  glow: { box: { boxShadow: '0 0 14px 2px rgba(96,165,250,0.85), inset 0 0 0 2px rgba(147,197,253,0.95)' } },
   metal3d: {
     box: {
-      // Two facets and a crease, same as the canvas paints: bright outer ring
-      // lit from the top-left, darker inner ring lit from the opposite side.
       boxShadow:
         'inset 0 0 0 1px rgba(255,255,255,0.55), inset 0 0 0 4px #9fb4d0,' +
         'inset 0 0 0 5px rgba(0,0,0,0.38), inset 0 0 0 7px #55637a,' +
@@ -1747,92 +1791,170 @@ function BorderSection() {
   const setBorder = useEditor((s) => s.setBorder);
   const borderStyle = useEditor((s) => s.borderStyle);
   const setBorderStyle = useEditor((s) => s.setBorderStyle);
+  const effects = useEditor((s) => s.effects);
+  const setEffect = useEditor((s) => s.setEffect);
+
+  // Custom color detection
+  const isCustomColor = Boolean(borderStyle.color && !BORDER_COLORS.includes(borderStyle.color));
+
   return (
-   <div className="space-y-3">
-    <div className="grid grid-cols-3 gap-2">
-      {BORDER_IDS.map((id) => {
-        const sw = BORDER_SWATCH[id];
-        const isActive = border === id;
-        return (
-          <button
-            key={id}
-            onClick={() => { setBorder(id); setBorderStyle(BORDER_DEFAULTS[id]); }}
-            title={BORDER_LABELS[id]}
-            className={
-              'rounded-md border p-2 transition-colors ' +
-              (isActive
-                ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
-                : 'border-[var(--line)] bg-[var(--panel-2)] hover:bg-[var(--panel-2)]')
-            }
-          >
-            <div className="relative mx-auto h-11 w-full">
-              {sw.layers?.map((st, i) => (
-                <div key={i} className="absolute rounded-[6px]" style={st} />
-              ))}
-              <div
-                className="absolute inset-0 rounded-[7px]"
-                style={{
-                  background: 'linear-gradient(135deg,#f4f5f7,#c9ced6)',
-                  ...sw.box
-                }}
-              />
-            </div>
-            <div className={'mt-1.5 truncate text-[10px] ' + (isActive ? 'text-emerald-200' : 'text-[var(--muted)]')}>
-              {BORDER_LABELS[id]}
-            </div>
-          </button>
-        );
-      })}
-    </div>
-    {border !== 'default' && (
-      <div className="space-y-2">
-        {/* Colour first, matching how the reference apps order it: you pick the
-            treatment, then its colour, then how heavy and how strong. */}
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-[var(--muted)]">{t('side.borderColor')}</span>
-          <div className="flex items-center gap-1">
-            {BORDER_COLORS.map((c) => {
-              const on = borderStyle.color === c;
-              return (
-                <button
-                  key={c ?? 'auto'}
-                  onClick={() => setBorderStyle({ color: c })}
-                  title={c ?? 'Preset colour'}
-                  className={
-                    'h-4 w-4 rounded-full border transition-transform ' +
-                    (on ? 'scale-125 border-white' : 'border-[var(--line-2)] hover:scale-110')
-                  }
-                  style={
-                    c
-                      ? { background: c }
-                      : { background: 'conic-gradient(#f59e0b,#22c55e,#3b82f6,#a855f7,#ec4899,#f59e0b)' }
-                  }
+    <div className="space-y-4">
+      {/* Presets Grid */}
+      <div className="grid grid-cols-2 gap-2">
+        {BORDER_IDS.map((id) => {
+          const sw = BORDER_SWATCH[id];
+          const isActive = border === id;
+          return (
+            <button
+              key={id}
+              onClick={() => {
+                setBorder(id);
+                setBorderStyle(BORDER_DEFAULTS[id]);
+              }}
+              title={BORDER_LABELS[id]}
+              className={
+                'relative flex items-center gap-2.5 rounded-lg border p-2 text-left transition-all ' +
+                (isActive
+                  ? 'border-[var(--accent)] bg-[var(--accent-dim)] shadow-sm ring-1 ring-[var(--accent)]'
+                  : 'border-[var(--line)] bg-[var(--panel-2)] hover:border-[var(--line-2)] hover:bg-[var(--fill-hover)]')
+              }
+            >
+              <div className="relative h-9 w-12 shrink-0 overflow-hidden rounded-[6px]">
+                {sw.layers?.map((st, i) => (
+                  <div key={i} className="absolute rounded-[5px]" style={st} />
+                ))}
+                <div
+                  className="absolute inset-0 rounded-[6px]"
+                  style={{
+                    background: id === 'default' ? 'transparent' : 'linear-gradient(135deg,#f4f5f7,#c9ced6)',
+                    ...sw.box
+                  }}
                 />
-              );
-            })}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className={'truncate text-[11px] font-medium ' + (isActive ? 'text-[var(--accent)]' : 'text-[var(--text)]')}>
+                  {BORDER_LABELS[id]}
+                </div>
+                <div className="truncate text-[9px] text-[var(--muted)]">
+                  {id === 'default' && 'Clean edge'}
+                  {id === 'macWindow' && 'macOS titlebar'}
+                  {id === 'liquidGlass' && 'Frosted glass'}
+                  {id === 'darkGlass' && 'Obsidian rim'}
+                  {id === 'gradient' && 'Aurora glow'}
+                  {id === 'outline' && 'Dual hairline'}
+                  {id === 'glow' && 'Neon light'}
+                  {id === 'retro' && 'Brutalist shadow'}
+                  {id === 'stack' && 'Stacked pages'}
+                  {id === 'metal3d' && 'Machined bezel'}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {border !== 'default' && (
+        <div className="space-y-3 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-2.5">
+          {/* Color Selection */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-[var(--muted)]">{t('side.borderColor')}</span>
+              {borderStyle.color && (
+                <span className="font-mono text-[10px] text-[var(--faint)] uppercase">
+                  {borderStyle.color}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {BORDER_COLORS.map((c) => {
+                const on = borderStyle.color === c;
+                return (
+                  <button
+                    key={c ?? 'auto'}
+                    onClick={() => setBorderStyle({ color: c })}
+                    title={c ?? 'Auto / Default color'}
+                    className={
+                      'h-5 w-5 rounded-full border transition-transform ' +
+                      (on ? 'scale-110 border-white ring-2 ring-[var(--accent)]' : 'border-[var(--line-2)] hover:scale-105')
+                    }
+                    style={
+                      c
+                        ? { background: c }
+                        : { background: 'conic-gradient(#f59e0b,#22c55e,#3b82f6,#a855f7,#ec4899,#f59e0b)' }
+                    }
+                  />
+                );
+              })}
+
+              {/* Custom Color Picker */}
+              <label
+                title="Custom color"
+                className={
+                  'relative flex h-5 w-5 cursor-pointer items-center justify-center overflow-hidden rounded-full border transition-transform ' +
+                  (isCustomColor ? 'scale-110 border-white ring-2 ring-[var(--accent)]' : 'border-[var(--line-2)] hover:scale-105')
+                }
+                style={{ background: isCustomColor ? (borderStyle.color ?? '#3b82f6') : 'transparent' }}
+              >
+                {!isCustomColor && (
+                  <span className="text-[10px] font-bold text-[var(--muted)]">+</span>
+                )}
+                <input
+                  type="color"
+                  value={borderStyle.color ?? '#3b82f6'}
+                  onChange={(e) => setBorderStyle({ color: e.target.value })}
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="h-px bg-[var(--line)]" />
+
+          {/* Sliders */}
+          <div className="space-y-2.5">
+            <RangeRow
+              label={t('side.borderThickness')}
+              value={borderStyle.widthPct}
+              min={0.2}
+              max={6.0}
+              step={0.1}
+              onChange={(v) => setBorderStyle({ widthPct: v })}
+              fmt={(v) => `${v.toFixed(1)}%`}
+            />
+            <RangeRow
+              label={t('side.borderOpacity')}
+              value={borderStyle.opacity}
+              min={5}
+              max={100}
+              step={5}
+              onChange={(v) => setBorderStyle({ opacity: v })}
+              fmt={(v) => `${v}%`}
+            />
+            <RangeRow
+              label={t('side.roundness')}
+              value={effects.roundnessPx}
+              min={0}
+              max={60}
+              step={1}
+              onChange={(v) => setEffect('roundnessPx', v)}
+              fmt={(v) => `${v}px`}
+            />
+          </div>
+
+          {/* Reset button */}
+          <div className="pt-1 flex justify-end">
+            <button
+              onClick={() => {
+                setBorderStyle(BORDER_DEFAULTS[border]);
+              }}
+              className="text-[10px] text-[var(--muted)] hover:text-[var(--text)] transition-colors"
+            >
+              Reset to preset defaults
+            </button>
           </div>
         </div>
-        <RangeRow
-          label={t('side.borderThickness')}
-          value={borderStyle.widthPct}
-          min={0.2}
-          max={5}
-          step={0.1}
-          onChange={(v) => setBorderStyle({ widthPct: v })}
-          fmt={(v) => `${v.toFixed(1)}%`}
-        />
-        <RangeRow
-          label={t('side.borderOpacity')}
-          value={borderStyle.opacity}
-          min={5}
-          max={100}
-          step={5}
-          onChange={(v) => setBorderStyle({ opacity: v })}
-          fmt={(v) => `${v}%`}
-        />
-      </div>
-    )}
-   </div>
+      )}
+    </div>
   );
 }
 
