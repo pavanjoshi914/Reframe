@@ -23,7 +23,6 @@
 
 export type BorderId =
   | 'default'
-  | 'macWindow'
   | 'liquidGlass'
   | 'darkGlass'
   | 'gradient'
@@ -35,7 +34,6 @@ export type BorderId =
 
 export const BORDER_IDS: BorderId[] = [
   'default',
-  'macWindow',
   'liquidGlass',
   'darkGlass',
   'gradient',
@@ -59,7 +57,6 @@ export function normalizeBorder(id: unknown): BorderId {
 // Human-friendly labels for presets
 export const BORDER_LABELS: Record<BorderId, string> = {
   default: 'None',
-  macWindow: 'macOS Window',
   liquidGlass: 'Liquid Glass',
   darkGlass: 'Dark Glass',
   gradient: 'Aurora',
@@ -94,7 +91,6 @@ export type BorderStyle = {
  */
 export const BORDER_DEFAULTS: Record<BorderId, BorderStyle> = {
   default:     { widthPct: 1.4, opacity: 35,  color: null },
-  macWindow:   { widthPct: 2.2, opacity: 100, color: null },
   liquidGlass: { widthPct: 1.4, opacity: 35,  color: '#ffffff' },
   darkGlass:   { widthPct: 1.4, opacity: 35,  color: '#0b0d12' },
   gradient:    { widthPct: 1.6, opacity: 90,  color: null },
@@ -125,43 +121,12 @@ export function borderThickness(w: number, h: number, widthPct: number): number 
  * the wrong mental model and the wrong result.
  */
 export function borderOutset(id: BorderId, w: number, h: number, widthPct: number): number {
-  if (id === 'default' || id === 'glow' || id === 'macWindow') return 0;
+  if (id === 'default' || id === 'glow') return 0;
   const T = borderThickness(w, h, widthPct);
   if (id === 'retro') return T * 0.4;
   if (id === 'stack') return T * 0.35;
   if (id === 'outline') return T * 0.8;
   return T;
-}
-
-/**
- * Traces a rectangle with independent corner radii (top-left, top-right, bottom-right, bottom-left).
- */
-export function roundedRectCorners(
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number,
-  rtl: number, rtr: number, rbr: number, rbl: number
-) {
-  const maxR = Math.min(w, h) / 2;
-  const tl = Math.max(0, Math.min(rtl, maxR));
-  const tr = Math.max(0, Math.min(rtr, maxR));
-  const br = Math.max(0, Math.min(rbr, maxR));
-  const bl = Math.max(0, Math.min(rbl, maxR));
-
-  ctx.beginPath();
-  ctx.moveTo(x + tl, y);
-  ctx.lineTo(x + w - tr, y);
-  if (tr > 0) ctx.quadraticCurveTo(x + w, y, x + w, y + tr);
-  else ctx.lineTo(x + w, y);
-  ctx.lineTo(x + w, y + h - br);
-  if (br > 0) ctx.quadraticCurveTo(x + w, y + h, x + w - br, y + h);
-  else ctx.lineTo(x + w, y);
-  ctx.lineTo(x + bl, y + h);
-  if (bl > 0) ctx.quadraticCurveTo(x, y + h, x, y + h - bl);
-  else ctx.lineTo(x, y + h);
-  ctx.lineTo(x, y + tl);
-  if (tl > 0) ctx.quadraticCurveTo(x, y, x + tl, y);
-  else ctx.lineTo(x, y);
-  ctx.closePath();
 }
 
 // Rounded-rect tracer matching the card outline.
@@ -237,8 +202,6 @@ export function emissionSpec(
   if (id === 'metal3d') return { color: st.color ?? '#9fb4d0', passes: [[1.1, 0.26], [3.4, 0.16]] };
   // Aurora Gradient: vibrant atmospheric ambient light
   if (id === 'gradient') return { color: st.color ?? '#a855f7', passes: [[1.4, 0.50], [4.2, 0.28]] };
-  // macOS Window: subtle soft frame glow when tinted
-  if (id === 'macWindow' && st.color) return { color: st.color, passes: [[1.2, 0.20]] };
   return null;
 }
 
@@ -324,70 +287,7 @@ export function paintBorderOver(
   const hair = Math.max(1, T * 0.14);
   const tint = st.color;
 
-  if (id === 'macWindow') {
-    // Authentic macOS window frame with acrylic header and traffic light controls
-    const base = tint ?? '#181920';
-    const light = isLight(base);
-    const titleBarH = opts.thickness ?? Math.max(26, Math.round(T * 1.8));
-
-    ctx.save();
-    rr(ctx, x, y, w, h, r);
-    ctx.clip();
-
-    // 1. Title bar acrylic gradient
-    const tbGrad = ctx.createLinearGradient(x, y, x, y + titleBarH);
-    if (light) {
-      tbGrad.addColorStop(0, shade(base, 0.08));
-      tbGrad.addColorStop(1, shade(base, -0.06));
-    } else {
-      tbGrad.addColorStop(0, shade(base, 0.12));
-      tbGrad.addColorStop(1, shade(base, -0.08));
-    }
-    ctx.fillStyle = tbGrad;
-    ctx.fillRect(x, y, w, titleBarH);
-
-    // 2. Title bar bottom hairline
-    ctx.fillStyle = light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.10)';
-    ctx.fillRect(x, y + titleBarH - 1, w, 1);
-
-    // 3. Traffic light controls (Close, Minimize, Zoom)
-    const dotR = Math.max(3.8, Math.min(6.2, titleBarH * 0.20));
-    const dotY = y + titleBarH / 2;
-    const startX = x + Math.max(14, dotR * 3.4);
-    const dotSpacing = dotR * 2.8;
-
-    const dots = [
-      { fill: '#ff5f56', stroke: '#e0443e' }, // Close (Red)
-      { fill: '#ffbd2e', stroke: '#dea123' }, // Minimize (Yellow)
-      { fill: '#27c93f', stroke: '#1aab29' }  // Zoom (Green)
-    ];
-
-    dots.forEach((dot, idx) => {
-      const dotX = startX + idx * dotSpacing;
-      ctx.beginPath();
-      ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
-      ctx.fillStyle = dot.fill;
-      ctx.fill();
-      ctx.lineWidth = 0.75;
-      ctx.strokeStyle = dot.stroke;
-      ctx.stroke();
-
-      // Specular shine on upper half of dot
-      ctx.beginPath();
-      ctx.arc(dotX, dotY - dotR * 0.3, dotR * 0.5, 0, Math.PI, true);
-      ctx.fillStyle = 'rgba(255,255,255,0.45)';
-      ctx.fill();
-    });
-
-    // 4. Subtle top window highlight
-    ctx.fillStyle = light ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.22)';
-    ctx.fillRect(x + r, y, w - r * 2, 1);
-    ctx.restore();
-
-    // 5. Outer window bezel framing
-    band(ctx, x, y, w, h, r, 0, hair * 1.5, light ? 'rgba(0,0,0,0.16)' : 'rgba(255,255,255,0.16)');
-
-  } else if (id === 'gradient') {
+  if (id === 'gradient') {
     // Radiant multi-stop Aurora gradient with outer and inner specular hairlines
     const grad = ctx.createLinearGradient(x, y, x + w, y + h);
     if (tint) {

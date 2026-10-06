@@ -1720,17 +1720,6 @@ const BORDER_SWATCH: Record<BorderId, { box?: React.CSSProperties; layers?: Reac
   default: {
     box: { border: '1.5px dashed rgba(255,255,255,0.25)', background: 'transparent' }
   },
-  macWindow: {
-    layers: [
-      { top: 3.5, left: 5, width: 4.5, height: 4.5, borderRadius: '50%', background: '#ff5f56' },
-      { top: 3.5, left: 11.5, width: 4.5, height: 4.5, borderRadius: '50%', background: '#ffbd2e' },
-      { top: 3.5, left: 18, width: 4.5, height: 4.5, borderRadius: '50%', background: '#27c93f' }
-    ],
-    box: {
-      borderTop: '11px solid #1c1e24',
-      boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.18)'
-    }
-  },
   liquidGlass: {
     box: {
       boxShadow:
@@ -1837,7 +1826,6 @@ function BorderSection() {
                 </div>
                 <div className="truncate text-[9px] text-[var(--muted)]">
                   {id === 'default' && 'Clean edge'}
-                  {id === 'macWindow' && 'macOS titlebar'}
                   {id === 'liquidGlass' && 'Frosted glass'}
                   {id === 'darkGlass' && 'Obsidian rim'}
                   {id === 'gradient' && 'Aurora glow'}
