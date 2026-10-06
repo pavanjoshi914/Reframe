@@ -3228,6 +3228,35 @@ function drawSyntheticCursor(
     ctx.restore();
     return;
   }
+  const svgStroke = CURSOR_GLYPHS[style]?.svgStroke;
+  if (svgStroke) {
+    // Exact SVG outline stroke width matching authentic vector specification (0.75 in design units)
+    const strokeW = Math.max(1.2, svgStroke * f);
+    if (pass !== 'body') {
+      ctx.fillStyle = outline;
+      ctx.fill(path);
+      ctx.lineWidth = strokeW;
+      ctx.strokeStyle = outline;
+      ctx.stroke(path);
+    }
+    ctx.shadowColor = 'transparent';
+    if (pass === 'halo') { ctx.restore(); return; }
+    ctx.fillStyle = fill;
+    ctx.fill(path);
+    ctx.lineWidth = strokeW;
+    ctx.strokeStyle = outline;
+    ctx.stroke(path);
+    const detail = CURSOR_GLYPHS[style]?.detail;
+    if (detail) {
+      const dp = new Path2D();
+      dp.addPath(new Path2D(detail), new DOMMatrix([f, 0, 0, f, x, y]));
+      ctx.lineWidth = strokeW;
+      ctx.strokeStyle = outline;
+      ctx.stroke(dp);
+    }
+    ctx.restore();
+    return;
+  }
   if (pass !== 'body') {
     ctx.lineWidth = roundW + haloW;
     ctx.strokeStyle = outline;

@@ -2607,14 +2607,21 @@ function CursorStyleTile({
                 <path d={g.d} fill="none" stroke={outline} strokeWidth={g.stroke + 3.6 * (g.weight ?? 1)} strokeLinecap="round" strokeLinejoin="round" />
                 <path d={g.d} fill="none" stroke={color} strokeWidth={g.stroke} strokeLinecap="round" strokeLinejoin="round" />
               </>
+            ) : g.svgStroke ? (
+              <>
+                <path d={g.d} fill={color} stroke={outline} strokeWidth={g.svgStroke} strokeLinecap="round" strokeLinejoin="round" />
+                {g.detail && (
+                  <path d={g.detail} fill="none" stroke={outline} strokeWidth={g.svgStroke} strokeLinecap="round" />
+                )}
+              </>
             ) : (
               <>
                 <path d={g.d} fill={color} stroke={outline} strokeWidth={isDark ? 1.6 + 3.4 * (g.weight ?? 1) : 1.26 + 3.6 * (g.weight ?? 1)} strokeLinejoin="round" paintOrder="stroke" />
                 <path d={g.d} fill="none" stroke={color} strokeWidth={1.26} strokeLinejoin="round" />
+                {g.detail && (
+                  <path d={g.detail} fill="none" stroke={outline} strokeWidth="0.9" strokeLinecap="round" />
+                )}
               </>
-            )}
-            {g.detail && (
-              <path d={g.detail} fill="none" stroke={outline} strokeWidth="0.9" strokeLinecap="round" />
             )}
           </svg>
         )}
