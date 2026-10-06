@@ -1798,7 +1798,11 @@ function BorderSection() {
               key={id}
               onClick={() => {
                 setBorder(id);
-                setBorderStyle(BORDER_DEFAULTS[id]);
+                const def = BORDER_DEFAULTS[id];
+                setBorderStyle(def);
+                if (def.roundnessPx !== undefined) {
+                  setEffect('roundnessPx', def.roundnessPx);
+                }
               }}
               title={BORDER_LABELS[id]}
               className={
@@ -1933,7 +1937,11 @@ function BorderSection() {
           <div className="pt-1 flex justify-end">
             <button
               onClick={() => {
-                setBorderStyle(BORDER_DEFAULTS[border]);
+                const def = BORDER_DEFAULTS[border];
+                setBorderStyle(def);
+                if (def.roundnessPx !== undefined) {
+                  setEffect('roundnessPx', def.roundnessPx);
+                }
               }}
               className="text-[10px] text-[var(--muted)] hover:text-[var(--text)] transition-colors"
             >

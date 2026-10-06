@@ -14,7 +14,7 @@ import {
   type VideoCodec
 } from 'mediabunny';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
-import { paintBorderUnder, paintBorderOver, borderOutset, borderThickness, emissionSpec, normalizeBorder, DEFAULT_BORDER_STYLE, type BorderId, type BorderStyle } from './borders';
+import { paintBorderUnder, paintBorderOver, paintEmissionFlat, borderOutset, borderThickness, emissionSpec, normalizeBorder, DEFAULT_BORDER_STYLE, type BorderId, type BorderStyle } from './borders';
 import { renderShaderBackground, normalizeShader, SHADER_FALLBACK, renderMeshBackground, meshPreset, renderFieldBackground, bgClockMs, fieldStyleOf } from './shaders';
 import { useEditor, type CropRegion, type EditorState, ANNOTATION_DEFAULTS, type LaneItem, type BackgroundMode } from './store';
 
@@ -2661,7 +2661,7 @@ function drawVideoBox(
   // Anything the border shows OUTSIDE the card — the stack's back pages, the
   // retro block, the glow — goes down before the card's own shadow, so the
   // shadow falls across it the way it would on real stacked paper.
-  paintBorderUnder(ctx, border, ox, oy, ow, oh, outerR, borderStyle, { thickness: bo });
+  paintBorderUnder(ctx, border, ox, oy, ow, oh, outerR, borderStyle, { thickness: bo > 0 ? bo : borderThickness(w, h, borderStyle.widthPct) });
 
   // Drop shadow behind the framed box — matches the preview's CSS
   // `box-shadow: 0 (4+s/2)px (20+s)px rgba(0,0,0,s/100)` (Preview.tsx). Cast by
@@ -2707,12 +2707,15 @@ function drawVideoBox(
     ctx.restore();
   }
 
+  // Luminous light emission (Neon Glow, Aurora Gradient, Metal 3D) shines ON TOP of shadow
+  paintEmissionFlat(ctx, x, y, w, h, picR, border, borderStyle);
+
   ctx.save();
   roundedRectPath(ctx, x, y, w, h, picR);
   ctx.clip();
   drawCoverWithCrop(ctx, src, crop, x, y, w, h);
   ctx.restore();
-  paintBorderOver(ctx, border, ox, oy, ow, oh, outerR, borderStyle, { thickness: bo });
+  paintBorderOver(ctx, border, ox, oy, ow, oh, outerR, borderStyle, { thickness: bo > 0 ? bo : borderThickness(w, h, borderStyle.widthPct) });
 
   ctx.restore();
 }

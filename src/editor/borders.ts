@@ -80,6 +80,8 @@ export type BorderStyle = {
   opacity: number;
   /** Overrides the preset's own colour when set. */
   color: string | null;
+  /** Default roundness in px when picking or resetting this preset. */
+  roundnessPx?: number;
 };
 
 /**
@@ -91,14 +93,14 @@ export type BorderStyle = {
  */
 export const BORDER_DEFAULTS: Record<BorderId, BorderStyle> = {
   default:     { widthPct: 1.4, opacity: 35,  color: null },
-  liquidGlass: { widthPct: 1.4, opacity: 35,  color: '#ffffff' },
-  darkGlass:   { widthPct: 1.4, opacity: 35,  color: '#0b0d12' },
-  gradient:    { widthPct: 1.6, opacity: 90,  color: null },
+  liquidGlass: { widthPct: 1.4, opacity: 20,  color: '#ffffff', roundnessPx: 23 },
+  darkGlass:   { widthPct: 1.4, opacity: 20,  color: '#0b0d12', roundnessPx: 23 },
+  gradient:    { widthPct: 1.6, opacity: 45,  color: null },
   outline:     { widthPct: 1.8, opacity: 85,  color: null },
-  glow:        { widthPct: 2.5, opacity: 60,  color: '#3b82f6' },
-  retro:       { widthPct: 5.0, opacity: 35,  color: '#ffffff' },
-  stack:       { widthPct: 5.0, opacity: 35,  color: '#ffffff' },
-  metal3d:     { widthPct: 2.6, opacity: 100, color: '#9fb4d0' }
+  glow:        { widthPct: 2.5, opacity: 60,  color: '#3b82f6', roundnessPx: 23 },
+  retro:       { widthPct: 1.9, opacity: 25,  color: '#ffffff', roundnessPx: 23 },
+  stack:       { widthPct: 1.2, opacity: 35,  color: '#ffffff', roundnessPx: 23 },
+  metal3d:     { widthPct: 1.2, opacity: 100, color: '#0b0d12', roundnessPx: 23 }
 };
 
 export const DEFAULT_BORDER_STYLE: BorderStyle = {
@@ -206,24 +208,32 @@ export function emissionSpec(
 }
 
 /**
- * Additive light thrown from a rounded rect, in one or more passes.
+ * Additive luminous light emission around a rounded rect for flat 2D cards.
+ * Uses hardware-accelerated blur filters and additive blending matching the 3D rotation path.
  */
-function emit(
+export function paintEmissionFlat(
   ctx: CanvasRenderingContext2D,
-  px: number, py: number, pw: number, ph: number, pr: number,
-  T: number, color: string,
-  passes: readonly (readonly [number, number])[]
+  x: number, y: number, w: number, h: number, r: number,
+  border: BorderId,
+  st: BorderStyle = DEFAULT_BORDER_STYLE
 ) {
+  const spec = emissionSpec(border, st);
+  if (!spec) return;
+  const alpha = Math.min(1, Math.max(0, st.opacity) / 100);
+  const T = borderThickness(w, h, st.widthPct);
+  if (alpha <= 0 || T <= 0) return;
+
+  ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  for (const [reach, strength] of passes) {
-    ctx.shadowColor = rgba(color, strength);
-    ctx.shadowBlur = T * reach;
-    ctx.fillStyle = '#000';
-    rr(ctx, px, py, pw, ph, pr);
-    ctx.fill();
+  for (const [reach, strength] of spec.passes) {
+    ctx.filter = `blur(${Math.max(0.5, (T * reach) / 2)}px)`;
+    ctx.globalAlpha = Math.min(1, strength * alpha);
+    ctx.fillStyle = spec.color;
+    rr(ctx, x, y, w, h, r);
     ctx.fill();
   }
-  ctx.globalCompositeOperation = 'source-over';
+  ctx.filter = 'none';
+  ctx.restore();
 }
 
 /** Painted before the card, outside its silhouette. Flat path only. */
@@ -234,11 +244,13 @@ export function paintBorderUnder(
   st: BorderStyle = DEFAULT_BORDER_STYLE,
   opts: { thickness?: number } = {}
 ) {
-  if (id === 'default' || id === 'darkGlass' || id === 'outline') return;
-  const T = opts.thickness ?? borderThickness(w, h, st.widthPct);
+  if (id === 'default' || id === 'darkGlass' || id === 'outline' || id === 'glow') return;
+  const T = borderThickness(w, h, st.widthPct);
   if (T <= 0 || st.opacity <= 0) return;
 
-  const px = x + T, py = y + T, pw = w - T * 2, ph = h - T * 2, pr = Math.max(0, r - T);
+  const bo = (opts.thickness !== undefined && opts.thickness > 0) ? opts.thickness : borderOutset(id, w, h, st.widthPct);
+  // Reconstruct card bounds: x, y, w, h passed in are ox, oy, ow, oh (card outset by bo)
+  const px = x + bo, py = y + bo, pw = w - bo * 2, ph = h - bo * 2, pr = Math.max(0, r - bo);
   if (pw <= 0 || ph <= 0) return;
 
   ctx.save();
@@ -259,9 +271,6 @@ export function paintBorderUnder(
       rr(ctx, px + off * 0.6, py - off, pw - off * 0.2, ph, pr);
       ctx.fill();
     }
-  } else {
-    const e = emissionSpec(id, st);
-    if (e) emit(ctx, px, py, pw, ph, pr, T, e.color, e.passes);
   }
   ctx.restore();
 }
@@ -275,7 +284,7 @@ export function paintBorderOver(
   opts: { thickness?: number } = {}
 ) {
   if (id === 'default') return;
-  const T = opts.thickness ?? borderThickness(w, h, st.widthPct);
+  const T = (opts.thickness !== undefined && opts.thickness > 0) ? opts.thickness : borderThickness(w, h, st.widthPct);
   if (T <= 0 || st.opacity <= 0) return;
 
   ctx.save();
