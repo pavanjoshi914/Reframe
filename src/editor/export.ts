@@ -14,7 +14,7 @@ import {
   type VideoCodec
 } from 'mediabunny';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
-import { paintBorderUnder, paintBorderOver, borderOutset, borderThickness, emissionSpec, normalizeBorder, DEFAULT_BORDER_STYLE, type BorderId, type BorderStyle } from './borders';
+import { paintBorderUnder, paintBorderOver, borderOutset, roundedRectCorners, borderThickness, emissionSpec, normalizeBorder, DEFAULT_BORDER_STYLE, type BorderId, type BorderStyle } from './borders';
 import { renderShaderBackground, normalizeShader, SHADER_FALLBACK, renderMeshBackground, meshPreset, renderFieldBackground, bgClockMs, fieldStyleOf } from './shaders';
 import { useEditor, type CropRegion, type EditorState, ANNOTATION_DEFAULTS, type LaneItem, type BackgroundMode } from './store';
 
@@ -2152,6 +2152,11 @@ export function drawFrame(
     const globalMag = effects.cursorMagnifier;
     const globalSpot = effects.cursorSpotlight;
     const { videoMs: cursorVideoMs } = timelineToVideoMs(ms, items);
+    const isMac = border === 'macWindow';
+    const macTbH = isMac ? Math.max(26, Math.round(borderThickness(card.w, card.h, borderStyle.widthPct) * 1.8)) : 0;
+    const cardVidY = card.y + macTbH;
+    const cardVidH = Math.max(1, card.h - macTbH);
+
     if ((globalMag > 0 || globalSpot > 0 || magItem || spotItem) && shouldDrawVideo) {
       // Position following the recorded cursor — shared by the global sliders
       // and any 'cursor'-tracked region. Null when there's no cursor data.
@@ -2160,7 +2165,7 @@ export function drawFrame(
         const cur = cursorAt(d.cursorSamples, cursorVideoMs);
         if (cur) {
           const { w: sw, h: sh } = srcDims(srcCanvas);
-          cursorPos = cursorToOutput(cur, sw, sh, cropRegion, card.x, card.y, card.w, card.h, activeZoom ?? undefined, outW, outH);
+          cursorPos = cursorToOutput(cur, sw, sh, cropRegion, card.x, cardVidY, card.w, cardVidH, activeZoom ?? undefined, outW, outH);
         }
       }
       const manualPos = (it: { posX?: number; posY?: number }) => ({ x: (it.posX ?? 0.5) * outW, y: (it.posY ?? 0.5) * outH });
@@ -2191,7 +2196,7 @@ export function drawFrame(
     if (cfx?.enabled && !cfx?.hideCompletely && !scene && (d.cursorSamples?.length || d.cursorClicks?.length)) {
       const { w: sw, h: sh } = srcDims(srcCanvas);
       const toOut = (nx: number, ny: number) =>
-        cursorToOutput({ x: nx, y: ny }, sw, sh, cropRegion, card.x, card.y, card.w, card.h, activeZoom ?? undefined, outW, outH);
+        cursorToOutput({ x: nx, y: ny }, sw, sh, cropRegion, card.x, cardVidY, card.w, cardVidH, activeZoom ?? undefined, outW, outH);
       if (cfx.clicks && d.cursorClicks) {
         for (const c of d.cursorClicks) {
           const age = cursorVideoMs - c.t;
@@ -2597,11 +2602,22 @@ function drawVideoBox(
     // card's own radius while the rim's inner edge sits at radius−T leaves two
     // corners of different curvature nested inside each other.
     const bi3 = borderOutset(border, card.width, card.height, borderStyle.widthPct);
-    const outerR3 = Math.min(roundness * ss, Math.min(card.width, card.height) / 2);
+    const outerR3 = border === 'macWindow'
+      ? Math.max(14 * ss, Math.min(roundness * ss, Math.min(card.width, card.height) / 2))
+      : Math.min(roundness * ss, Math.min(card.width, card.height) / 2);
     cctx.save();
-    roundedRectPath(cctx as CanvasRenderingContext2D, bi3, bi3, card.width - bi3 * 2, card.height - bi3 * 2, Math.max(0, outerR3 - bi3));
-    cctx.clip();
-    drawCoverWithCrop(cctx as CanvasRenderingContext2D, src, crop, bi3, bi3, card.width - bi3 * 2, card.height - bi3 * 2);
+    if (border === 'macWindow') {
+      const T3 = borderThickness(card.width, card.height, borderStyle.widthPct);
+      const tbH3 = Math.max(26 * ss, Math.round(T3 * 1.8));
+      const vidH3 = Math.max(1, card.height - tbH3);
+      roundedRectCorners(cctx as CanvasRenderingContext2D, 0, tbH3, card.width, vidH3, 0, 0, outerR3, outerR3);
+      cctx.clip();
+      drawCoverWithCrop(cctx as CanvasRenderingContext2D, src, crop, 0, tbH3, card.width, vidH3);
+    } else {
+      roundedRectPath(cctx as CanvasRenderingContext2D, bi3, bi3, card.width - bi3 * 2, card.height - bi3 * 2, Math.max(0, outerR3 - bi3));
+      cctx.clip();
+      drawCoverWithCrop(cctx as CanvasRenderingContext2D, src, crop, bi3, bi3, card.width - bi3 * 2, card.height - bi3 * 2);
+    }
     cctx.restore();
     cctx.save();
     // Painted INTO the card texture, so the rim follows the perspective and the
@@ -2610,7 +2626,10 @@ function drawVideoBox(
     paintBorderOver(
       cctx as CanvasRenderingContext2D, border,
       0, 0, card.width, card.height,
-      outerR3, borderStyle, { thickness: bi3 }
+      outerR3, borderStyle,
+      border === 'macWindow'
+        ? { thickness: Math.max(26 * ss, Math.round(borderThickness(card.width, card.height, borderStyle.widthPct) * 1.8)) }
+        : { thickness: bi3 }
     );
     cctx.restore();
     const gl = sceneCards ? renderScene3D(card, xf, sceneCards) : renderCard3D(card, xf);
@@ -2655,8 +2674,11 @@ function drawVideoBox(
   // half-painted ring showed raw background as a dark line around the picture.
   const bo = borderOutset(border, w, h, borderStyle.widthPct);
   const picR = Math.min(roundness, Math.min(w, h) / 2);
+  const sc = outH / 1080;
+  const outerR = border === 'macWindow'
+    ? Math.max(14 * sc, picR)
+    : picR + bo;
   const ox = x - bo, oy = y - bo, ow = w + bo * 2, oh = h + bo * 2;
-  const outerR = picR + bo;
 
   // Anything the border shows OUTSIDE the card — the stack's back pages, the
   // retro block, the glow — goes down before the card's own shadow, so the
@@ -2683,7 +2705,6 @@ function drawVideoBox(
   // A pixel and a half of inset puts the picture's soft edge over the
   // background instead of over the fill. The shadow's silhouette shrinks by
   // that much, under a blur of tens of pixels.
-  const sc = outH / 1080;
   // In DEVICE pixels, not scaled by resolution. Antialiasing is a per-pixel
   // effect: at preview size `1.5 * sc` is under a pixel, so the caster's black
   // grinned through the picture's soft edge on a small canvas and not on a
@@ -2698,9 +2719,9 @@ function drawVideoBox(
     ctx.shadowOffsetY = (4 + shadowPct / 2) * sc;
     roundedRectPath(
       ctx,
-      x + casterInset, y + casterInset,
-      w - casterInset * 2, h - casterInset * 2,
-      Math.max(0, picR - casterInset)
+      ox + casterInset, oy + casterInset,
+      ow - casterInset * 2, oh - casterInset * 2,
+      Math.max(0, outerR - casterInset)
     );
     ctx.fillStyle = '#000';
     ctx.fill();
@@ -2708,11 +2729,28 @@ function drawVideoBox(
   }
 
   ctx.save();
-  roundedRectPath(ctx, x, y, w, h, picR);
-  ctx.clip();
-  drawCoverWithCrop(ctx, src, crop, x, y, w, h);
+  if (border === 'macWindow') {
+    const T = borderThickness(w, h, borderStyle.widthPct);
+    const titleBarH = Math.max(26, Math.round(T * 1.8));
+    const vidY = y + titleBarH;
+    const vidH = Math.max(1, h - titleBarH);
+    roundedRectCorners(ctx, x, vidY, w, vidH, 0, 0, outerR, outerR);
+    ctx.clip();
+    drawCoverWithCrop(ctx, src, crop, x, vidY, w, vidH);
+  } else {
+    roundedRectPath(ctx, x, y, w, h, picR);
+    ctx.clip();
+    drawCoverWithCrop(ctx, src, crop, x, y, w, h);
+  }
   ctx.restore();
-  paintBorderOver(ctx, border, ox, oy, ow, oh, outerR, borderStyle, { thickness: bo });
+  paintBorderOver(
+    ctx, border,
+    ox, oy, ow, oh,
+    outerR, borderStyle,
+    border === 'macWindow'
+      ? { thickness: Math.max(26, Math.round(borderThickness(w, h, borderStyle.widthPct) * 1.8)) }
+      : { thickness: bo }
+  );
 
   ctx.restore();
 }

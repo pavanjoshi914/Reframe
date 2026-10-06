@@ -125,13 +125,43 @@ export function borderThickness(w: number, h: number, widthPct: number): number 
  * the wrong mental model and the wrong result.
  */
 export function borderOutset(id: BorderId, w: number, h: number, widthPct: number): number {
-  if (id === 'default' || id === 'glow') return 0;
+  if (id === 'default' || id === 'glow' || id === 'macWindow') return 0;
   const T = borderThickness(w, h, widthPct);
   if (id === 'retro') return T * 0.4;
   if (id === 'stack') return T * 0.35;
-  if (id === 'macWindow') return T * 1.2;
   if (id === 'outline') return T * 0.8;
   return T;
+}
+
+/**
+ * Traces a rectangle with independent corner radii (top-left, top-right, bottom-right, bottom-left).
+ */
+export function roundedRectCorners(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  rtl: number, rtr: number, rbr: number, rbl: number
+) {
+  const maxR = Math.min(w, h) / 2;
+  const tl = Math.max(0, Math.min(rtl, maxR));
+  const tr = Math.max(0, Math.min(rtr, maxR));
+  const br = Math.max(0, Math.min(rbr, maxR));
+  const bl = Math.max(0, Math.min(rbl, maxR));
+
+  ctx.beginPath();
+  ctx.moveTo(x + tl, y);
+  ctx.lineTo(x + w - tr, y);
+  if (tr > 0) ctx.quadraticCurveTo(x + w, y, x + w, y + tr);
+  else ctx.lineTo(x + w, y);
+  ctx.lineTo(x + w, y + h - br);
+  if (br > 0) ctx.quadraticCurveTo(x + w, y + h, x + w - br, y + h);
+  else ctx.lineTo(x + w, y);
+  ctx.lineTo(x + bl, y + h);
+  if (bl > 0) ctx.quadraticCurveTo(x, y + h, x, y + h - bl);
+  else ctx.lineTo(x, y + h);
+  ctx.lineTo(x, y + tl);
+  if (tl > 0) ctx.quadraticCurveTo(x, y, x + tl, y);
+  else ctx.lineTo(x, y);
+  ctx.closePath();
 }
 
 // Rounded-rect tracer matching the card outline.
@@ -298,7 +328,7 @@ export function paintBorderOver(
     // Authentic macOS window frame with acrylic header and traffic light controls
     const base = tint ?? '#181920';
     const light = isLight(base);
-    const titleBarH = Math.max(22, T * 2.2);
+    const titleBarH = opts.thickness ?? Math.max(26, Math.round(T * 1.8));
 
     ctx.save();
     rr(ctx, x, y, w, h, r);
