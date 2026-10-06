@@ -223,6 +223,7 @@ jobs:
             dot_name=$(echo "$bname" | tr ' ' '.')
             cp "$bm" "staged/$hyphen_name" 2>/dev/null || true
             cp "$bm" "staged/$dot_name" 2>/dev/null || true
+          done
           # Remove files with spaces so GitHub release API doesn't 404
           rm -f staged/*\ * 2>/dev/null || true
           ls -lh staged
