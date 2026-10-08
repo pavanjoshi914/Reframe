@@ -75,6 +75,10 @@ export function EditorApp() {
       if (existing) {
         const loaded = await window.api.loadProjectAt(existing);
         if (loaded) {
+          if (loaded.recording?.webcamFilePath) {
+            const wUrl = await window.api.getRecordingFileUrl(loaded.recording.webcamFilePath);
+            setRecording(loaded.recording, url, wUrl);
+          }
           useEditor.getState().hydrate(loaded.state as SerializedProject);
           useEditor.getState().setCurrentProjectPath(existing);
           return;
