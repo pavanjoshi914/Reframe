@@ -52,9 +52,3 @@ JPEG and stripped of metadata. Generated rather than sourced, so there is no
 third-party licence to honour and nothing to attribute. Abstract fluid silk waves
 blending rich ocean blues, deep purple, and warm radiant coral/orange tones.
 
-## wallpaper-23.jpg — aurora beam gradient
-
-Vibrant abstract gradient featuring obsidian dark on top-left with sleek diagonal
-laser beams in electric magenta, orange, and peach, transitioning into an ambient
-gradient of ocean blue, cyan, and sunset coral on the right. High resolution (16:9).
-
