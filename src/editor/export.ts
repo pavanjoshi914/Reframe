@@ -395,34 +395,51 @@ function computeEasedZoom(
     else chains.push([z]);
   }
 
-  // The chain covering ms is active from its start until ZOOM_TRANSITION_MS
-  // after its end (the ease-out tail).
+  // Find which chain governs ms:
+  // Each chain is active from its startMs until the NEXT chain starts.
+  // A subsequent chain that has reached its startMs always takes precedence
+  // over a preceding chain's ease-out tail so transitions don't stall or snap.
   const T = zoomTransitionMs(style);
   const ease = zoomEase(style);
-  const chain = chains.find((c) => ms >= c[0].startMs && ms <= c[c.length - 1].endMs + T);
+
+  let chain: ZoomItem[] | null = null;
+  let nextStart = Infinity;
+  for (let i = 0; i < chains.length; i++) {
+    const c = chains[i];
+    const cStart = c[0].startMs;
+    const cNextStart = i < chains.length - 1 ? chains[i + 1][0].startMs : Infinity;
+    if (ms >= cStart && ms < cNextStart) {
+      chain = c;
+      nextStart = cNextStart;
+      break;
+    }
+  }
   if (!chain) return null;
+
   const chainStart = chain[0].startMs;
   const chainEnd = chain[chain.length - 1].endMs;
+  const Tin = Math.min(T, Math.max(1, chainEnd - chainStart));
+  const Tout = Math.min(T, Math.max(1, nextStart - chainEnd));
 
-  // Level envelope: ease in over the chain's first T, hold, ease out over the T
+  // Level envelope: ease in over the chain's first Tin, hold, ease out over Tout
   // after its end — NOT reset between the chain's own regions.
   let env: number;
-  if (ms < chainStart + T) env = ease((ms - chainStart) / T);
-  // Zoom OUT is 1 - ease(u), NOT ease(1 - u).
-  //
-  // They look interchangeable and are not. ease(1-u) plays the curve backwards:
-  // a fast-then-slow curve reversed is slow-then-FAST, so the camera sits at 96%
-  // zoom for half the tail and then slams to wide at peak speed — the "it just
-  // stops instantly" feel. 1 - ease(u) keeps the shape and only flips the
-  // direction: it leaves briskly and glides to rest.
-  //
-  // The spring's derivative is zero at both ends (k²u·e^(-ku) vanishes at u=0
-  // and u=1), so this is continuous in position AND velocity at every boundary,
-  // which is the whole reason spring-driven motion reads as smooth rather than
-  // merely eased.
-  else if (ms > chainEnd) env = 1 - ease((ms - chainEnd) / T);
-  else env = 1;
+  if (ms <= chainEnd) {
+    if (ms < chainStart + Tin) env = ease((ms - chainStart) / Tin);
+    else env = 1;
+  } else {
+    // Zoom OUT is 1 - ease(u), NOT ease(1 - u).
+    //
+    // They look interchangeable and are not. ease(1-u) plays the curve backwards:
+    // a fast-then-slow curve reversed is slow-then-FAST, so the camera sits at 96%
+    // zoom for half the tail and then slams to wide at peak speed — the "it just
+    // stops instantly" feel. 1 - ease(u) keeps the shape and only flips the
+    // direction: it leaves briskly and glides to rest.
+    if (ms < chainEnd + Tout) env = 1 - ease((ms - chainEnd) / Tout);
+    else env = 0;
+  }
   env = clamp01n(env);
+  if (env <= 0) return null;
 
   const { fx, fy, target } = sampleChainFocus(chain, ms, style);
   return {
