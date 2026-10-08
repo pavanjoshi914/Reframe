@@ -133,13 +133,14 @@ const ASPECT_RATIOS: Record<string, number | null> = {
 
 const LAYOUT_COORDS: Record<
   ReturnType<typeof useEditor.getState>['layoutPreset'],
-  { x: number; y: number; size: number; sideBySide: boolean }
+  { x: number; y: number; size: number; sideBySide: boolean; vertical916?: boolean }
 > = {
   'pip-bottom-right': { x: 0.78, y: 0.78, size: 0.18, sideBySide: false },
   'pip-bottom-left': { x: 0.04, y: 0.78, size: 0.18, sideBySide: false },
   'pip-top-right': { x: 0.78, y: 0.04, size: 0.18, sideBySide: false },
   'pip-top-left': { x: 0.04, y: 0.04, size: 0.18, sideBySide: false },
-  'side-by-side': { x: 0.5, y: 0.5, size: 0.4, sideBySide: true }
+  'side-by-side': { x: 0.5, y: 0.5, size: 0.4, sideBySide: true },
+  'vertical-9-16': { x: 0.5, y: 0.25, size: 0.5, sideBySide: false, vertical916: true }
 };
 
 // Zoom transition shape. The preview composites with this same drawFrame, so
@@ -812,7 +813,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   const ctx = canvas.getContext('2d', { willReadFrequently: isGif });
   if (!ctx) throw new Error('2D canvas unavailable');
 
-  const drawCtx: DrawCtx = { items, background, effects, border: state.border, borderStyle: state.borderStyle, fieldStyle: state.fieldStyle, webcam, layoutPreset, cropRegion, fullBleed: state.fullBleed, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorKinds: state.cursorKinds, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle };
+  const drawCtx: DrawCtx = { items, background, effects, border: state.border, borderStyle: state.borderStyle, fieldStyle: state.fieldStyle, webcam, layoutPreset, cropRegion, fullBleed: state.fullBleed, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorKinds: state.cursorKinds, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle, aspect: state.aspect };
 
   // Motion blur: composite each frame onto a scratch canvas, then blend it onto
   // the output at alpha (1-k) so the output is an exponential frame average
@@ -1507,6 +1508,7 @@ export type DrawCtx = {
   cursorKinds?: CursorKindSample[];
   cursorFx?: { enabled: boolean; size: number; clicks: boolean; clickPress?: boolean; smoothing?: number; style?: string; color?: string; hideWhenIdle?: boolean; hideCompletely?: boolean; emoji?: string; motionBlur?: number; tilt?: number };
   zoomStyle?: ZoomStyle;
+  aspect?: ReturnType<typeof useEditor.getState>['aspect'];
 };
 
 // Interpolated cursor position (normalized 0..1 of the source frame) at `ms`,
@@ -1755,6 +1757,7 @@ export async function captureStill(
     bgTimeMs: bgClockMs(),
     fieldStyle: state.fieldStyle,
     zoomStyle: state.zoomStyle,
+    aspect: state.aspect,
     border: state.border,
     borderStyle: state.borderStyle,
     cursorSamples: state.cursorSamples,
@@ -2092,7 +2095,151 @@ export function drawFrame(
   const tbH = isMac ? macTitleBarHeight(outH) : 0;
   let activeCardBox = { x: 0, y: 0, w: 0, h: 0, vidY: 0, vidH: 0 };
 
-  if (layout.sideBySide && webcam.enabled) {
+  const isVertical916 = d.aspect === '9:16' || Math.abs(outW / outH - 9 / 16) < 0.05 || layoutPreset === 'vertical-9-16' || !!layout.vertical916;
+
+  if (isVertical916) {
+    const innerW = outW * innerScale;
+    const innerH = outH * innerScale;
+    const targetAspect = 9 / 16;
+    let cw: number, ch: number;
+    if (innerW / innerH > targetAspect) {
+      ch = Math.round(innerH);
+      cw = Math.round(ch * targetAspect);
+    } else {
+      cw = Math.round(innerW);
+      ch = Math.round(cw / targetAspect);
+    }
+    cw = Math.max(2, Math.floor(cw / 2) * 2);
+    ch = Math.max(2, Math.floor(ch / 2) * 2);
+    const cx = Math.round((outW - cw) / 2);
+    const cy = Math.round((outH - ch) / 2);
+
+    if (shouldDrawVideo) {
+      if (needVideoScope) {
+        ctx.save();
+        if (videoAlpha < 0.995) ctx.globalAlpha *= videoAlpha;
+        if (videoBlurPx > 0) ctx.filter = `blur(${videoBlurPx}px)`;
+      }
+
+      if (webcam.enabled) {
+        const topH = Math.round(ch * 0.5);
+        const botH = ch - topH;
+        const topX = cx;
+        const topY = cy;
+        const botX = cx;
+        const botY = cy + topH;
+
+        const picR = Math.min(effects.roundnessPx, Math.min(cw, ch) / 2);
+        const sc = outH / 1080;
+        const shadowAlpha = Math.max(0, effects.shadowPct) / 100;
+
+        // Drop shadow behind entire unified 9:16 composite card
+        if (shadowAlpha > 0) {
+          ctx.save();
+          ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
+          ctx.shadowBlur = (20 + effects.shadowPct) * sc;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = (4 + effects.shadowPct / 2) * sc;
+          roundedRectPath(ctx, cx + 1.5, cy + 1.5, cw - 3, ch - 3, Math.max(0, picR - 1.5));
+          ctx.fillStyle = '#000';
+          ctx.fill();
+          ctx.restore();
+        }
+
+        paintEmissionFlat(ctx, cx, cy, cw, ch, picR, border, borderStyle);
+
+        // 1. TOP HALF: Webcam Video
+        ctx.save();
+        roundedRectCorners(ctx, topX, topY, cw, topH, picR, picR, 0, 0);
+        ctx.fillStyle = '#111216';
+        ctx.fill();
+        ctx.clip();
+        if (webcamCanvas) {
+          drawCover(ctx, webcamCanvas, topX, topY, cw, topH);
+        } else {
+          drawWebcamPlaceholder(ctx, topX, topY, cw, topH, 0);
+        }
+        ctx.restore();
+
+        // 2. BOTTOM HALF: Screen Recording
+        const curTbH = isMac ? tbH : 0;
+        const scrY = botY + curTbH;
+        const scrH = Math.max(1, botH - curTbH);
+
+        const z = activeZoom?.zoomLevel ?? 1;
+        const tx = (0.5 - (activeZoom?.zoomTargetX ?? 0.5)) * (z - 1) * cw;
+        const ty = (0.5 - (activeZoom?.zoomTargetY ?? 0.5)) * (z - 1) * scrH;
+
+        if (isMac) {
+          // Paint solid base behind bottom window
+          ctx.save();
+          roundedRectCorners(ctx, botX, botY, cw, botH, 0, 0, picR, picR);
+          ctx.fillStyle = borderStyle.color ?? '#181920';
+          ctx.fill();
+          ctx.restore();
+
+          paintMacTitleBar(ctx, botX, botY, cw, curTbH, 0, borderStyle);
+
+          ctx.save();
+          roundedRectCorners(ctx, botX, scrY, cw, scrH, 0, 0, picR, picR);
+          ctx.clip();
+          if (z !== 1) {
+            const czx = botX + cw / 2;
+            const czy = scrY + scrH / 2;
+            ctx.translate(czx, czy);
+            ctx.scale(z, z);
+            ctx.translate(-czx + tx, -czy + ty);
+          }
+          drawCoverWithCrop(ctx, srcCanvas, cropRegion, botX, scrY, cw, scrH);
+          ctx.restore();
+
+          paintMacWindowBezel(ctx, botX, botY, cw, botH, 0, borderStyle);
+          activeCardBox = { x: botX, y: botY, w: cw, h: botH, vidY: scrY, vidH: scrH };
+        } else {
+          ctx.save();
+          roundedRectCorners(ctx, botX, botY, cw, botH, 0, 0, picR, picR);
+          ctx.fillStyle = '#111216';
+          ctx.fill();
+          ctx.clip();
+          if (z !== 1) {
+            const czx = botX + cw / 2;
+            const czy = botY + botH / 2;
+            ctx.translate(czx, czy);
+            ctx.scale(z, z);
+            ctx.translate(-czx + tx, -czy + ty);
+          }
+          drawCoverWithCrop(ctx, srcCanvas, cropRegion, botX, botY, cw, botH);
+          ctx.restore();
+
+          // Thin clean divider line between webcam and screen
+          ctx.save();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(cx, botY);
+          ctx.lineTo(cx + cw, botY);
+          ctx.stroke();
+          ctx.restore();
+
+          activeCardBox = { x: botX, y: botY, w: cw, h: botH, vidY: botY, vidH: botH };
+        }
+
+        // Perimeter border if not macOS window (macOS window has its own bezel)
+        if (!isMac) {
+          const bo = borderOutset(border, cw, ch, borderStyle.widthPct);
+          paintBorderOver(ctx, border, cx - bo, cy - bo, cw + bo * 2, ch + bo * 2, picR + bo, borderStyle, { thickness: bo > 0 ? bo : borderThickness(cw, ch, borderStyle.widthPct) });
+        }
+      } else {
+        // Screen takes full space for 9:16
+        activeCardBox = { x: cx, y: cy, w: cw, h: ch, vidY: cy + tbH, vidH: ch - tbH };
+        drawVideoBox(ctx, srcCanvas, cx, cy, cw, ch, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH, border, borderStyle);
+      }
+
+      if (needVideoScope) {
+        ctx.restore();
+      }
+    }
+  } else if (layout.sideBySide && webcam.enabled) {
     if (shouldDrawVideo) {
       if (needVideoScope) {
         ctx.save();
@@ -2103,18 +2250,61 @@ export function drawFrame(
       const innerH = outH * innerScale;
       const innerX = (outW - innerW) / 2;
       const innerY = (outH - innerH) / 2;
-      const wcW = innerW * 0.4;
-      const vidW = innerW - wcW - 12;
-      const sd = srcDims(srcCanvas);
-      const vb = fitInside(sd.w, sd.h, cropRegion, innerX, innerY, vidW, innerH, tbH);
-      activeCardBox = { x: vb.x, y: vb.y, w: vb.w, h: vb.h, vidY: vb.y + tbH, vidH: vb.h - tbH };
 
-      drawVideoBox(ctx, srcCanvas, vb.x, vb.y, vb.w, vb.h, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH, border, borderStyle);
-      if (webcamCanvas) {
-        drawWebcamVideo(ctx, webcamCanvas, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx, false);
-      } else {
-        drawWebcamPlaceholder(ctx, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx);
+      const gap = Math.round(20 * (outH / 1080));
+      const cardH = innerH;
+      // Target aspect for webcam is portrait 9:16 (~0.5625)
+      const targetAspect = 9 / 16;
+      let wcW = Math.round(cardH * targetAspect);
+      const maxWcW = Math.round((innerW - gap) * 0.32);
+      const minWcW = Math.round((innerW - gap) * 0.22);
+      wcW = Math.max(minWcW, Math.min(wcW, maxWcW));
+      const vidW = innerW - wcW - gap;
+
+      const wcX = innerX;
+      const wcY = innerY;
+      const vidX = innerX + wcW + gap;
+      const vidY = innerY;
+
+      activeCardBox = { x: vidX, y: vidY, w: vidW, h: cardH, vidY: vidY + tbH, vidH: cardH - tbH };
+
+      // 1. Left card: Webcam vertical card
+      const wcR = Math.min(effects.roundnessPx, Math.min(wcW, cardH) / 2);
+      const sc = outH / 1080;
+      const shadowAlpha = Math.max(0, effects.shadowPct) / 100;
+
+      if (shadowAlpha > 0) {
+        ctx.save();
+        ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
+        ctx.shadowBlur = (20 + effects.shadowPct) * sc;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = (4 + effects.shadowPct / 2) * sc;
+        roundedRectPath(ctx, wcX + 1.5, wcY + 1.5, wcW - 3, cardH - 3, Math.max(0, wcR - 1.5));
+        ctx.fillStyle = '#000';
+        ctx.fill();
+        ctx.restore();
       }
+
+      ctx.save();
+      roundedRectPath(ctx, wcX, wcY, wcW, cardH, wcR);
+      ctx.fillStyle = '#111216';
+      ctx.fill();
+      ctx.clip();
+      if (webcamCanvas) {
+        drawCover(ctx, webcamCanvas, wcX, wcY, wcW, cardH);
+      } else {
+        drawWebcamPlaceholder(ctx, wcX, wcY, wcW, cardH, 0);
+      }
+      ctx.restore();
+
+      if (border !== 'macWindow' && border !== 'default') {
+        const bo = borderOutset(border, wcW, cardH, borderStyle.widthPct);
+        paintBorderOver(ctx, border, wcX - bo, wcY - bo, wcW + bo * 2, cardH + bo * 2, wcR + bo, borderStyle, { thickness: bo > 0 ? bo : borderThickness(wcW, cardH, borderStyle.widthPct) });
+      }
+
+      // 2. Right card: Screen recording
+      drawVideoBox(ctx, srcCanvas, vidX, vidY, vidW, cardH, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH, border, borderStyle);
+
       if (needVideoScope) {
         ctx.restore();
       }

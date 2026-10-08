@@ -233,6 +233,7 @@ export default {
   'side.pipTopRight': 'PiP — Top Right',
   'side.pipTopLeft': 'PiP — Top Left',
   'side.sideBySide': 'Side by Side',
+  'side.vertical916': 'Vertical (9:16)',
   // Selection panels
   'side.zoomLevel': 'Zoom Level',
   'side.focusX': 'Focus X',

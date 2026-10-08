@@ -634,7 +634,8 @@ export function Preview() {
         cursorClicks: st.cursorClicks,
         cursorKinds: st.cursorKinds,
         cursorFx: st.cursorFx,
-        zoomStyle: st.zoomStyle
+        zoomStyle: st.zoomStyle,
+        aspect: st.aspect
       });
       const k = Math.max(0, Math.min(0.9, st.effects.motionBlur || 0));
       if (st.playing) {
@@ -678,6 +679,8 @@ export function Preview() {
   const innerScale = 1 - (effects.paddingPct / 100) * 0.5;
 
   const isSideBySide = layoutPreset === 'side-by-side';
+  const isVertical916 = aspect === '9:16' || layoutPreset === 'vertical-9-16';
+  const isFixedWebcam = isSideBySide || isVertical916;
 
   // Webcam container aspect (width/height). Rectangle uses 16:9 to match the
   // typical webcam intrinsic; square and circle stay 1:1. Used both to size
@@ -964,8 +967,8 @@ export function Preview() {
         )}
 
         {/* Transparent drag handle over the canvas-drawn webcam PiP (standard
-            layout only — side-by-side is fixed). */}
-        {fileUrl && webcam.enabled && !isSideBySide && (
+            layout only — side-by-side and vertical-9-16 are fixed). */}
+        {fileUrl && webcam.enabled && !isFixedWebcam && (
           <div
             onPointerDown={onWebcamDown}
             onPointerMove={onWebcamMove}

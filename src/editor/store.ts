@@ -220,7 +220,7 @@ export type EditorState = {
   // face covering the detail they just zoomed into, so it is simply how the
   // webcam behaves rather than a decision to make.
   webcam: { x: number; y: number; size: number; enabled: boolean; shape: WebcamShape };
-  layoutPreset: 'pip-bottom-right' | 'pip-bottom-left' | 'pip-top-right' | 'pip-top-left' | 'side-by-side';
+  layoutPreset: 'pip-bottom-right' | 'pip-bottom-left' | 'pip-top-right' | 'pip-top-left' | 'side-by-side' | 'vertical-9-16';
 
   // Style
   polish: PolishPreset;
@@ -825,9 +825,11 @@ export const useEditor = create<EditorState>((set, get) => ({
         'pip-bottom-left': { x: left, y: bottom },
         'pip-top-right': { x: right, y: top },
         'pip-top-left': { x: left, y: top },
-        'side-by-side': { x: 0.5, y: 0.5 }
+        'side-by-side': { x: 0.5, y: 0.5 },
+        'vertical-9-16': { x: 0.5, y: 0.25 }
       };
-      return { layoutPreset: p, webcam: { ...s.webcam, ...map[p] } };
+      const enabled = (p === 'side-by-side' || p === 'vertical-9-16') ? true : s.webcam.enabled;
+      return { layoutPreset: p, webcam: { ...s.webcam, ...map[p], enabled } };
     });
   },
   setPolish: (p) => set({ polish: p, effects: presetEffects[p] }),

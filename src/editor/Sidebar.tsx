@@ -2179,6 +2179,7 @@ function CompositionSection() {
               <option value="pip-top-right">{t('side.pipTopRight')}</option>
               <option value="pip-top-left">{t('side.pipTopLeft')}</option>
               <option value="side-by-side">{t('side.sideBySide')}</option>
+              <option value="vertical-9-16">{t('side.vertical916')}</option>
             </select>
           </div>
 
