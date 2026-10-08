@@ -23,6 +23,7 @@
 
 export type BorderId =
   | 'default'
+  | 'macWindow'
   | 'liquidGlass'
   | 'darkGlass'
   | 'gradient'
@@ -34,6 +35,7 @@ export type BorderId =
 
 export const BORDER_IDS: BorderId[] = [
   'default',
+  'macWindow',
   'liquidGlass',
   'darkGlass',
   'gradient',
@@ -57,6 +59,7 @@ export function normalizeBorder(id: unknown): BorderId {
 // Human-friendly labels for presets
 export const BORDER_LABELS: Record<BorderId, string> = {
   default: 'None',
+  macWindow: 'macOS Window',
   liquidGlass: 'Liquid Glass',
   darkGlass: 'Dark Glass',
   gradient: 'Aurora',
@@ -93,9 +96,10 @@ export type BorderStyle = {
  */
 export const BORDER_DEFAULTS: Record<BorderId, BorderStyle> = {
   default:     { widthPct: 1.4, opacity: 35,  color: null },
+  macWindow:   { widthPct: 1.8, opacity: 100, color: '#181920', roundnessPx: 14 },
   liquidGlass: { widthPct: 1.4, opacity: 20,  color: '#ffffff', roundnessPx: 23 },
   darkGlass:   { widthPct: 1.4, opacity: 20,  color: '#0b0d12', roundnessPx: 23 },
-  gradient:    { widthPct: 1.6, opacity: 45,  color: null },
+  gradient:    { widthPct: 1.6, opacity: 45,  color: null, roundnessPx: 23 },
   outline:     { widthPct: 1.8, opacity: 85,  color: null },
   glow:        { widthPct: 2.5, opacity: 60,  color: '#3b82f6', roundnessPx: 23 },
   retro:       { widthPct: 1.9, opacity: 25,  color: '#ffffff', roundnessPx: 23 },
@@ -123,12 +127,132 @@ export function borderThickness(w: number, h: number, widthPct: number): number 
  * the wrong mental model and the wrong result.
  */
 export function borderOutset(id: BorderId, w: number, h: number, widthPct: number): number {
-  if (id === 'default' || id === 'glow') return 0;
+  if (id === 'default' || id === 'glow' || id === 'macWindow') return 0;
   const T = borderThickness(w, h, widthPct);
   if (id === 'retro') return T * 0.4;
   if (id === 'stack') return T * 0.35;
   if (id === 'outline') return T * 0.8;
   return T;
+}
+
+/**
+ * Traces a rectangle with independent corner radii (top-left, top-right, bottom-right, bottom-left).
+ */
+export function roundedRectCorners(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  rtl: number, rtr: number, rbr: number, rbl: number
+) {
+  const maxR = Math.min(w, h) / 2;
+  const tl = Math.max(0, Math.min(rtl, maxR));
+  const tr = Math.max(0, Math.min(rtr, maxR));
+  const br = Math.max(0, Math.min(rbr, maxR));
+  const bl = Math.max(0, Math.min(rbl, maxR));
+
+  ctx.beginPath();
+  ctx.moveTo(x + tl, y);
+  ctx.lineTo(x + w - tr, y);
+  if (tr > 0) ctx.arcTo(x + w, y, x + w, y + tr, tr);
+  else ctx.lineTo(x + w, y);
+  ctx.lineTo(x + w, y + h - br);
+  if (br > 0) ctx.arcTo(x + w, y + h, x + w - br, y + h, br);
+  else ctx.lineTo(x + w, y + h);
+  ctx.lineTo(x + bl, y + h);
+  if (bl > 0) ctx.arcTo(x, y + h, x, y + h - bl, bl);
+  else ctx.lineTo(x, y + h);
+  ctx.lineTo(x, y + tl);
+  if (tl > 0) ctx.arcTo(x, y, x + tl, y, tl);
+  else ctx.lineTo(x, y);
+  ctx.closePath();
+}
+
+/** Height of the macOS window title bar in pixels, scaled to canvas resolution. */
+export function macTitleBarHeight(outH: number, _widthPct: number = 1.8, _roundnessPx: number = 14): number {
+  const sc = Math.max(0.65, outH / 1080);
+  return Math.round(72 * sc);
+}
+
+/** Paints the authentic macOS title bar with acrylic finish and traffic light controls. */
+export function paintMacTitleBar(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  x: number, y: number, w: number, tbH: number, r: number,
+  st: BorderStyle = DEFAULT_BORDER_STYLE
+) {
+  if (tbH <= 0 || w <= 0) return;
+  const base = st.color ?? '#181920';
+  const light = isLight(base);
+  const alpha = Math.min(1, Math.max(0, st.opacity) / 100);
+
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+
+  // Clip to title bar top corners
+  roundedRectCorners(ctx, x, y, w, tbH, r, r, 0, 0);
+  ctx.clip();
+
+  // 1. Title bar background
+  if (light) {
+    // For white/light title bars, keep pure flat background so it blends seamlessly into white content
+    ctx.fillStyle = base;
+  } else {
+    // Subtle modern dark acrylic gradient
+    const tbGrad = ctx.createLinearGradient(x, y, x, y + tbH);
+    tbGrad.addColorStop(0, shade(base, 0.08));
+    tbGrad.addColorStop(1, shade(base, -0.04));
+    ctx.fillStyle = tbGrad;
+  }
+  ctx.fillRect(x, y, w, tbH);
+
+  // 2. Traffic light buttons (Close, Minimize, Zoom) - CleanShot Studio proportions
+  const dotR = Math.max(5.5, Math.min(8.0, tbH * 0.105));
+  const dotY = y + Math.round(tbH * 0.46);
+  const startX = x + Math.max(r * 0.8 + 12, Math.round(tbH * 0.46));
+  const dotSpacing = Math.max(18, Math.round(dotR * 3.2));
+
+  const dots = [
+    { fill: '#ff5f56', stroke: '#e0443e' }, // Close (Red)
+    { fill: '#ffbd2e', stroke: '#dea123' }, // Minimize (Yellow)
+    { fill: '#27c93f', stroke: '#1aab29' }  // Zoom (Green)
+  ];
+
+  dots.forEach((dot, idx) => {
+    const dotX = startX + idx * dotSpacing;
+    ctx.beginPath();
+    ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
+    ctx.fillStyle = dot.fill;
+    ctx.fill();
+    ctx.lineWidth = 0.75;
+    ctx.strokeStyle = dot.stroke;
+    ctx.stroke();
+
+    // Specular shine on upper half of dot
+    ctx.beginPath();
+    ctx.arc(dotX, dotY - dotR * 0.25, dotR * 0.5, 0, Math.PI, true);
+    ctx.fillStyle = 'rgba(255,255,255,0.40)';
+    ctx.fill();
+  });
+
+  ctx.restore();
+}
+
+/** Outer window hairline bezel framing the entire macOS window. */
+export function paintMacWindowBezel(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number,
+  st: BorderStyle = DEFAULT_BORDER_STYLE
+) {
+  const base = st.color ?? '#181920';
+  const light = isLight(base);
+  const alpha = Math.min(1, Math.max(0, st.opacity) / 100);
+  const strokeW = Math.max(1, Math.min(6, Math.round((st.widthPct ?? 1.8) * 1.0)));
+
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  roundedRectCorners(ctx, x, y, w, h, r, r, r, r);
+  ctx.lineWidth = strokeW;
+  ctx.strokeStyle = light ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.14)';
+  ctx.stroke();
+  ctx.restore();
 }
 
 // Rounded-rect tracer matching the card outline.
@@ -244,7 +368,7 @@ export function paintBorderUnder(
   st: BorderStyle = DEFAULT_BORDER_STYLE,
   opts: { thickness?: number } = {}
 ) {
-  if (id === 'default' || id === 'darkGlass' || id === 'outline' || id === 'glow') return;
+  if (id === 'default' || id === 'darkGlass' || id === 'outline' || id === 'glow' || id === 'macWindow') return;
   const T = borderThickness(w, h, st.widthPct);
   if (T <= 0 || st.opacity <= 0) return;
 
@@ -283,7 +407,7 @@ export function paintBorderOver(
   st: BorderStyle = DEFAULT_BORDER_STYLE,
   opts: { thickness?: number } = {}
 ) {
-  if (id === 'default') return;
+  if (id === 'default' || id === 'macWindow') return;
   const T = (opts.thickness !== undefined && opts.thickness > 0) ? opts.thickness : borderThickness(w, h, st.widthPct);
   if (T <= 0 || st.opacity <= 0) return;
 

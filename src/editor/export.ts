@@ -14,7 +14,22 @@ import {
   type VideoCodec
 } from 'mediabunny';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
-import { paintBorderUnder, paintBorderOver, paintEmissionFlat, borderOutset, borderThickness, emissionSpec, normalizeBorder, DEFAULT_BORDER_STYLE, type BorderId, type BorderStyle } from './borders';
+import {
+  paintBorderUnder,
+  paintBorderOver,
+  paintEmissionFlat,
+  paintMacTitleBar,
+  paintMacWindowBezel,
+  macTitleBarHeight,
+  roundedRectCorners,
+  borderOutset,
+  borderThickness,
+  emissionSpec,
+  normalizeBorder,
+  DEFAULT_BORDER_STYLE,
+  type BorderId,
+  type BorderStyle
+} from './borders';
 import { renderShaderBackground, normalizeShader, SHADER_FALLBACK, renderMeshBackground, meshPreset, renderFieldBackground, bgClockMs, fieldStyleOf } from './shaders';
 import { useEditor, type CropRegion, type EditorState, ANNOTATION_DEFAULTS, type LaneItem, type BackgroundMode } from './store';
 
@@ -1553,16 +1568,19 @@ function cursorAtSpline(samples: CursorSample[] | undefined, ms: number): { x: n
 // nothing about an ordinary full-screen recording moves.
 function fitInside(
   srcW: number, srcH: number, crop: CropRegion,
-  x: number, y: number, w: number, h: number
+  x: number, y: number, w: number, h: number,
+  titleBarH = 0
 ): { x: number; y: number; w: number; h: number } {
   const cw = crop.width * srcW;
   const ch = crop.height * srcH;
   // No dimensions yet (video still loading) — leave the box alone rather than
   // collapsing the card to nothing for a frame.
   if (!(cw > 0) || !(ch > 0)) return { x, y, w, h };
-  const s = Math.min(w / cw, h / ch);
-  const fw = cw * s;
-  const fh = ch * s;
+  const AR = cw / ch;
+  const maxWByHeight = Math.max(1, (h - titleBarH) * AR);
+  const fw = Math.min(w, maxWByHeight);
+  const vidH = fw / AR;
+  const fh = vidH + titleBarH;
   return { x: x + (w - fw) / 2, y: y + (h - fh) / 2, w: fw, h: fh };
 }
 
@@ -2032,7 +2050,7 @@ export function drawFrame(
     }
   }
 
-  const padding = effects.paddingPct / 100;
+  const padding = (effects.paddingPct ?? 0) / 100;
   const innerScale = 1 - padding * 0.5;
 
   // Zoom and rotation are separate lanes but render through ONE card transform
@@ -2053,6 +2071,10 @@ export function drawFrame(
   const needVideoScope = shouldDrawVideo && (videoAlpha < 0.995 || videoBlurPx > 0);
   const layout = LAYOUT_COORDS[layoutPreset];
 
+  const isMac = border === 'macWindow';
+  const tbH = isMac ? macTitleBarHeight(outH) : 0;
+  let activeCardBox = { x: 0, y: 0, w: 0, h: 0, vidY: 0, vidH: 0 };
+
   if (layout.sideBySide && webcam.enabled) {
     if (shouldDrawVideo) {
       if (needVideoScope) {
@@ -2067,7 +2089,9 @@ export function drawFrame(
       const wcW = innerW * 0.4;
       const vidW = innerW - wcW - 12;
       const sd = srcDims(srcCanvas);
-      const vb = fitInside(sd.w, sd.h, cropRegion, innerX, innerY, vidW, innerH);
+      const vb = fitInside(sd.w, sd.h, cropRegion, innerX, innerY, vidW, innerH, tbH);
+      activeCardBox = { x: vb.x, y: vb.y, w: vb.w, h: vb.h, vidY: vb.y + tbH, vidH: vb.h - tbH };
+
       drawVideoBox(ctx, srcCanvas, vb.x, vb.y, vb.w, vb.h, effects.roundnessPx, cropRegion, activeZoom ?? undefined, effects.shadowPct, outH, border, borderStyle);
       if (webcamCanvas) {
         drawWebcamVideo(ctx, webcamCanvas, innerX + vidW + 12, innerY, wcW, innerH, effects.roundnessPx, false);
@@ -2086,7 +2110,9 @@ export function drawFrame(
     // The card is the recording's own shape fitted inside the padded box, so a
     // window that isn't the output's aspect keeps all of itself.
     const sd = srcDims(srcCanvas);
-    const card = fitInside(sd.w, sd.h, cropRegion, innerX, innerY, innerW, innerH);
+    const card = fitInside(sd.w, sd.h, cropRegion, innerX, innerY, innerW, innerH, tbH);
+    activeCardBox = { x: card.x, y: card.y, w: card.w, h: card.h, vidY: card.y + tbH, vidH: card.h - tbH };
+
     if (shouldDrawVideo) {
       if (needVideoScope) {
         ctx.save();
@@ -2160,7 +2186,7 @@ export function drawFrame(
         const cur = cursorAt(d.cursorSamples, cursorVideoMs);
         if (cur) {
           const { w: sw, h: sh } = srcDims(srcCanvas);
-          cursorPos = cursorToOutput(cur, sw, sh, cropRegion, card.x, card.y, card.w, card.h, activeZoom ?? undefined, outW, outH);
+          cursorPos = cursorToOutput(cur, sw, sh, cropRegion, activeCardBox.x, activeCardBox.vidY, activeCardBox.w, activeCardBox.vidH, activeZoom ?? undefined, outW, outH);
         }
       }
       const manualPos = (it: { posX?: number; posY?: number }) => ({ x: (it.posX ?? 0.5) * outW, y: (it.posY ?? 0.5) * outH });
@@ -2191,7 +2217,7 @@ export function drawFrame(
     if (cfx?.enabled && !cfx?.hideCompletely && !scene && (d.cursorSamples?.length || d.cursorClicks?.length)) {
       const { w: sw, h: sh } = srcDims(srcCanvas);
       const toOut = (nx: number, ny: number) =>
-        cursorToOutput({ x: nx, y: ny }, sw, sh, cropRegion, card.x, card.y, card.w, card.h, activeZoom ?? undefined, outW, outH);
+        cursorToOutput({ x: nx, y: ny }, sw, sh, cropRegion, activeCardBox.x, activeCardBox.vidY, activeCardBox.w, activeCardBox.vidH, activeZoom ?? undefined, outW, outH);
       if (cfx.clicks && d.cursorClicks) {
         for (const c of d.cursorClicks) {
           const age = cursorVideoMs - c.t;
@@ -2598,21 +2624,43 @@ function drawVideoBox(
     // corners of different curvature nested inside each other.
     const bi3 = borderOutset(border, card.width, card.height, borderStyle.widthPct);
     const outerR3 = Math.min(roundness * ss, Math.min(card.width, card.height) / 2);
-    cctx.save();
-    roundedRectPath(cctx as CanvasRenderingContext2D, bi3, bi3, card.width - bi3 * 2, card.height - bi3 * 2, Math.max(0, outerR3 - bi3));
-    cctx.clip();
-    drawCoverWithCrop(cctx as CanvasRenderingContext2D, src, crop, bi3, bi3, card.width - bi3 * 2, card.height - bi3 * 2);
-    cctx.restore();
-    cctx.save();
-    // Painted INTO the card texture, so the rim follows the perspective and the
-    // rotation for free. Only the `over` half: this canvas is exactly the card,
-    // so a stack or a glow drawn outside it would be cropped away.
-    paintBorderOver(
-      cctx as CanvasRenderingContext2D, border,
-      0, 0, card.width, card.height,
-      outerR3, borderStyle, { thickness: bi3 }
-    );
-    cctx.restore();
+    if (border === 'macWindow') {
+      const tbH3 = Math.round(macTitleBarHeight(outH) * ss);
+      const vidH3 = Math.max(1, card.height - tbH3);
+      const maxCornerR3 = Math.round(tbH3 * 0.48);
+      const winR3 = Math.max(0, Math.min(outerR3, maxCornerR3));
+
+      // Paint solid window base so no transparent seam occurs
+      cctx.save();
+      roundedRectCorners(cctx as CanvasRenderingContext2D, 0, 0, card.width, card.height, winR3, winR3, winR3, winR3);
+      (cctx as CanvasRenderingContext2D).fillStyle = borderStyle.color ?? '#181920';
+      (cctx as CanvasRenderingContext2D).fill();
+      cctx.restore();
+
+      paintMacTitleBar(cctx as CanvasRenderingContext2D, 0, 0, card.width, tbH3, winR3, borderStyle);
+      cctx.save();
+      roundedRectCorners(cctx as CanvasRenderingContext2D, 0, tbH3, card.width, vidH3, 0, 0, winR3, winR3);
+      cctx.clip();
+      drawCoverWithCrop(cctx as CanvasRenderingContext2D, src, crop, 0, tbH3, card.width, vidH3);
+      cctx.restore();
+      paintMacWindowBezel(cctx as CanvasRenderingContext2D, 0, 0, card.width, card.height, winR3, borderStyle);
+    } else {
+      cctx.save();
+      roundedRectPath(cctx as CanvasRenderingContext2D, bi3, bi3, card.width - bi3 * 2, card.height - bi3 * 2, Math.max(0, outerR3 - bi3));
+      cctx.clip();
+      drawCoverWithCrop(cctx as CanvasRenderingContext2D, src, crop, bi3, bi3, card.width - bi3 * 2, card.height - bi3 * 2);
+      cctx.restore();
+      cctx.save();
+      // Painted INTO the card texture, so the rim follows the perspective and the
+      // rotation for free. Only the `over` half: this canvas is exactly the card,
+      // so a stack or a glow drawn outside it would be cropped away.
+      paintBorderOver(
+        cctx as CanvasRenderingContext2D, border,
+        0, 0, card.width, card.height,
+        outerR3, borderStyle, { thickness: bi3 }
+      );
+      cctx.restore();
+    }
     const gl = sceneCards ? renderScene3D(card, xf, sceneCards) : renderCard3D(card, xf);
     if (gl) {
       // Shadow: let the canvas derive it from the GL image's own alpha, so it
@@ -2696,11 +2744,13 @@ function drawVideoBox(
     ctx.shadowBlur = (20 + shadowPct) * sc;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = (4 + shadowPct / 2) * sc;
+    const maxCornerR = Math.round(macTitleBarHeight(outH) * 0.48);
+    const shadowR = border === 'macWindow' ? Math.max(0, Math.min(picR, maxCornerR)) : picR;
     roundedRectPath(
       ctx,
       x + casterInset, y + casterInset,
       w - casterInset * 2, h - casterInset * 2,
-      Math.max(0, picR - casterInset)
+      Math.max(0, shadowR - casterInset)
     );
     ctx.fillStyle = '#000';
     ctx.fill();
@@ -2710,12 +2760,36 @@ function drawVideoBox(
   // Luminous light emission (Neon Glow, Aurora Gradient, Metal 3D) shines ON TOP of shadow
   paintEmissionFlat(ctx, x, y, w, h, picR, border, borderStyle);
 
-  ctx.save();
-  roundedRectPath(ctx, x, y, w, h, picR);
-  ctx.clip();
-  drawCoverWithCrop(ctx, src, crop, x, y, w, h);
-  ctx.restore();
-  paintBorderOver(ctx, border, ox, oy, ow, oh, outerR, borderStyle, { thickness: bo > 0 ? bo : borderThickness(w, h, borderStyle.widthPct) });
+  if (border === 'macWindow') {
+    const tbH = macTitleBarHeight(outH);
+    const vidY = y + tbH;
+    const vidH = Math.max(1, h - tbH);
+    const winR = Math.max(0, Math.min(picR, Math.round(tbH * 0.48)));
+
+    // Paint solid window base so no black shadow caster grins through the seam
+    ctx.save();
+    roundedRectCorners(ctx, x, y, w, h, winR, winR, winR, winR);
+    ctx.fillStyle = borderStyle.color ?? '#181920';
+    ctx.fill();
+    ctx.restore();
+
+    paintMacTitleBar(ctx, x, y, w, tbH, winR, borderStyle);
+
+    ctx.save();
+    roundedRectCorners(ctx, x, vidY, w, vidH, 0, 0, winR, winR);
+    ctx.clip();
+    drawCoverWithCrop(ctx, src, crop, x, vidY, w, vidH);
+    ctx.restore();
+
+    paintMacWindowBezel(ctx, x, y, w, h, winR, borderStyle);
+  } else {
+    ctx.save();
+    roundedRectPath(ctx, x, y, w, h, picR);
+    ctx.clip();
+    drawCoverWithCrop(ctx, src, crop, x, y, w, h);
+    ctx.restore();
+    paintBorderOver(ctx, border, ox, oy, ow, oh, outerR, borderStyle, { thickness: bo > 0 ? bo : borderThickness(w, h, borderStyle.widthPct) });
+  }
 
   ctx.restore();
 }

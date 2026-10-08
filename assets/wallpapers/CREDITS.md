@@ -66,3 +66,10 @@ platform in the lower third, under a starfield and a ring of light. It is built
 to sit BEHIND a card — the platform reads as something the card stands on — so
 it wants a card that clears the lower third and roughly 30% padding. At full
 bleed, or with the card centred low, the platform is what gets covered up.
+
+## wallpaper-23.jpg — aurora beam gradient
+
+Vibrant abstract gradient featuring obsidian dark on top-left with sleek diagonal
+laser beams in electric magenta, orange, and peach, transitioning into an ambient
+gradient of ocean blue, cyan, and sunset coral on the right. High resolution (16:9).
+
