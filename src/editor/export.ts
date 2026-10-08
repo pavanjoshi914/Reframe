@@ -732,28 +732,53 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
     }
   }
 
-  // Sequential webcam follower — ONE decoder for the whole export.
+  // Sequential webcam follower — ONE decoder for the whole export with seamless loop support.
   function makeWebcamFollower(sink: CanvasSink) {
     type Wrapped = { canvas: FrameSource; timestamp: number };
     const iter = sink.canvases()[Symbol.asyncIterator]();
+    const cachedFrames: Wrapped[] = [];
     let current: Wrapped | null = null;
     let next: Wrapped | null = null;
     let done = false;
+    let maxTs = 0;
+
     return async (timestampSec: number): Promise<FrameSource | null> => {
       try {
         while (!done) {
           if (!next) {
             const r = await iter.next();
-            if (r.done || !r.value) { done = true; break; }
+            if (r.done || !r.value) {
+              done = true;
+              if (cachedFrames.length > 0) {
+                maxTs = cachedFrames[cachedFrames.length - 1].timestamp;
+              }
+              break;
+            }
             next = r.value as unknown as Wrapped;
+            cachedFrames.push(next);
           }
-          if (next.timestamp <= timestampSec) { current = next; next = null; }
-          else break;
+          if (next.timestamp <= timestampSec) {
+            current = next;
+            next = null;
+          } else {
+            break;
+          }
         }
       } catch (err) {
         console.warn('[export] webcam follower stopped', err);
         done = true;
       }
+
+      if (done && maxTs > 0 && timestampSec > maxTs && cachedFrames.length > 0) {
+        const loopTs = timestampSec % maxTs;
+        let match = cachedFrames[0];
+        for (const cf of cachedFrames) {
+          if (cf.timestamp <= loopTs) match = cf;
+          else break;
+        }
+        return match.canvas;
+      }
+
       return current?.canvas ?? null;
     };
   }

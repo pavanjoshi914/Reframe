@@ -330,14 +330,17 @@ export function Preview() {
     const wc = webcamRef.current;
     if (!wc || !webcamFileUrl) return;
     const { videoMs, isPaused } = timelineToVideoMs(currentMs, items);
-    const target = videoMs / 1000;
+    const rawTarget = videoMs / 1000;
+    const dur = wc.duration;
+    // Seamlessly loop webcam / AI avatar if screen recording is longer than webcam video
+    const target = (Number.isFinite(dur) && dur > 0) ? (rawTarget % dur) : rawTarget;
 
     const speed = items.find((it) => it.kind === 'speed' && currentMs >= it.startMs && currentMs <= it.endMs);
     const targetRate = speed?.speed ?? 1;
     if (Math.abs(wc.playbackRate - targetRate) > 0.01) wc.playbackRate = targetRate;
 
     if (!playing || isPaused) {
-      wc.pause();
+      if (!wc.paused) wc.pause();
       // Webcam recordings often have a black warm-up frame at t=0 (camera
       // sensor is still settling). When parked at the very start, show a
       // slightly later frame as the visible preview.
@@ -349,8 +352,12 @@ export function Preview() {
       return;
     }
 
-    if (Math.abs(wc.currentTime - target) > 0.3) wc.currentTime = target;
-    wc.play().catch(() => {});
+    if (wc.paused) {
+      wc.play().catch(() => {});
+    }
+    if (Math.abs(wc.currentTime - target) > 0.35) {
+      wc.currentTime = target;
+    }
   }, [currentMs, playing, items, webcamFileUrl, recording]);
 
   // Background audio sync — controls play/pause, volume, rate, and timeline alignment.
@@ -945,6 +952,10 @@ export function Preview() {
             style={{ width: 2, height: 2 }}
             playsInline
             muted
+            loop
+            onSeeked={() => {
+              dirtyRef.current = true;
+            }}
           />
         )}
         {backgroundAudio.url && (
