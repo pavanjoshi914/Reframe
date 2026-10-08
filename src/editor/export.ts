@@ -52,7 +52,7 @@ import {
   easeOutGlide, sweepBell,
   type SceneSettings, type SceneShape
 } from './scenes';
-import { CURSOR_GLYPHS, KIND_GLYPHS, CURSOR_IDLE_MS, CURSOR_IDLE_FADE_MS, CURSOR_MOVE_EPS_SQ } from './cursorGlyphs';
+import { CURSOR_GLYPHS, CURSOR_IDLE_MS, CURSOR_IDLE_FADE_MS, CURSOR_MOVE_EPS_SQ } from './cursorGlyphs';
 import { videoToTimelineMs, timelineToVideoMs, computeTotalDuration } from './timeMapping';
 
 // Export pipeline — frame-accurate, NOT real-time.
@@ -2255,11 +2255,10 @@ export function drawFrame(
         if (p && totalCursorA > 0.01) {
           ctx.save();
           ctx.globalAlpha *= totalCursorA;
-          // 'system' means "whatever the OS was showing", resolved per frame
-          // from the captured kinds; every other style is a fixed glyph.
-          const style = (cfx.style ?? 'system') === 'system'
-            ? glyphForKind(d.cursorKinds, cursorVideoMs)
-            : cfx.style!;
+          // Resolve cursor glyph per frame from captured kinds:
+          // links/buttons show the hand gesture across all custom cursors (except emoji).
+          const baseStyle = cfx.style ?? 'system';
+          const style = glyphForKind(d.cursorKinds, cursorVideoMs, baseStyle);
           const press = (cfx.clickPress ?? true) ? clickPressScale(d.cursorClicks, cursorVideoMs) : 1;
           drawCursorWithMotion(
             ctx, p.x, p.y, pPrev?.x ?? null, pPrev?.y ?? null,
@@ -3011,19 +3010,30 @@ function hexLuminance(hex: string): number {
 
 // The captured system-cursor kind in effect at `ms`, as a glyph id. The kinds
 // list is a sparse timeline of CHANGES (each entry holds until the next), so
-// this is a walk back to the last entry at or before `ms`. Returns the arrow
-// when the recording carries no kinds at all — which is every recording made
-// before capture existed, plus Wayland sessions.
-function glyphForKind(kinds: CursorKindSample[] | undefined, ms: number): string {
-  if (!kinds || kinds.length === 0) return 'arrow';
+// this is a walk back to the last entry at or before `ms`.
+//
+// Contextual pointer behavior:
+// - Hovering a link/button (kind 'pointer' or 'grab') shows the authentic hand gesture
+//   across all custom cursors (the hand cursor is shared and default).
+// - Over text fields (kind 'text'), the text caret ('beam') appears.
+// - 'emoji' cursor is exempt and stays as the user-selected emoji.
+// - In default/resting state or when kinds data is missing, each custom cursor retains
+//   its own design ('tahoe', 'windows11', 'figma', 'modern', etc.), falling back to
+//   'arrow' for 'system'.
+function glyphForKind(kinds: CursorKindSample[] | undefined, ms: number, baseStyle: string = 'system'): string {
+  if (baseStyle === 'emoji') return 'emoji';
+  const defaultGlyph = (!baseStyle || baseStyle === 'system') ? 'arrow' : baseStyle;
+  if (!kinds || kinds.length === 0) return defaultGlyph;
   let lo = 0, hi = kinds.length - 1;
-  if (ms < kinds[0].t) return 'arrow';
+  if (ms < kinds[0].t) return defaultGlyph;
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
     if (kinds[mid].t <= ms) lo = mid; else hi = mid;
   }
   const k = kinds[hi].t <= ms ? kinds[hi].k : kinds[lo].k;
-  return KIND_GLYPHS[k] ?? 'arrow';
+  if (k === 'pointer' || k === 'grab') return 'hand';
+  if (k === 'text') return 'beam';
+  return defaultGlyph;
 }
 
 // How far back to look when measuring cursor velocity: one frame at 60fps.
