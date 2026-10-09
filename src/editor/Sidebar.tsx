@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight, Camera, Crosshair, LayoutTemplate, Palette, MousePointer2, Music, Play, Pause, Scissors, ExternalLink, Copy, Check, Heading, Subtitles, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight, Camera, Crosshair, LayoutTemplate, Palette, Play, Pause, Scissors, ExternalLink, Copy, Check, Heading, Subtitles, Volume2 } from 'lucide-react';
 import { BORDER_IDS, BORDER_LABELS, BORDER_COLORS, BORDER_DEFAULTS, type BorderId } from './borders';
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem, type CursorStyle } from './store';
 import { runExport, cancelExport, saveStillNow, copyImageToClipboardNow } from './export';
@@ -17,12 +17,39 @@ import { CaptionsSection } from './CaptionsSection';
 const ZOOM_PRESETS = [1.25, 1.5, 1.8, 2.2, 3.5, 5];
 const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 3, 5];
 
+function CursorSparkleIcon({ size = 19, className = '' }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      className={className}
+    >
+      <path
+        d="M9.5 9.5L18 13L13.8 14.6L15.4 18.8L13.5 19.5L12 15.3L8.5 18V9.5Z"
+        fill="currentColor"
+        stroke="none"
+      />
+      <path
+        d="M9.5 4.5V1.5M5.5 5.5L3 3M4.5 9.5H1.5M13.5 5.5L16 3M5.5 13.5L3 16"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function Sidebar() {
   const [tab, setTab] = useState('canvas');
   const selectedItemId = useEditor((s) => s.selectedItemId);
   const selectedItem = useEditor((s) => s.items.find((it) => it.id === s.selectedItemId) ?? null);
 
   const selectedCaptionId = useEditor((s) => s.selectedCaptionId);
+  const selectItem = useEditor((s) => s.selectItem);
+  const selectCaption = useEditor((s) => s.selectCaption);
 
   useEffect(() => {
     if (selectedItemId) {
@@ -48,51 +75,54 @@ export function Sidebar() {
     selectedItem.kind === 'titleCard'
   );
 
-  // One panel at a time behind an icon rail, instead of every section stacked
-  // in one scrolling column.
-  const TABS: { id: string; label: string; icon: LucideIcon }[] = [
+  // Icon-only sidebar rail with sleek Apple-grade squircle buttons
+  const TABS: { id: string; label: string; icon: any }[] = [
     ...(showSelection ? [{ id: 'selection', label: 'Select', icon: Crosshair }] : []),
     { id: 'canvas', label: 'Canvas', icon: LayoutTemplate },
     { id: 'captions', label: 'Captions', icon: Subtitles },
     { id: 'style', label: 'Style', icon: Palette },
     { id: 'border', label: 'Border', icon: Square },
-    { id: 'cursor', label: 'Cursor', icon: MousePointer2 },
-    { id: 'audio', label: 'Audio', icon: Music }
+    { id: 'cursor', label: 'Cursor', icon: CursorSparkleIcon },
+    { id: 'audio', label: 'Audio', icon: Volume2 }
   ];
   // A selection appears and disappears as you click regions, so the tab it adds
   // must not strand you on a tab that no longer exists.
   const activeTab = TABS.some((x) => x.id === tab) ? tab : 'canvas';
 
   return (
-    // TWO panels, not one split down the middle — the rail floats beside the
-    // inspector the way the reference has it, with the page showing between.
-    <div className="flex h-full shrink-0 gap-3">
-      <div className="flex w-[58px] shrink-0 flex-col gap-1 overflow-hidden rounded-xl bg-[var(--panel)] p-1.5">
+    <div className="flex h-full w-[370px] shrink-0 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#161619] shadow-2xl">
+      {/* Icon Rail */}
+      <div className="flex w-[56px] shrink-0 flex-col items-center gap-2 border-r border-white/[0.06] bg-[#131316] py-3.5 px-2">
         {TABS.map((x) => {
           const on = activeTab === x.id;
           const Icon = x.icon;
           return (
             <button
               key={x.id}
-              onClick={() => setTab(x.id)}
+              onClick={() => {
+                if (x.id !== 'selection') selectItem(null);
+                if (x.id !== 'captions') selectCaption(null);
+                setTab(x.id);
+              }}
               title={x.label}
+              aria-label={x.label}
               aria-current={on}
               className={
-                'flex flex-col items-center gap-1 rounded-lg px-1 py-2 text-[9px] font-medium leading-tight transition ' +
+                'flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150 ' +
                 (on
-                  ? 'glass text-[var(--accent)]'
-                  : 'text-[var(--faint)] hover:bg-[var(--fill-hover)] hover:text-[var(--text)]')
+                  ? 'bg-[#0A84FF] text-white shadow-[0_2px_12px_rgba(10,132,255,0.4)]'
+                  : 'text-white/40 hover:bg-white/[0.06] hover:text-white/85')
               }
             >
-              <Icon size={17} />
-              <span className="w-full truncate text-center">{x.label}</span>
+              <Icon size={19} />
             </button>
           );
         })}
       </div>
 
-      <div className="flex w-[318px] min-w-0 shrink-0 flex-col overflow-hidden rounded-xl bg-[var(--panel)]">
-        <div className="sb-scroll flex-1 overflow-y-auto px-3 py-2">
+      {/* Inspector Panel */}
+      <div className="flex flex-1 min-w-0 flex-col overflow-hidden bg-transparent">
+        <div className="sb-scroll flex-1 overflow-y-auto px-4 py-3">
           {activeTab === 'selection' && <SelectionSection />}
           {activeTab === 'captions' && <CaptionsSection />}
           {activeTab === 'cursor' && <CursorSection />}
@@ -487,7 +517,8 @@ function RangeRow({
   max,
   step,
   onChange,
-  fmt
+  fmt,
+  ticks
 }: {
   label: string;
   value: number;
@@ -496,34 +527,54 @@ function RangeRow({
   step: number;
   onChange: (v: number) => void;
   fmt?: (v: number) => string;
+  ticks?: boolean | number[];
 }) {
   const pct = max > min ? Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100)) : 0;
-  const face = (ink: string) => (
-    <div className={'pointer-events-none absolute inset-0 flex items-center gap-2 px-3 ' + ink}>
-      <span className="min-w-0 flex-1 truncate text-[11px] font-medium" title={label}>{label}</span>
-      <span className="shrink-0 text-[11px] font-semibold tabular-nums">{fmt ? fmt(value) : value}</span>
-    </div>
-  );
+  const displayVal = fmt ? fmt(value) : value;
+
   return (
-    <div className="relative h-8 overflow-hidden rounded-full bg-[var(--track)]">
-      <div
-        className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-[var(--accent)]"
-        style={{ width: `${pct}%` }}
-      />
-      {face('text-[var(--text)]')}
-      <div className="absolute inset-0" style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}>
-        {face('text-[var(--accent-fg)]')}
+    <div className="py-2 select-none">
+      <div className="mb-2 flex items-center justify-between text-xs">
+        <span className="font-medium text-white/70">{label}</span>
+        <span className="font-semibold text-white/95 tabular-nums">{displayVal}</span>
       </div>
-      <input
-        type="range"
-        aria-label={label}
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
-      />
+      <div className="relative flex h-5 items-center">
+        {/* Track */}
+        <div className="relative h-[5px] w-full rounded-full bg-white/[0.14] overflow-hidden">
+          {/* Active progress fill */}
+          <div
+            className="absolute left-0 top-0 h-full rounded-full bg-[#0A84FF]"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+
+        {/* Subtle tick marks */}
+        {ticks && (
+          <div className="pointer-events-none absolute inset-x-1 top-[13px] flex justify-between">
+            {(Array.isArray(ticks) ? ticks : [1, 2, 3, 4, 5, 6, 7]).map((_, idx) => (
+              <span key={idx} className="h-0.5 w-0.5 rounded-full bg-white/20" />
+            ))}
+          </div>
+        )}
+
+        {/* Apple white circular thumb */}
+        <div
+          className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-white shadow-[0_1px_4px_rgba(0,0,0,0.5)]"
+          style={{ left: `calc(${pct}% + ${8 - pct * 0.16}px)` }}
+        />
+
+        {/* Native range input for accessible & smooth drag */}
+        <input
+          type="range"
+          aria-label={label}
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        />
+      </div>
     </div>
   );
 }
@@ -2682,13 +2733,13 @@ function CursorStyleTile({
       title={label}
       aria-pressed={active}
       className={
-        'flex flex-col items-center gap-1 rounded-md border p-1.5 transition ' +
+        'relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#222226] border transition-all duration-150 ' +
         (active
-          ? 'border-[var(--accent)] bg-[var(--accent-dim)] shadow-sm'
-          : 'border-[var(--line)] hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]')
+          ? 'border-[#0A84FF] ring-2 ring-[#0A84FF] shadow-sm'
+          : 'border-white/[0.08] hover:border-white/25 hover:bg-[#28282d]')
       }
     >
-      <span className="flex h-7 w-full items-center justify-center">
+      <span className="flex items-center justify-center">
         {id === 'system' ? (
           // 'system' has no single glyph — it follows the recording. Show the
           // two it swaps between most, so the tile says what it does.
@@ -2739,7 +2790,7 @@ function CursorStyleTile({
             )}
           </svg>
         ) : g?.char ? (
-          <span className="text-[19px] leading-none">{id === 'emoji' ? emojiPreview || g.char : g.char}</span>
+          <span className="text-[20px] leading-none">{id === 'emoji' ? emojiPreview || g.char : g.char}</span>
         ) : (
           <svg viewBox={g.view} className="h-6 w-6" aria-hidden="true">
             {/* Same three passes as the compositor (halo under, fill, fill-colour
@@ -2768,9 +2819,6 @@ function CursorStyleTile({
           </svg>
         )}
       </span>
-      <span className={'w-full truncate text-center text-[9.5px] leading-tight px-0.5 ' + (active ? 'font-semibold text-[var(--accent)]' : 'text-[var(--muted)]')}>
-        {label}
-      </span>
     </button>
   );
 }
@@ -2781,108 +2829,104 @@ function CursorSection() {
   const cursorFx = useEditor((s) => s.cursorFx);
   const setCursorFx = useEditor((s) => s.setCursorFx);
   const hasCursorData = useEditor((s) => s.cursorSamples.length > 0);
-  // A hide-cursor clip has NO baked-in cursor, so the synthetic one is the only
-  // cursor there is — it's shown unless the user chooses to hide cursor completely.
-  // Non-hide recordings keep the toggle (cursor is optional on top).
   const hideCursorClip = useEditor((s) => !!s.recording?.hideCursor);
   const hideCompletely = !!cursorFx.hideCompletely;
   const on = !hideCompletely && (cursorFx.enabled || hideCursorClip);
   const style = cursorFx.style ?? 'system';
   const color = cursorFx.color ?? '#ffffff';
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {/* 1. Cursor visibility toggle */}
       <div data-cursorctl="hideCompletely">
+        <Label>{t('side.cursor') || 'Cursor'}</Label>
         <ToggleRow
-          label={t('side.hideCursorCompletely')}
-          checked={hideCompletely}
-          onChange={(v) => setCursorFx({ hideCompletely: v })}
+          label="Show cursor"
+          checked={!hideCompletely}
+          onChange={(show) => setCursorFx({ hideCompletely: !show, enabled: show })}
+          switchFirst={true}
         />
-        <p className="mt-1 text-[11px] text-[var(--faint)]">{t('side.hideCursorCompletelyTip')}</p>
       </div>
 
       {hideCompletely ? (
-        <div className="rounded-lg border border-[var(--line)] bg-[var(--fill)] p-3 text-center text-xs text-[var(--muted)]">
+        <div className="rounded-xl border border-white/[0.08] bg-[#222226]/50 p-3 text-center text-xs text-white/50">
           {t('side.cursorHiddenNotice')}
         </div>
       ) : (
         <>
-          {!hideCursorClip && (
-            <div data-cursorctl="enabled">
-              <ToggleRow label={t('side.smoothCursor')} checked={cursorFx.enabled} onChange={(v) => setCursorFx({ enabled: v })} />
+          {/* 2. Cursor Size Slider */}
+          <div data-cursorctl="size">
+            <RangeRow
+              label="Size"
+              min={50}
+              max={400}
+              step={10}
+              value={Math.round(cursorFx.size * 100)}
+              fmt={(v) => `${(v / 100).toFixed(v % 100 === 0 ? 0 : 1)}x`}
+              onChange={(v) => setCursorFx({ size: v / 100 })}
+              ticks={[50, 100, 150, 200, 250, 300, 350, 400]}
+            />
+          </div>
+
+          {/* 3. Style Cards */}
+          <div data-cursorctl="style">
+            <Label>{t('side.style') || 'Style'}</Label>
+            <div className="flex items-center gap-2.5 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar">
+              {CURSOR_STYLE_IDS.map((id) => (
+                <CursorStyleTile
+                  key={id}
+                  id={id}
+                  label={t(CURSOR_STYLE_LABEL[id])}
+                  color={color}
+                  active={style === id}
+                  emojiPreview={cursorFx.emoji}
+                  onClick={() => setCursorFx({ style: id })}
+                />
+              ))}
             </div>
-          )}
-          {on && (
-            <>
-              <div data-cursorctl="idle">
-                <ToggleRow
-                  label={t('side.hideWhenIdle')}
-                  checked={!!cursorFx.hideWhenIdle}
-                  onChange={(v) => setCursorFx({ hideWhenIdle: v })}
-                />
-                <p className="mt-1 text-[11px] text-[var(--faint)]">{t('side.hideWhenIdleTip')}</p>
-              </div>
-              <div data-cursorctl="style">
-                <Label>{t('side.style')}</Label>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {CURSOR_STYLE_IDS.map((id) => (
-                    <CursorStyleTile
-                      key={id}
-                      id={id}
-                      label={t(CURSOR_STYLE_LABEL[id])}
-                      color={color}
-                      active={style === id}
-                      emojiPreview={cursorFx.emoji}
-                      onClick={() => setCursorFx({ style: id })}
-                    />
-                  ))}
-                </div>
-                {style === 'emoji' ? <EmojiCursorPicker /> : null}
-              </div>
-              <div data-cursorctl="color">
-                <Label>{t('side.color')}</Label>
-                <div className="flex items-center gap-1.5">
-                  {CURSOR_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      aria-label={`Cursor color ${c}`}
-                      title={c}
-                      onClick={() => setCursorFx({ color: c })}
-                      className={
-                        'h-6 w-6 rounded-full transition ' +
-                        (color.toLowerCase() === c.toLowerCase() ? 'ring-2 ring-[var(--accent)]' : 'ring-1 ring-[var(--line)] hover:ring-white/40')
-                      }
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                  <input
-                    type="color"
-                    aria-label="Custom cursor color"
-                    value={color}
-                    onChange={(e) => setCursorFx({ color: e.target.value })}
-                    className="h-6 w-6 cursor-pointer rounded-full border-0 bg-transparent p-0"
-                    title="Custom color"
-                  />
-                </div>
-              </div>
-              <div data-cursorctl="size">
-                <RangeRow
-                  label={t('side.cursorSize')}
-                  min={50}
-                  max={300}
-                  step={10}
-                  value={Math.round(cursorFx.size * 100)}
-                  fmt={(v) => `${v}%`}
-                  onChange={(v) => setCursorFx({ size: v / 100 })}
-                />
-              </div>
+            {style === 'emoji' ? <EmojiCursorPicker /> : null}
+          </div>
+
+          {/* 4. Motion Segmented Control */}
+          <div data-cursorctl="motion">
+            <Label>Motion</Label>
+            <div className="grid grid-cols-2 gap-2 mt-1.5">
+              <button
+                type="button"
+                onClick={() => setCursorFx({ smoothing: 0, enabled: false })}
+                className={`rounded-xl py-2 px-3 text-xs font-semibold transition-all duration-150 ${
+                  cursorFx.smoothing === 0 && !cursorFx.enabled
+                    ? 'bg-[#0A84FF] text-white shadow-[0_2px_10px_rgba(10,132,255,0.35)]'
+                    : 'bg-[#222226] text-white/70 border border-white/[0.06] hover:bg-[#28282d] hover:text-white'
+                }`}
+              >
+                Natural
+              </button>
+              <button
+                type="button"
+                onClick={() => setCursorFx({ smoothing: cursorFx.smoothing > 0 ? cursorFx.smoothing : 0.5, enabled: true })}
+                className={`rounded-xl py-2 px-3 text-xs font-semibold transition-all duration-150 ${
+                  cursorFx.smoothing > 0 || cursorFx.enabled
+                    ? 'bg-[#0A84FF] text-white shadow-[0_2px_10px_rgba(10,132,255,0.35)]'
+                    : 'bg-[#222226] text-white/70 border border-white/[0.06] hover:bg-[#28282d] hover:text-white'
+                }`}
+              >
+                Smooth
+              </button>
+            </div>
+          </div>
+
+          {/* 5. Additional Smoothing & Effects when Smooth is on */}
+          {(cursorFx.smoothing > 0 || cursorFx.enabled) && (
+            <div className="space-y-2 pt-1 border-t border-white/[0.06]">
               <div data-cursorctl="smoothing">
                 <RangeRow
                   label={t('side.cursorSmoothing')}
-                  min={0}
+                  min={10}
                   max={100}
                   step={5}
                   value={Math.round((cursorFx.smoothing ?? 0.5) * 100)}
-                  fmt={(v) => (v === 0 ? t('side.cursorSmoothingOff') : `${v}%`)}
+                  fmt={(v) => `${v}%`}
                   onChange={(v) => setCursorFx({ smoothing: v / 100 })}
                 />
               </div>
@@ -2908,15 +2952,56 @@ function CursorSection() {
                   onChange={(v) => setCursorFx({ tilt: v / 100 })}
                 />
               </div>
-              <div data-cursorctl="clicks">
-                <ToggleRow label={t('side.clickRipple')} checked={cursorFx.clicks} onChange={(v) => setCursorFx({ clicks: v })} />
-              </div>
-              <div data-cursorctl="clickpress">
-                <ToggleRow label={t('side.clickPress')} checked={cursorFx.clickPress ?? true} onChange={(v) => setCursorFx({ clickPress: v })} />
-              </div>
-            </>
+            </div>
           )}
-          <p className="text-[11px] text-[var(--faint)]">
+
+          {/* 6. Color Picker */}
+          <div data-cursorctl="color">
+            <Label>{t('side.color')}</Label>
+            <div className="flex items-center gap-2 pt-1">
+              {CURSOR_COLORS.map((c) => (
+                <button
+                  key={c}
+                  aria-label={`Cursor color ${c}`}
+                  title={c}
+                  onClick={() => setCursorFx({ color: c })}
+                  className={
+                    'h-6 w-6 rounded-full transition-transform ' +
+                    (color.toLowerCase() === c.toLowerCase() ? 'ring-2 ring-[#0A84FF] scale-110' : 'ring-1 ring-white/20 hover:scale-105')
+                  }
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+              <input
+                type="color"
+                aria-label="Custom cursor color"
+                value={color}
+                onChange={(e) => setCursorFx({ color: e.target.value })}
+                className="h-6 w-6 cursor-pointer rounded-full border-0 bg-transparent p-0"
+                title="Custom color"
+              />
+            </div>
+          </div>
+
+          {/* 7. Click interactions */}
+          <div className="space-y-1 pt-1 border-t border-white/[0.06]">
+            <div data-cursorctl="clicks">
+              <ToggleRow label={t('side.clickRipple')} checked={cursorFx.clicks} onChange={(v) => setCursorFx({ clicks: v })} />
+            </div>
+            <div data-cursorctl="clickpress">
+              <ToggleRow label={t('side.clickPress')} checked={cursorFx.clickPress ?? true} onChange={(v) => setCursorFx({ clickPress: v })} />
+            </div>
+            <div data-cursorctl="idle">
+              <ToggleRow
+                label={t('side.hideWhenIdle')}
+                checked={!!cursorFx.hideWhenIdle}
+                onChange={(v) => setCursorFx({ hideWhenIdle: v })}
+                hint={t('side.hideWhenIdleTip')}
+              />
+            </div>
+          </div>
+
+          <p className="text-[11px] text-white/40 pt-1">
             {on && !hasCursorData ? t('side.cursorNoData') : t('side.cursorTip')}
           </p>
         </>
@@ -3047,7 +3132,7 @@ function ExportSection() {
         <button
           onClick={handleExport}
           disabled={!!busy || !fileUrl}
-          className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-[var(--accent)] text-sm font-semibold text-[var(--accent-fg)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+          className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#0A84FF] text-sm font-semibold text-white shadow-[0_2px_12px_rgba(10,132,255,0.4)] hover:brightness-110 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-60 transition"
         >
           {busy ? (
             <Loader2 size={15} className="animate-spin" />
@@ -3063,9 +3148,9 @@ function ExportSection() {
           disabled={!!busy || !fileUrl || shotBusy}
           title={t('side.captureFrameHint')}
           aria-label={t('side.captureFrame')}
-          className="glass glass-hover flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#222226] border border-white/[0.08] text-white/70 hover:text-white hover:bg-[#28282d] disabled:cursor-not-allowed disabled:opacity-50 transition"
         >
-          {shotBusy ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
+          {shotBusy ? <Loader2 size={15} className="animate-spin" /> : <Camera size={16} />}
         </button>
         <button
           onClick={async () => {
@@ -3078,9 +3163,9 @@ function ExportSection() {
           disabled={!!busy || !fileUrl}
           title={t('editor.copyImage')}
           aria-label={t('editor.copyImage')}
-          className="glass glass-hover flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#222226] border border-white/[0.08] text-white/70 hover:text-white hover:bg-[#28282d] disabled:cursor-not-allowed disabled:opacity-50 transition"
         >
-          {copyFlash ? <Check size={15} className="text-[var(--accent)]" /> : <Copy size={15} />}
+          {copyFlash ? <Check size={16} className="text-[#0A84FF]" /> : <Copy size={16} />}
         </button>
       </div>
       {shotPath && (
@@ -3198,12 +3283,7 @@ function ExportProgressModal({ busy, onCancel }: { busy: BusyState; onCancel: ()
 }
 
 function Label({ children }: { children: React.ReactNode }) {
-  // Section heading, matching the reference: small, uppercase, letterspaced and
-  // quiet, with a hairline RULE above it. The rule is what actually creates the
-  // grouping — without it a panel is one long column of rows and every heading
-  // has to shout to be read as a heading. `.sb-label` carries the spacing and
-  // border from index.css so the first heading in a panel can drop its rule.
-  return <div className="sb-label text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--faint)]">{children}</div>;
+  return <div className="sb-label text-xs font-semibold text-white/80 tracking-normal">{children}</div>;
 }
 
 // How zoom transitions move. Document-level, not per-region: mixing a snappy
@@ -3229,20 +3309,61 @@ function ZoomStylePicker() {
   );
 }
 
-function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function AppleSwitch({
+  checked,
+  onChange,
+  ariaLabel
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  ariaLabel?: string;
+}) {
   return (
-    <label className="flex h-7 items-center justify-between text-[11px]">
-      <span className="text-[var(--text)]">{label}</span>
-      <button
-        onClick={() => onChange(!checked)}
-        aria-label={`${label} toggle`}
-        aria-pressed={checked}
-        title={`Toggle ${label}`}
-        className={'h-[18px] w-8 shrink-0 rounded-full transition ' + (checked ? 'bg-[var(--accent)]' : 'bg-[var(--fill-hover)]')}
-      >
-        <span className={'block h-3.5 w-3.5 rounded-full bg-white shadow transition ' + (checked ? 'translate-x-[15px]' : 'translate-x-[2px]')} />
-      </button>
-    </label>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none ${
+        checked ? 'bg-[#0A84FF]' : 'bg-[#333338] hover:bg-[#3d3d44]'
+      }`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition-transform duration-200 ${
+          checked ? 'translate-x-[18px]' : 'translate-x-[2px]'
+        }`}
+      />
+    </button>
+  );
+}
+
+function ToggleRow({
+  label,
+  checked,
+  onChange,
+  switchFirst = false,
+  hint
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  switchFirst?: boolean;
+  hint?: string;
+}) {
+  return (
+    <div className="py-1">
+      <label className={`flex cursor-pointer items-center ${switchFirst ? 'justify-start gap-3' : 'justify-between gap-2'}`}>
+        {switchFirst && (
+          <AppleSwitch checked={checked} onChange={onChange} ariaLabel={label} />
+        )}
+        <span className="text-xs font-medium text-white/90 select-none">{label}</span>
+        {!switchFirst && (
+          <AppleSwitch checked={checked} onChange={onChange} ariaLabel={label} />
+        )}
+      </label>
+      {hint && <p className="mt-1 text-[11px] text-white/40">{hint}</p>}
+    </div>
   );
 }
 
@@ -3718,10 +3839,11 @@ function ShapeBtn({
       title={label}
       aria-label={label}
       aria-pressed={active}
-      className={
-        'flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium ' +
-        (active ? 'bg-[var(--accent)] text-[var(--accent-fg)]' : 'glass glass-hover text-[var(--muted)]')
-      }
+      className={`flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-medium transition-all duration-150 ${
+        active
+          ? 'bg-[#0A84FF] text-white shadow-[0_2px_10px_rgba(10,132,255,0.35)]'
+          : 'bg-[#222226] text-white/70 border border-white/[0.06] hover:bg-[#28282d] hover:text-white'
+      }`}
     >
       {children}
       <span>{label}</span>
