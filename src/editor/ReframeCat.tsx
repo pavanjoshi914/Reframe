@@ -234,7 +234,7 @@ export function ReframeCat() {
       {thought && (
         <div
           onClick={() => setThought(null)}
-          className={`absolute -top-16 left-1/2 -translate-x-1/2 min-w-[190px] max-w-[260px] cursor-pointer rounded-2xl border border-indigo-400/40 bg-[#0d101a]/95 p-2.5 text-xs text-indigo-100 shadow-2xl backdrop-blur-md transition-all duration-300 ${
+          className={`absolute -top-16 left-1/2 -translate-x-1/2 min-w-[190px] max-w-[260px] cursor-pointer rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-2.5 text-xs text-[var(--text)] shadow-2xl backdrop-blur-md transition-all duration-300 ${
             thought ? 'scale-100 opacity-100' : 'scale-90 opacity-0 pointer-events-none'
           }`}
           style={{ transformOrigin: 'bottom center' }}
@@ -242,12 +242,12 @@ export function ReframeCat() {
         >
           <div className="flex items-start gap-1.5">
             {thought.emoji && <span className="text-base shrink-0">{thought.emoji}</span>}
-            <p className="flex-1 text-[11px] leading-tight font-medium text-slate-200">
+            <p className="flex-1 text-[11px] leading-tight font-medium text-[var(--text)]">
               {thought.text}
             </p>
           </div>
           {/* Speech bubble tail */}
-          <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 h-3 w-3 rotate-45 border-b border-r border-indigo-400/40 bg-[#0d101a]" />
+          <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 h-3 w-3 rotate-45 border-b border-r border-[var(--card-border)] bg-[var(--card)]" />
         </div>
       )}
 

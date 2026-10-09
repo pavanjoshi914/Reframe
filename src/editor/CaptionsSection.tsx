@@ -70,18 +70,18 @@ function AppleSlider({
   return (
     <div className="py-1.5 select-none">
       <div className="mb-1.5 flex items-center justify-between text-xs">
-        <span className="font-medium text-white/70">{label}</span>
-        <span className="font-semibold text-white/95 tabular-nums">{value}{unit}</span>
+        <span className="font-medium text-[var(--muted)]">{label}</span>
+        <span className="font-semibold text-[var(--text)] tabular-nums">{value}{unit}</span>
       </div>
       <div className="relative flex h-5 items-center">
-        <div className="relative h-[5px] w-full rounded-full bg-white/[0.14] overflow-hidden">
+        <div className="relative h-[5px] w-full rounded-full bg-[var(--track)] overflow-hidden">
           <div
             className="absolute left-0 top-0 h-full rounded-full bg-[#0A84FF]"
             style={{ width: `${pct}%` }}
           />
         </div>
         <div
-          className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-white shadow-[0_1px_4px_rgba(0,0,0,0.5)]"
+          className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-white shadow-[0_1px_4px_rgba(0,0,0,0.3)] border border-black/10"
           style={{ left: `calc(${pct}% + ${8 - pct * 0.16}px)` }}
         />
         <input
@@ -115,7 +115,7 @@ function AppleSwitch({
       aria-label={ariaLabel}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none ${
-        checked ? 'bg-[#0A84FF]' : 'bg-[#333338] hover:bg-[#3d3d44]'
+        checked ? 'bg-[#0A84FF]' : 'bg-[var(--track)] border border-[var(--btn-squircle-border)] hover:opacity-80'
       }`}
     >
       <span
@@ -211,9 +211,9 @@ export function CaptionsSection() {
   return (
     <div className="space-y-4 text-xs">
       {/* Enable Toggle & Header */}
-      <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
+      <div className="flex items-center justify-between border-b border-[var(--card-border)] pb-2.5">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-white/90">Captions</span>
+          <span className="font-semibold text-[var(--text)]">Captions</span>
           {captionCues.length > 0 && (
             <span className="rounded-full bg-[#0A84FF]/20 px-2 py-0.5 text-[10px] font-semibold text-[#0A84FF]">
               {captionCues.length}
@@ -230,17 +230,17 @@ export function CaptionsSection() {
       </div>
 
       {/* Auto-Generation Box */}
-      <div className="rounded-2xl border border-white/[0.08] bg-[#222226]/50 p-3.5 space-y-3">
+      <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--panel-2)] p-3.5 space-y-3">
         <div className="flex items-center justify-between">
-          <span className="font-semibold text-white/90 flex items-center gap-1.5 text-xs">
+          <span className="font-semibold text-[var(--text)] flex items-center gap-1.5 text-xs">
             <Sparkles size={14} className="text-[#0A84FF]" /> Auto-Generate
           </span>
           <div className="flex items-center gap-1.5">
-            <Languages size={13} className="text-white/40" />
+            <Languages size={13} className="text-[var(--muted)]" />
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
-              className="rounded-xl border border-white/[0.08] bg-[#222226] px-2.5 py-1 text-xs text-white/90 outline-none hover:border-white/20 transition cursor-pointer"
+              className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--field)] px-2.5 py-1 text-xs text-[var(--text)] outline-none hover:border-[var(--line-2)] transition cursor-pointer"
             >
               {LANGUAGES.map((l) => (
                 <option key={l.code} value={l.code}>
@@ -257,7 +257,7 @@ export function CaptionsSection() {
               <span>{captionDownloadProgress > 0 ? 'Downloading Whisper Model...' : 'Initializing transcription...'}</span>
               <span className="font-mono font-semibold">{captionDownloadProgress}%</span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--track)]">
               <div
                 className="h-full bg-[#0A84FF] transition-all duration-300"
                 style={{ width: `${Math.max(5, captionDownloadProgress)}%` }}
@@ -314,13 +314,13 @@ export function CaptionsSection() {
             value={selectedCue.text}
             onChange={(e) => updateCaptionCue(selectedCue.id, { text: e.target.value })}
             rows={2}
-            className="w-full resize-none rounded-xl border border-white/[0.08] bg-black/40 p-2.5 text-xs text-white outline-none focus:border-[#0A84FF] transition"
+            className="w-full resize-none rounded-xl border border-[var(--card-border)] bg-[var(--field)] p-2.5 text-xs text-[var(--text)] outline-none focus:border-[#0A84FF] transition"
             placeholder="Caption text..."
           />
 
           <div className="grid grid-cols-2 gap-2 text-[11px]">
             <div>
-              <span className="text-white/50 font-medium">Start (s)</span>
+              <span className="text-[var(--muted)] font-medium">Start (s)</span>
               <input
                 type="number"
                 step="0.1"
@@ -330,11 +330,11 @@ export function CaptionsSection() {
                   const ms = Math.round(parseFloat(e.target.value || '0') * 1000);
                   updateCaptionCue(selectedCue.id, { startMs: ms });
                 }}
-                className="mt-1 w-full rounded-lg bg-black/40 px-2.5 py-1 text-white border border-white/[0.08] outline-none focus:border-[#0A84FF]"
+                className="mt-1 w-full rounded-lg bg-[var(--field)] px-2.5 py-1 text-[var(--text)] border border-[var(--card-border)] outline-none focus:border-[#0A84FF]"
               />
             </div>
             <div>
-              <span className="text-white/50 font-medium">End (s)</span>
+              <span className="text-[var(--muted)] font-medium">End (s)</span>
               <input
                 type="number"
                 step="0.1"
@@ -344,7 +344,7 @@ export function CaptionsSection() {
                   const ms = Math.round(parseFloat(e.target.value || '0') * 1000);
                   updateCaptionCue(selectedCue.id, { endMs: ms });
                 }}
-                className="mt-1 w-full rounded-lg bg-black/40 px-2.5 py-1 text-white border border-white/[0.08] outline-none focus:border-[#0A84FF]"
+                className="mt-1 w-full rounded-lg bg-[var(--field)] px-2.5 py-1 text-[var(--text)] border border-[var(--card-border)] outline-none focus:border-[#0A84FF]"
               />
             </div>
           </div>
@@ -353,13 +353,13 @@ export function CaptionsSection() {
 
       {/* Style & Animation Settings */}
       <div className="space-y-3.5 pt-1">
-        <span className="font-semibold text-white/80 text-xs flex items-center gap-1.5">
+        <span className="font-semibold text-[var(--text)] text-xs flex items-center gap-1.5">
           <Sliders size={13} /> Style & Animation
         </span>
 
         {/* Animation Styles */}
         <div className="space-y-1.5">
-          <span className="text-xs font-medium text-white/60">Animation</span>
+          <span className="text-xs font-medium text-[var(--muted)]">Animation</span>
           <div className="grid grid-cols-2 gap-1.5">
             {(
               [
@@ -377,7 +377,7 @@ export function CaptionsSection() {
                   className={`rounded-xl py-2 text-xs font-semibold transition-all duration-150 ${
                     active
                       ? 'bg-[#0A84FF] text-white shadow-[0_2px_10px_rgba(10,132,255,0.35)]'
-                      : 'bg-[#222226] text-white/70 border border-white/[0.06] hover:bg-[#28282d] hover:text-white'
+                      : 'bg-[var(--btn-squircle)] text-[var(--muted)] border border-[var(--btn-squircle-border)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]'
                   }`}
                 >
                   {a.label}
@@ -390,11 +390,11 @@ export function CaptionsSection() {
         {/* Font Family & Size */}
         <div className="space-y-3">
           <div>
-            <span className="text-xs font-medium text-white/60">Font</span>
+            <span className="text-xs font-medium text-[var(--muted)]">Font</span>
             <select
               value={captionSettings.fontFamily}
               onChange={(e) => setCaptionSettings({ fontFamily: e.target.value })}
-              className="mt-1.5 w-full rounded-xl border border-white/[0.08] bg-[#222226] px-3 py-2 text-xs font-medium text-white/90 outline-none hover:border-white/20 transition cursor-pointer"
+              className="mt-1.5 w-full rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--field)] px-3 py-2 text-xs font-medium text-[var(--text)] outline-none hover:border-[var(--line-2)] transition cursor-pointer"
             >
               {FONTS.map((f) => (
                 <option key={f.id} value={f.id}>
@@ -419,7 +419,7 @@ export function CaptionsSection() {
         <div className="space-y-2.5 pt-1">
           <div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-white/60">Text Color</span>
+              <span className="font-medium text-[var(--muted)]">Text Color</span>
               <input
                 type="color"
                 value={captionSettings.textColor}
@@ -443,7 +443,7 @@ export function CaptionsSection() {
 
           <div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-white/60">Active Word (Karaoke)</span>
+              <span className="font-medium text-[var(--muted)]">Active Word (Karaoke)</span>
               <input
                 type="color"
                 value={captionSettings.highlightColor}
@@ -488,7 +488,7 @@ export function CaptionsSection() {
 
         {/* Uppercase toggle */}
         <div className="flex cursor-pointer items-center justify-between py-1">
-          <span className="text-xs font-medium text-white/90">All Caps (Uppercase)</span>
+          <span className="text-xs font-medium text-[var(--text)]">All Caps (Uppercase)</span>
           <AppleSwitch
             checked={captionSettings.uppercase}
             onChange={(checked) => setCaptionSettings({ uppercase: checked })}
@@ -498,25 +498,25 @@ export function CaptionsSection() {
       </div>
 
       {/* Cues List */}
-      <div className="space-y-2.5 pt-3 border-t border-white/[0.06]">
+      <div className="space-y-2.5 pt-3 border-t border-[var(--card-border)]">
         <div className="flex items-center justify-between">
-          <span className="font-semibold text-white/50 uppercase tracking-wider text-[10px]">
+          <span className="font-semibold text-[var(--muted)] uppercase tracking-wider text-[10px]">
             All Cues ({captionCues.length})
           </span>
           <button
             onClick={() => addCaptionCue({ startMs: currentMs })}
-            className="flex items-center gap-1.5 rounded-lg bg-[#222226] border border-white/[0.08] px-2.5 py-1 text-[11px] font-medium text-[#0A84FF] hover:bg-[#28282d] transition"
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--btn-squircle)] border border-[var(--btn-squircle-border)] px-2.5 py-1 text-[11px] font-medium text-[#0A84FF] hover:bg-[var(--btn-squircle-hover)] transition"
           >
             <Plus size={12} /> Add at Playhead
           </button>
         </div>
 
         {captionCues.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-white/10 p-5 text-center text-xs text-white/40">
+          <div className="rounded-xl border border-dashed border-[var(--card-border)] p-5 text-center text-xs text-[var(--muted)]">
             No captions yet. Click &quot;Generate Captions&quot; or press &quot;C&quot; to add manually.
           </div>
         ) : (
-          <div className="max-h-56 overflow-y-auto space-y-1.5 rounded-xl border border-white/[0.06] bg-black/20 p-1.5">
+          <div className="max-h-56 overflow-y-auto space-y-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--panel-2)] p-1.5">
             {captionCues.map((cue) => {
               const isSelected = selectedCaptionId === cue.id;
               return (
@@ -528,12 +528,12 @@ export function CaptionsSection() {
                   }}
                   className={`flex cursor-pointer items-center justify-between gap-2 rounded-xl p-2 transition ${
                     isSelected
-                      ? 'bg-[#0A84FF]/20 text-white border border-[#0A84FF]/50 shadow-sm'
-                      : 'bg-[#222226]/60 border border-white/[0.04] text-white/70 hover:bg-[#222226] hover:text-white'
+                      ? 'bg-[#0A84FF]/20 text-[var(--text)] border border-[#0A84FF]/50 shadow-sm'
+                      : 'bg-[var(--card)] border border-[var(--card-border)] text-[var(--text)] hover:bg-[var(--btn-squircle-hover)]'
                   }`}
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <span className="shrink-0 font-mono text-[10px] text-white/40 px-1 py-0.5 rounded bg-black/30">
+                    <span className="shrink-0 font-mono text-[10px] text-[var(--muted)] px-1 py-0.5 rounded bg-[var(--panel-3)] border border-[var(--card-border)]">
                       {formatSeconds(cue.startMs)}s
                     </span>
                     <span className="truncate text-xs font-medium">{cue.text}</span>
@@ -543,7 +543,7 @@ export function CaptionsSection() {
                       e.stopPropagation();
                       deleteCaptionCue(cue.id);
                     }}
-                    className="shrink-0 p-1 text-white/40 hover:text-rose-400 transition"
+                    className="shrink-0 p-1 text-[var(--muted)] hover:text-rose-500 transition"
                   >
                     <Trash2 size={12} />
                   </button>
@@ -558,7 +558,7 @@ export function CaptionsSection() {
           <div className="flex items-center justify-between pt-1">
             <button
               onClick={handleExportSrt}
-              className="flex items-center gap-1.5 rounded-lg bg-[#222226] border border-white/[0.08] px-2.5 py-1 text-[11px] font-medium text-white/80 hover:text-white hover:bg-[#28282d] transition"
+              className="flex items-center gap-1.5 rounded-lg bg-[var(--btn-squircle)] border border-[var(--btn-squircle-border)] px-2.5 py-1 text-[11px] font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] transition"
             >
               <Download size={12} /> Export SRT
             </button>

@@ -90,9 +90,9 @@ export function Sidebar() {
   const activeTab = TABS.some((x) => x.id === tab) ? tab : 'canvas';
 
   return (
-    <div className="flex h-full w-[370px] shrink-0 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#161619] shadow-2xl">
+    <div className="flex h-full w-[370px] shrink-0 overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-2xl">
       {/* Icon Rail */}
-      <div className="flex w-[56px] shrink-0 flex-col items-center gap-2 border-r border-white/[0.06] bg-[#131316] py-3.5 px-2">
+      <div className="flex w-[56px] shrink-0 flex-col items-center gap-2 border-r border-[var(--card-border)] bg-[var(--panel-2)] py-3.5 px-2">
         {TABS.map((x) => {
           const on = activeTab === x.id;
           const Icon = x.icon;
@@ -111,7 +111,7 @@ export function Sidebar() {
                 'flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150 ' +
                 (on
                   ? 'bg-[#0A84FF] text-white shadow-[0_2px_12px_rgba(10,132,255,0.4)]'
-                  : 'text-white/40 hover:bg-white/[0.06] hover:text-white/85')
+                  : 'text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]')
               }
             >
               <Icon size={19} />
@@ -535,12 +535,12 @@ function RangeRow({
   return (
     <div className="py-2 select-none">
       <div className="mb-2 flex items-center justify-between text-xs">
-        <span className="font-medium text-white/70">{label}</span>
-        <span className="font-semibold text-white/95 tabular-nums">{displayVal}</span>
+        <span className="font-medium text-[var(--muted)]">{label}</span>
+        <span className="font-semibold text-[var(--text)] tabular-nums">{displayVal}</span>
       </div>
       <div className="relative flex h-5 items-center">
         {/* Track */}
-        <div className="relative h-[5px] w-full rounded-full bg-white/[0.14] overflow-hidden">
+        <div className="relative h-[5px] w-full rounded-full bg-[var(--track)] overflow-hidden">
           {/* Active progress fill */}
           <div
             className="absolute left-0 top-0 h-full rounded-full bg-[#0A84FF]"
@@ -552,14 +552,14 @@ function RangeRow({
         {ticks && (
           <div className="pointer-events-none absolute inset-x-1 top-[13px] flex justify-between">
             {(Array.isArray(ticks) ? ticks : [1, 2, 3, 4, 5, 6, 7]).map((_, idx) => (
-              <span key={idx} className="h-0.5 w-0.5 rounded-full bg-white/20" />
+              <span key={idx} className="h-0.5 w-0.5 rounded-full bg-[var(--line-2)]" />
             ))}
           </div>
         )}
 
         {/* Apple white circular thumb */}
         <div
-          className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-white shadow-[0_1px_4px_rgba(0,0,0,0.5)]"
+          className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-white shadow-[0_1px_4px_rgba(0,0,0,0.3)] border border-black/10"
           style={{ left: `calc(${pct}% + ${8 - pct * 0.16}px)` }}
         />
 
@@ -2663,7 +2663,7 @@ function EmojiCursorPicker() {
                 'flex h-7 w-8 items-center justify-center rounded-md text-[15px] transition-all cursor-pointer ' +
                 (isActive
                   ? 'bg-[var(--accent)] text-white shadow-sm ring-1 ring-[var(--accent)] font-semibold scale-105'
-                  : 'text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-white')
+                  : 'text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]')
               }
             >
               {cat.icon}
@@ -2733,10 +2733,10 @@ function CursorStyleTile({
       title={label}
       aria-pressed={active}
       className={
-        'relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#222226] border transition-all duration-150 ' +
+        'relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--btn-squircle)] border transition-all duration-150 ' +
         (active
           ? 'border-[#0A84FF] ring-2 ring-[#0A84FF] shadow-sm'
-          : 'border-white/[0.08] hover:border-white/25 hover:bg-[#28282d]')
+          : 'border-[var(--btn-squircle-border)] hover:border-[var(--line-2)] hover:bg-[var(--btn-squircle-hover)]')
       }
     >
       <span className="flex items-center justify-center">
@@ -2849,7 +2849,7 @@ function CursorSection() {
       </div>
 
       {hideCompletely ? (
-        <div className="rounded-xl border border-white/[0.08] bg-[#222226]/50 p-3 text-center text-xs text-white/50">
+        <div className="rounded-xl border border-[var(--card-border)] bg-[var(--fill)] p-3 text-center text-xs text-[var(--muted)]">
           {t('side.cursorHiddenNotice')}
         </div>
       ) : (
@@ -2897,7 +2897,7 @@ function CursorSection() {
                 className={`rounded-xl py-2 px-3 text-xs font-semibold transition-all duration-150 ${
                   cursorFx.smoothing === 0 && !cursorFx.enabled
                     ? 'bg-[#0A84FF] text-white shadow-[0_2px_10px_rgba(10,132,255,0.35)]'
-                    : 'bg-[#222226] text-white/70 border border-white/[0.06] hover:bg-[#28282d] hover:text-white'
+                    : 'bg-[var(--btn-squircle)] text-[var(--muted)] border border-[var(--btn-squircle-border)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]'
                 }`}
               >
                 Natural
@@ -2908,7 +2908,7 @@ function CursorSection() {
                 className={`rounded-xl py-2 px-3 text-xs font-semibold transition-all duration-150 ${
                   cursorFx.smoothing > 0 || cursorFx.enabled
                     ? 'bg-[#0A84FF] text-white shadow-[0_2px_10px_rgba(10,132,255,0.35)]'
-                    : 'bg-[#222226] text-white/70 border border-white/[0.06] hover:bg-[#28282d] hover:text-white'
+                    : 'bg-[var(--btn-squircle)] text-[var(--muted)] border border-[var(--btn-squircle-border)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]'
                 }`}
               >
                 Smooth
@@ -2918,7 +2918,7 @@ function CursorSection() {
 
           {/* 5. Additional Smoothing & Effects when Smooth is on */}
           {(cursorFx.smoothing > 0 || cursorFx.enabled) && (
-            <div className="space-y-2 pt-1 border-t border-white/[0.06]">
+            <div className="space-y-2 pt-1 border-t border-[var(--line)]">
               <div data-cursorctl="smoothing">
                 <RangeRow
                   label={t('side.cursorSmoothing')}
@@ -2984,7 +2984,7 @@ function CursorSection() {
           </div>
 
           {/* 7. Click interactions */}
-          <div className="space-y-1 pt-1 border-t border-white/[0.06]">
+          <div className="space-y-1 pt-1 border-t border-[var(--line)]">
             <div data-cursorctl="clicks">
               <ToggleRow label={t('side.clickRipple')} checked={cursorFx.clicks} onChange={(v) => setCursorFx({ clicks: v })} />
             </div>
@@ -3001,7 +3001,7 @@ function CursorSection() {
             </div>
           </div>
 
-          <p className="text-[11px] text-white/40 pt-1">
+          <p className="text-[11px] text-[var(--faint)] pt-1">
             {on && !hasCursorData ? t('side.cursorNoData') : t('side.cursorTip')}
           </p>
         </>
@@ -3148,7 +3148,7 @@ function ExportSection() {
           disabled={!!busy || !fileUrl || shotBusy}
           title={t('side.captureFrameHint')}
           aria-label={t('side.captureFrame')}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#222226] border border-white/[0.08] text-white/70 hover:text-white hover:bg-[#28282d] disabled:cursor-not-allowed disabled:opacity-50 transition"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--btn-squircle)] border border-[var(--btn-squircle-border)] text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] disabled:cursor-not-allowed disabled:opacity-50 transition"
         >
           {shotBusy ? <Loader2 size={15} className="animate-spin" /> : <Camera size={16} />}
         </button>
@@ -3163,7 +3163,7 @@ function ExportSection() {
           disabled={!!busy || !fileUrl}
           title={t('editor.copyImage')}
           aria-label={t('editor.copyImage')}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#222226] border border-white/[0.08] text-white/70 hover:text-white hover:bg-[#28282d] disabled:cursor-not-allowed disabled:opacity-50 transition"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--btn-squircle)] border border-[var(--btn-squircle-border)] text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] disabled:cursor-not-allowed disabled:opacity-50 transition"
         >
           {copyFlash ? <Check size={16} className="text-[#0A84FF]" /> : <Copy size={16} />}
         </button>
@@ -3283,7 +3283,7 @@ function ExportProgressModal({ busy, onCancel }: { busy: BusyState; onCancel: ()
 }
 
 function Label({ children }: { children: React.ReactNode }) {
-  return <div className="sb-label text-xs font-semibold text-white/80 tracking-normal">{children}</div>;
+  return <div className="sb-label text-xs font-semibold text-[var(--text)] tracking-normal">{children}</div>;
 }
 
 // How zoom transitions move. Document-level, not per-region: mixing a snappy
@@ -3326,7 +3326,7 @@ function AppleSwitch({
       aria-label={ariaLabel}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none ${
-        checked ? 'bg-[#0A84FF]' : 'bg-[#333338] hover:bg-[#3d3d44]'
+        checked ? 'bg-[#0A84FF]' : 'bg-[var(--track)] border border-[var(--btn-squircle-border)] hover:opacity-80'
       }`}
     >
       <span
@@ -3357,12 +3357,12 @@ function ToggleRow({
         {switchFirst && (
           <AppleSwitch checked={checked} onChange={onChange} ariaLabel={label} />
         )}
-        <span className="text-xs font-medium text-white/90 select-none">{label}</span>
+        <span className="text-xs font-medium text-[var(--text)] select-none">{label}</span>
         {!switchFirst && (
           <AppleSwitch checked={checked} onChange={onChange} ariaLabel={label} />
         )}
       </label>
-      {hint && <p className="mt-1 text-[11px] text-white/40">{hint}</p>}
+      {hint && <p className="mt-1 text-[11px] text-[var(--muted)]">{hint}</p>}
     </div>
   );
 }
@@ -3842,7 +3842,7 @@ function ShapeBtn({
       className={`flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-medium transition-all duration-150 ${
         active
           ? 'bg-[#0A84FF] text-white shadow-[0_2px_10px_rgba(10,132,255,0.35)]'
-          : 'bg-[#222226] text-white/70 border border-white/[0.06] hover:bg-[#28282d] hover:text-white'
+          : 'bg-[var(--btn-squircle)] text-[var(--muted)] border border-[var(--btn-squircle-border)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]'
       }`}
     >
       {children}

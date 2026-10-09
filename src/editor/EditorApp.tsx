@@ -896,7 +896,7 @@ function ProjectNameField({ path }: { path: string }) {
 }
 
 function Divider() {
-  return <span className="h-4 w-px bg-white/[0.08]" />;
+  return <span className="h-4 w-px bg-[var(--line)]" />;
 }
 
 function fmt(ms: number) {
