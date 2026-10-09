@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, clipboard, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut, session } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, nativeTheme, clipboard, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
@@ -56,6 +56,40 @@ function editorShowing(recordingPath: string): BrowserWindow | null {
   }
   return null;
 }
+
+let currentAppTheme: 'dark' | 'light' = 'dark';
+
+function applyThemeToWindow(win: BrowserWindow, theme: 'dark' | 'light') {
+  if (!win || win.isDestroyed()) return;
+  const isDark = theme === 'dark';
+  const bgColor = isDark ? '#0c0c0e' : '#f5f7fb';
+  try {
+    win.setBackgroundColor(bgColor);
+  } catch {}
+
+  // On Linux X11/Mutter, explicitly set the window property _GTK_THEME_VARIANT
+  // so GNOME Mutter renders the server-side window decoration titlebar in matching dark/light.
+  if (process.platform === 'linux') {
+    try {
+      const handle = win.getNativeWindowHandle();
+      const xid = handle.readUInt32LE(0);
+      if (xid) {
+        spawn('xprop', ['-id', `0x${xid.toString(16)}`, '-f', '_GTK_THEME_VARIANT', '8s', '-set', '_GTK_THEME_VARIANT', theme]);
+      }
+    } catch (err) {
+      console.warn('[main] Failed to set _GTK_THEME_VARIANT:', err);
+    }
+  }
+}
+
+function setAppTheme(theme: 'dark' | 'light') {
+  currentAppTheme = theme;
+  nativeTheme.themeSource = theme;
+  for (const win of editorWindows) {
+    applyThemeToWindow(win, theme);
+  }
+}
+
 let regionSelectorWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 // Best parent window for a modal dialog (e.g. the updater's prompts): whatever's
@@ -292,7 +326,11 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
     y: offset ? 60 + offset : undefined,
     minWidth: 960,
     minHeight: 600,
-    backgroundColor: '#0e0f12',
+    frame: false,
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
+    trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
+    backgroundColor: currentAppTheme === 'dark' ? '#0c0c0e' : '#f5f7fb',
+    darkTheme: currentAppTheme === 'dark',
     show: false,
     icon: APP_ICON,
     // The recording's own name, so a taskbar or alt-tab full of editors can be
@@ -310,6 +348,12 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
   editorRecordings.set(win, recording.filePath);
   lastFocusedEditor = win;
   win.on('focus', () => { lastFocusedEditor = win; });
+  win.on('maximize', () => {
+    win.webContents.send('window:maximized-change', true);
+  });
+  win.on('unmaximize', () => {
+    win.webContents.send('window:maximized-change', false);
+  });
   // Keep the per-window title: loading the page would otherwise let the HTML
   // <title> (identical in every editor) overwrite it.
   win.on('page-title-updated', (e) => e.preventDefault());
@@ -319,6 +363,7 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
   win.once('ready-to-show', () => {
     if (isFirst) win.maximize();
     win.show();
+    applyThemeToWindow(win, currentAppTheme);
   });
   win.webContents.on('did-finish-load', () => {
     if (lastLoadedProject) {
@@ -371,7 +416,11 @@ function createEditorForImage(image: import('../src/shared/ipc.js').ImageMeta) {
     y: offset ? 60 + offset : undefined,
     minWidth: 960,
     minHeight: 600,
-    backgroundColor: '#0e0f12',
+    frame: false,
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
+    trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
+    backgroundColor: currentAppTheme === 'dark' ? '#0c0c0e' : '#f5f7fb',
+    darkTheme: currentAppTheme === 'dark',
     show: false,
     icon: APP_ICON,
     title: `${image.name} — Reframe`,
@@ -387,11 +436,18 @@ function createEditorForImage(image: import('../src/shared/ipc.js').ImageMeta) {
   editorRecordings.set(win, image.filePath);
   lastFocusedEditor = win;
   win.on('focus', () => { lastFocusedEditor = win; });
+  win.on('maximize', () => {
+    win.webContents.send('window:maximized-change', true);
+  });
+  win.on('unmaximize', () => {
+    win.webContents.send('window:maximized-change', false);
+  });
   win.on('page-title-updated', (e) => e.preventDefault());
   const isFirst = editorWindows.size === 1;
   win.once('ready-to-show', () => {
     if (isFirst) win.maximize();
     win.show();
+    applyThemeToWindow(win, currentAppTheme);
   });
   win.webContents.on('did-finish-load', () => {
     if (lastLoadedProject) {
@@ -729,6 +785,35 @@ ipcMain.handle('editor:open', (_evt, recording) => {
 
 ipcMain.handle('editor:openForImage', (_evt, image: import('../src/shared/ipc.js').ImageMeta) => {
   createEditorForImage(image);
+});
+
+ipcMain.handle('app:setTheme', (_evt, theme: 'dark' | 'light') => {
+  setAppTheme(theme);
+});
+
+ipcMain.handle('window:minimize', (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  win?.minimize();
+});
+
+ipcMain.handle('window:maximize', (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  if (!win) return;
+  if (win.isMaximized()) {
+    win.unmaximize();
+  } else {
+    win.maximize();
+  }
+});
+
+ipcMain.handle('window:close', (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  win?.close();
+});
+
+ipcMain.handle('window:isMaximized', (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  return win?.isMaximized() ?? false;
 });
 
 ipcMain.handle('recording:meta', () => lastRecording);
@@ -2509,6 +2594,7 @@ ipcMain.handle('captions:exportSrt', async (evt, req: { cues: import('../src/sha
 });
 
 app.whenReady().then(async () => {
+  nativeTheme.themeSource = currentAppTheme;
   console.log('[main] electron ready, creating HUD');
 
   // Resolve the three on-disk locations (see comments at the top of the file).

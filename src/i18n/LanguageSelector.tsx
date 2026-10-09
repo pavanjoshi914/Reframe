@@ -16,12 +16,12 @@ export function LanguageSelector({ className = '' }: { className?: string }) {
         // whose document never gets a data-theme attribute — so it falls back
         // to the :root dark values and stays dark, while the editor follows
         // whatever theme is set.
-        'cursor-pointer rounded-xl border border-white/[0.08] bg-[#222226] px-2.5 py-1 text-xs font-medium text-white/80 outline-none hover:bg-[#28282d] hover:border-white/20 transition ' +
+        'cursor-pointer rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium text-[var(--text)] outline-none hover:bg-[var(--btn-squircle-hover)] transition ' +
         className
       }
     >
       {LANGS.map((l) => (
-        <option key={l.code} value={l.code} className="bg-[#1c1c1f] text-white">
+        <option key={l.code} value={l.code} className="bg-[var(--panel)] text-[var(--text)]">
           {l.native}
         </option>
       ))}

@@ -76,7 +76,12 @@ const api: Api = {
     const handler = (_e: unknown, progress: number) => cb(progress);
     ipcRenderer.on('captions:downloadProgress', handler);
     return () => ipcRenderer.off('captions:downloadProgress', handler);
-  }
+  },
+  setTheme: (theme) => ipcRenderer.invoke('app:setTheme', theme),
+  minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
+  closeWindow: () => ipcRenderer.invoke('window:close'),
+  isWindowMaximized: () => ipcRenderer.invoke('window:isMaximized')
 };
 
 contextBridge.exposeInMainWorld('api', api);
@@ -102,6 +107,11 @@ contextBridge.exposeInMainWorld('apiEvents', {
     const handler = (_e: unknown, img: import('../src/shared/ipc.js').ImageMeta) => cb(img);
     ipcRenderer.on('image:opened', handler);
     return () => ipcRenderer.off('image:opened', handler);
+  },
+  onMaximizedChange: (cb: (maximized: boolean) => void) => {
+    const handler = (_e: unknown, max: boolean) => cb(max);
+    ipcRenderer.on('window:maximized-change', handler);
+    return () => ipcRenderer.off('window:maximized-change', handler);
   }
 });
 

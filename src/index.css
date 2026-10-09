@@ -54,6 +54,13 @@
   --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14),
                   0 1px 2px rgba(0, 0, 0, 0.30),
                   0 8px 24px -14px rgba(0, 0, 0, 0.55);
+
+  --card:                #161619;
+  --card-border:         rgba(255, 255, 255, 0.08);
+  --btn-squircle:        #222226;
+  --btn-squircle-hover:  #28282d;
+  --btn-squircle-border: rgba(255, 255, 255, 0.08);
+  --strip-bg:            rgba(26, 26, 30, 0.85);
 }
 
 :root[data-theme='light'] {
@@ -89,6 +96,13 @@
   --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9),
                   0 1px 2px rgba(15, 18, 25, 0.06),
                   0 8px 24px -14px rgba(15, 18, 25, 0.18);
+
+  --card:                #ffffff;
+  --card-border:         rgba(0, 0, 0, 0.08);
+  --btn-squircle:        #ffffff;
+  --btn-squircle-hover:  #f0f2f5;
+  --btn-squircle-border: rgba(0, 0, 0, 0.10);
+  --strip-bg:            rgba(255, 255, 255, 0.90);
 }
 
 /* Sidebar section headings.

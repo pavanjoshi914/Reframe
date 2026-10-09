@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart, Sun, Moon, ChevronUp, ChevronDown, Camera, Check, Crop, Copy, Upload } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart, Sun, Moon, ChevronUp, ChevronDown, Camera, Check, Crop, Copy, Upload, Minus, Square, X } from 'lucide-react';
 import { SPONSOR_URL } from '@shared/sponsor';
 import { Preview } from './Preview';
 import { Sidebar } from './Sidebar';
@@ -11,20 +11,99 @@ import { isTextEntry } from './textEntry';
 import type { ProjectFile } from '@shared/ipc';
 import { saveStillNow, copyImageToClipboardNow } from './export';
 import wordmarkUrl from '../../assets/logo-wordmark-transparent.png';
+import logoUrl from '../../assets/logo-transparent.png';
 import { useT } from '../i18n';
 import { LanguageSelector } from '../i18n/LanguageSelector';
 import { ReframeCat } from './ReframeCat';
 
-declare global {
-  interface Window {
-    apiEvents: {
-      onRecordingOpened: (cb: (r: import('@shared/ipc').RecordingMeta) => void) => () => void;
-      onProjectOpened: (
-        cb: (p: { state: unknown; path: string; recording: import('@shared/ipc').RecordingMeta | null; image?: import('@shared/ipc').ImageMeta | null; mediaType?: 'video' | 'image' }) => void
-      ) => () => void;
-      onImageOpened?: (cb: (img: import('@shared/ipc').ImageMeta) => void) => () => void;
-    };
-  }
+function TitleBar() {
+  const [isMaximized, setIsMaximized] = useState(false);
+  const currentProjectPath = useEditor((s) => s.currentProjectPath);
+  const recording = useEditor((s) => s.recording);
+  const imageMeta = useEditor((s) => s.imageMeta);
+
+  useEffect(() => {
+    void window.api?.isWindowMaximized?.().then((max) => {
+      if (typeof max === 'boolean') setIsMaximized(max);
+    });
+    const unsub = window.apiEvents?.onMaximizedChange?.((max: boolean) => {
+      setIsMaximized(max);
+    });
+    return () => unsub?.();
+  }, []);
+
+  const title = useMemo(() => {
+    if (currentProjectPath) {
+      const base = currentProjectPath.split('/').pop()?.split('\\').pop() || '';
+      return `${base.replace(/\.reframe\.json$/, '').replace(/\.json$/, '')} — Reframe`;
+    }
+    if (recording?.filePath) {
+      const base = recording.filePath.split('/').pop()?.split('\\').pop() || '';
+      return `${base.replace(/\.[^.]+$/, '')} — Reframe`;
+    }
+    if (imageMeta?.name) {
+      return `${imageMeta.name} — Reframe`;
+    }
+    return 'Reframe';
+  }, [currentProjectPath, recording, imageMeta]);
+
+  const isMac = window.api?.platform === 'darwin';
+
+  return (
+    <div
+      className="flex h-7 shrink-0 items-center justify-between border-b border-[var(--card-border)] bg-[var(--bg)] px-3 select-none transition-colors duration-150 z-30"
+      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      onDoubleClick={() => void window.api?.maximizeWindow?.()}
+    >
+      <div className="flex items-center gap-2 min-w-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        {isMac ? (
+          <div className="w-14" />
+        ) : (
+          <div className="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+            <img src={logoUrl} alt="Reframe" className="h-3.5 w-3.5 object-contain" />
+            <span className="text-[11px] font-semibold text-[var(--muted)]">Reframe</span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-center min-w-0 px-2 truncate pointer-events-none">
+        <span className="truncate text-[11px] font-medium text-[var(--muted)] tracking-wide">
+          {title}
+        </span>
+      </div>
+
+      <div className="flex items-center justify-end min-w-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        {!isMac && (
+          <div className="flex items-center">
+            <button
+              onClick={() => void window.api?.minimizeWindow?.()}
+              className="flex h-6 w-8 items-center justify-center rounded hover:bg-[var(--btn-squircle-hover)] text-[var(--muted)] hover:text-[var(--text)] transition"
+              title="Minimize"
+              aria-label="Minimize"
+            >
+              <Minus size={11} />
+            </button>
+            <button
+              onClick={() => void window.api?.maximizeWindow?.()}
+              className="flex h-6 w-8 items-center justify-center rounded hover:bg-[var(--btn-squircle-hover)] text-[var(--muted)] hover:text-[var(--text)] transition"
+              title={isMaximized ? 'Restore' : 'Maximize'}
+              aria-label={isMaximized ? 'Restore' : 'Maximize'}
+            >
+              {isMaximized ? <Copy size={10} className="rotate-180" /> : <Square size={10} />}
+            </button>
+            <button
+              onClick={() => void window.api?.closeWindow?.()}
+              className="flex h-6 w-8 items-center justify-center rounded hover:bg-rose-500 hover:text-white text-[var(--muted)] transition"
+              title="Close"
+              aria-label="Close"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function EditorApp() {
@@ -405,6 +484,12 @@ export function EditorApp() {
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
+  useEffect(() => {
+    const t = useEditor.getState().theme;
+    document.documentElement.setAttribute('data-theme', t);
+    void window.api?.setTheme?.(t);
+  }, []);
+
   async function handleSaveProject() {
     const project: ProjectFile = {
       version: 1,
@@ -450,9 +535,10 @@ export function EditorApp() {
   }
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-[var(--bg)]">
+    <div className="flex h-screen w-screen flex-col bg-[var(--bg)] overflow-hidden">
+      <TitleBar />
       {/* top toolbar */}
-      <div className="flex h-12 shrink-0 items-center justify-between bg-transparent px-4">
+      <div className="flex h-11 shrink-0 items-center justify-between bg-transparent px-4">
         <div className="flex items-center gap-3 text-sm">
           <img
             src={wordmarkUrl}
@@ -467,7 +553,7 @@ export function EditorApp() {
             <button
               onClick={() => useEditor.getState().undo()}
               disabled={!canUndo}
-              className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 transition"
+              className="flex h-7 w-7 items-center justify-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-30 transition"
               aria-label={t('editor.undo')}
               title={`${t('editor.undo')} (Ctrl+Z)`}
             >
@@ -476,7 +562,7 @@ export function EditorApp() {
             <button
               onClick={() => useEditor.getState().redo()}
               disabled={!canRedo}
-              className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 transition"
+              className="flex h-7 w-7 items-center justify-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-30 transition"
               aria-label={t('editor.redo')}
               title={`${t('editor.redo')} (Ctrl+Shift+Z)`}
             >
@@ -494,23 +580,23 @@ export function EditorApp() {
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-            className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white transition"
+            className="flex h-7 w-7 items-center justify-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition"
           >
             {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
           </button>
           <LanguageSelector />
           <Divider />
-          <label className="text-xs font-medium text-white/60">{t('editor.aspect')}</label>
+          <label className="text-xs font-medium text-[var(--muted)]">{t('editor.aspect')}</label>
           <select
             value={aspect}
             onChange={(e) => setAspect(e.target.value as any)}
-            className="rounded-xl border border-white/[0.08] bg-[#222226] px-2.5 py-1 text-xs font-medium text-white/80 outline-none hover:bg-[#28282d] hover:border-white/20 transition cursor-pointer"
+            className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium text-[var(--text)] outline-none hover:bg-[var(--btn-squircle-hover)] transition cursor-pointer"
           >
-            <option value="16:9" className="bg-[#1c1c1f]">16:9</option>
-            <option value="4:3" className="bg-[#1c1c1f]">4:3</option>
-            <option value="1:1" className="bg-[#1c1c1f]">1:1</option>
-            <option value="9:16" className="bg-[#1c1c1f]">9:16</option>
-            <option value="auto" className="bg-[#1c1c1f]">Auto</option>
+            <option value="16:9" className="bg-[var(--panel)]">16:9</option>
+            <option value="4:3" className="bg-[var(--panel)]">4:3</option>
+            <option value="1:1" className="bg-[var(--panel)]">1:1</option>
+            <option value="9:16" className="bg-[var(--panel)]">9:16</option>
+            <option value="auto" className="bg-[var(--panel)]">Auto</option>
           </select>
           <Divider />
           <button
@@ -521,8 +607,8 @@ export function EditorApp() {
             <Upload size={13} />
             <span>{t('editor.uploadMediaShort')}</span>
           </button>
-          <button onClick={handleLoadProject} className="rounded-xl border border-white/[0.06] bg-[#222226] px-3 py-1 text-xs font-medium text-white/80 hover:bg-[#28282d] hover:text-white transition">{t('editor.loadProject')}</button>
-          <button onClick={handleSaveProject} className="rounded-xl border border-white/[0.06] bg-[#222226] px-3 py-1 text-xs font-medium text-white/80 hover:bg-[#28282d] hover:text-white transition">{t('editor.saveProjectBtn')}</button>
+          <button onClick={handleLoadProject} className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] transition">{t('editor.loadProject')}</button>
+          <button onClick={handleSaveProject} className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] transition">{t('editor.saveProjectBtn')}</button>
           <Divider />
           {/* Always-available way to support the project, so the post-export
               prompt can stay rare and dismissible. */}
@@ -546,14 +632,14 @@ export function EditorApp() {
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <div
             ref={previewWrapRef}
-            className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-[#161619] shadow-2xl"
+            className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-2xl"
           >
             <div className="flex-1 overflow-hidden">
               <Preview />
             </div>
             {/* playback strip — kept inside the fullscreen wrapper so play /
                 scrub / exit remain reachable when the preview is fullscreened. */}
-            <div className="flex h-12 shrink-0 items-center gap-3 border-t border-white/[0.06] bg-[#1a1a1e]/80 backdrop-blur-md px-4 text-xs">
+            <div className="flex h-12 shrink-0 items-center gap-3 border-t border-[var(--card-border)] bg-[var(--strip-bg)] backdrop-blur-md px-4 text-xs">
               <button
                 onClick={() => setPlaying(!playing)}
                 className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#0A84FF] text-white shadow-[0_2px_10px_rgba(10,132,255,0.35)] hover:brightness-110 active:scale-95 transition"
@@ -562,13 +648,13 @@ export function EditorApp() {
               >
                 {playing ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
               </button>
-              <span className="font-mono text-xs font-medium text-white/70 px-2 py-0.5 rounded-lg bg-black/30 border border-white/[0.04]">
+              <span className="font-mono text-xs font-medium text-[var(--muted)] px-2 py-0.5 rounded-lg bg-[var(--fill)] border border-[var(--stroke)]">
                 {fmt(currentMs)} / {fmt(durationMs)}
               </span>
 
               {/* Apple-grade scrubber */}
               <div className="relative flex-1 flex items-center h-6 group cursor-pointer">
-                <div className="w-full h-1.5 rounded-full bg-white/[0.12] overflow-hidden group-hover:h-2 transition-all">
+                <div className="w-full h-1.5 rounded-full bg-[var(--track)] overflow-hidden group-hover:h-2 transition-all">
                   <div
                     className="h-full bg-[#0A84FF] rounded-full"
                     style={{ width: `${Math.min(100, Math.max(0, (currentMs / Math.max(1, durationMs)) * 100))}%` }}
@@ -593,18 +679,18 @@ export function EditorApp() {
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setVideoMuted(!videoMuted)}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white transition"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition"
                   aria-label={videoMuted ? t('editor.unmute') : t('editor.mute')}
                   title={videoMuted ? t('editor.unmuteHint') : t('editor.muteHint')}
                 >
                   {videoMuted || videoVolume === 0 ? (
-                    <VolumeX size={13} className="text-white/40" />
+                    <VolumeX size={13} className="text-[var(--faint)]" />
                   ) : (
                     <Volume2 size={13} />
                   )}
                 </button>
                 <div className="relative flex items-center w-20 h-5 group">
-                  <div className="w-full h-1 rounded-full bg-white/[0.12] overflow-hidden group-hover:h-1.5 transition-all">
+                  <div className="w-full h-1 rounded-full bg-[var(--track)] overflow-hidden group-hover:h-1.5 transition-all">
                     <div
                       className="h-full bg-[#0A84FF] rounded-full"
                       style={{ width: `${(videoMuted ? 0 : videoVolume) * 100}%` }}
@@ -631,7 +717,7 @@ export function EditorApp() {
               {/* Fullscreen */}
               <button
                 onClick={handleFullscreen}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white transition"
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition"
                 aria-label={isFullscreen ? t('editor.exitFullscreen') : t('editor.fullscreen')}
                 title={isFullscreen ? 'Exit fullscreen (Esc)' : t('editor.fullscreen')}
               >
@@ -648,13 +734,13 @@ export function EditorApp() {
                   'relative flex h-7 w-7 items-center justify-center rounded-lg border transition ' +
                   (isCropped
                     ? 'border-[#0A84FF]/40 bg-[#0A84FF]/20 text-[#0A84FF]'
-                    : 'border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white') +
+                    : 'border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]') +
                   ' disabled:cursor-not-allowed disabled:opacity-30'
                 }
               >
                 <Crop size={13} />
                 {isCropped && (
-                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[#0A84FF] ring-2 ring-[#161619]" />
+                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[#0A84FF] ring-2 ring-[var(--card)]" />
                 )}
               </button>
 
@@ -666,7 +752,7 @@ export function EditorApp() {
                 }}
                 title={t('side.captureFrameHint')}
                 aria-label={t('side.captureFrame')}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white transition"
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition"
               >
                 {shotFlash ? <Check size={13} className="text-emerald-400" /> : <Camera size={13} />}
               </button>
@@ -679,7 +765,7 @@ export function EditorApp() {
                 }}
                 title={t('editor.copyImage')}
                 aria-label={t('editor.copyImage')}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white transition"
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition"
               >
                 {copyFlash ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
               </button>
@@ -689,7 +775,7 @@ export function EditorApp() {
                 onClick={() => setTimelineCollapsed((v) => !v)}
                 title={timelineCollapsed ? 'Show timeline' : 'Hide timeline'}
                 aria-expanded={!timelineCollapsed}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white transition"
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition"
               >
                 {timelineCollapsed ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
               </button>
@@ -772,8 +858,8 @@ function MenuItem({
     // Shared `name` makes these an exclusive accordion: opening one menu closes
     // the others, so the File/Edit/View dropdowns can't stack and overlap.
     <details name="editor-menu" className="relative">
-      <summary className="cursor-pointer list-none select-none rounded-xl px-2.5 py-1 text-xs font-medium text-white/70 hover:bg-[#222226] hover:text-white transition">{label}</summary>
-      <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-2xl border border-white/[0.08] bg-[#1e1e22]/95 backdrop-blur-xl p-1.5 shadow-2xl">
+      <summary className="cursor-pointer list-none select-none rounded-xl px-2.5 py-1 text-xs font-medium text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition">{label}</summary>
+      <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-2xl border border-[var(--card-border)] bg-[var(--panel)] backdrop-blur-xl p-1.5 shadow-2xl">
         {items.map((it) => (
           <button
             key={it.label}
@@ -781,10 +867,10 @@ function MenuItem({
               it.onClick();
               (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
             }}
-            className="flex w-full items-center justify-between gap-4 rounded-xl px-2.5 py-1.5 text-left text-xs font-medium text-white/80 hover:bg-[#28282d] hover:text-white transition"
+            className="flex w-full items-center justify-between gap-4 rounded-xl px-2.5 py-1.5 text-left text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] transition"
           >
             <span>{it.label}</span>
-            {it.shortcut && <span className="text-[10px] text-white/40">{it.shortcut}</span>}
+            {it.shortcut && <span className="text-[10px] text-[var(--faint)]">{it.shortcut}</span>}
           </button>
         ))}
       </div>
@@ -867,7 +953,7 @@ function ProjectNameField({ path }: { path: string }) {
       <button
         onClick={enterEdit}
         title={`${path}\n\n${t('editor.clickToRename')}`}
-        className="group flex max-w-[360px] items-center gap-2 truncate rounded-xl border border-white/[0.06] bg-[#222226] px-2.5 py-1 text-xs font-medium text-white/80 hover:bg-[#28282d] hover:text-white transition"
+        className="group flex max-w-[360px] items-center gap-2 truncate rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] transition"
       >
         <span className="truncate">{projectDisplayName(path)}</span>
         <span className="shrink-0 text-[#0A84FF]">· {formatSavedAgo(lastSavedAt, t)}</span>
@@ -894,7 +980,7 @@ function ProjectNameField({ path }: { path: string }) {
             cancel();
           }
         }}
-        className="w-[280px] rounded-xl border border-[#0A84FF] bg-[#222226] px-2.5 py-1 text-xs text-white outline-none focus:ring-1 focus:ring-[#0A84FF]"
+        className="w-[280px] rounded-xl border border-[#0A84FF] bg-[var(--field)] px-2.5 py-1 text-xs text-[var(--text)] outline-none focus:ring-1 focus:ring-[#0A84FF]"
       />
       {error && <span className="text-xs text-red-400" title={error}>!</span>}
     </div>

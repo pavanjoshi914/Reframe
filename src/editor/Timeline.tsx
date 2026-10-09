@@ -247,20 +247,20 @@ export function Timeline() {
   const emptyLanes = laneRows.filter((r) => r.laneItems.length === 0).map((r) => r.lane);
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-[#161619] shadow-2xl">
-      <div className="flex items-center justify-between border-b border-white/[0.06] bg-[#1a1a1e]/80 backdrop-blur-md px-3.5 py-2 text-xs text-white/70">
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-2xl">
+      <div className="flex items-center justify-between border-b border-[var(--card-border)] bg-[var(--strip-bg)] backdrop-blur-md px-3.5 py-2 text-xs text-[var(--muted)]">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-xs font-medium text-white/90 px-2.5 py-0.5 rounded-lg bg-black/30 border border-white/[0.04]">
+          <span className="font-mono text-xs font-medium text-[var(--text)] px-2.5 py-0.5 rounded-lg bg-[var(--fill)] border border-[var(--stroke)]">
             {formatTime(currentMs)} / {formatTime(durationMs)}
           </span>
           <AspectSelector />
-          <span className="text-[11px] text-white/50">{t('tl.addHint')}</span>
+          <span className="text-[11px] text-[var(--faint)]">{t('tl.addHint')}</span>
         </div>
         <div className="flex items-center gap-2 text-[11px]">
           <button
             onClick={() => applyManualZoom(pixelsPerSecond / PPS_STEP)}
             disabled={pixelsPerSecond <= PPS_MIN + 0.01}
-            className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white disabled:opacity-30 transition"
+            className="flex h-6 w-6 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:opacity-30 transition"
             title={t('tl.zoomOut')}
             aria-label={t('tl.zoomOut')}
           >
@@ -279,7 +279,7 @@ export function Timeline() {
           <button
             onClick={() => applyManualZoom(pixelsPerSecond * PPS_STEP)}
             disabled={pixelsPerSecond >= PPS_MAX - 0.01}
-            className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white disabled:opacity-30 transition"
+            className="flex h-6 w-6 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:opacity-30 transition"
             title={t('tl.zoomIn')}
             aria-label={t('tl.zoomIn')}
           >
@@ -292,15 +292,15 @@ export function Timeline() {
               'flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition ' +
               (fitToWidth
                 ? 'border-[#0A84FF]/40 bg-[#0A84FF]/20 text-[#0A84FF]'
-                : 'border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white')
+                : 'border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]')
             }
             title={t('tl.fitWidth')}
           >
             <Maximize2 size={12} />
             {t('tl.fit')}
           </button>
-          <span className="text-white/20">|</span>
-          <span className="text-white/50">{t('tl.zoomHint')}</span>
+          <span className="text-[var(--faint)] opacity-40">|</span>
+          <span className="text-[var(--faint)]">{t('tl.zoomHint')}</span>
         </div>
       </div>
 
@@ -476,18 +476,18 @@ export function Timeline() {
       </div>
 
       {emptyLanes.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-white/[0.06] bg-[#1a1a1e]/60 px-3 py-2">
-          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">{t('tl.addLane')}</span>
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--card-border)] bg-[var(--strip-bg)] px-3 py-2">
+          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('tl.addLane')}</span>
           {emptyLanes.map((lane) => (
             <span key={lane.kind} className="flex items-center">
               <button
                 onClick={() => addItem(lane.kind, currentMs)}
-                className="group flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#222226] px-2.5 py-1 text-xs font-medium text-white/80 hover:bg-[#28282d] hover:border-white/20 hover:text-white transition shadow-sm"
+                className="group flex items-center gap-1.5 rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] transition shadow-sm"
                 title={`${t('tl.add', { label: t('tl.' + lane.kind) })} (${lane.key})`}
               >
-                <lane.icon size={12} className="text-white/60 group-hover:text-white transition" />
+                <lane.icon size={12} className="text-[var(--muted)] group-hover:text-[var(--text)] transition" />
                 <span>{t('tl.' + lane.kind)}</span>
-                <kbd className="rounded-md bg-white/[0.08] px-1.5 py-0.5 font-mono text-[9px] font-semibold leading-none text-white/40 group-hover:text-white/70">{lane.key}</kbd>
+                <kbd className="rounded-md bg-[var(--fill)] px-1.5 py-0.5 font-mono text-[9px] font-semibold leading-none text-[var(--faint)] group-hover:text-[var(--muted)]">{lane.key}</kbd>
               </button>
               {lane.kind === 'zoom' ? (
                 <button
@@ -765,22 +765,22 @@ function SelectedItemInspector() {
   const showSidebarHint = item.kind === 'zoom' || item.kind === 'speed' || item.kind === 'titleCard';
 
   return (
-    <div className="flex items-center gap-3 border-b border-white/[0.06] bg-[#1a1a1e]/90 px-3.5 py-2 text-xs">
-      <span className="font-semibold uppercase tracking-wider text-white/80 text-[11px]">{item.kind === 'titleCard' ? t('tl.titleCard') : item.kind}</span>
-      <span className="font-mono text-white/60 text-[11px] px-2 py-0.5 rounded-lg bg-black/30 border border-white/[0.04]">
+    <div className="flex items-center gap-3 border-b border-[var(--card-border)] bg-[var(--strip-bg)] px-3.5 py-2 text-xs">
+      <span className="font-semibold uppercase tracking-wider text-[var(--text)] text-[11px]">{item.kind === 'titleCard' ? t('tl.titleCard') : item.kind}</span>
+      <span className="font-mono text-[var(--muted)] text-[11px] px-2 py-0.5 rounded-lg bg-[var(--fill)] border border-[var(--stroke)]">
         {formatTime(item.startMs)} → {formatTime(item.endMs)}
       </span>
 
       {item.kind === 'annotation' && (
-        <span className="truncate text-xs text-white/50">{t('tl.annotationEditHint')}</span>
+        <span className="truncate text-xs text-[var(--faint)]">{t('tl.annotationEditHint')}</span>
       )}
 
       {item.kind === 'titleCard' && (
-        <span className="truncate text-xs text-white/50">{t('tl.titleCardEditHint')}</span>
+        <span className="truncate text-xs text-[var(--faint)]">{t('tl.titleCardEditHint')}</span>
       )}
 
       {showSidebarHint && item.kind !== 'titleCard' && (
-        <span className="text-xs text-white/50">{t('tl.adjustHint')}</span>
+        <span className="text-xs text-[var(--faint)]">{t('tl.adjustHint')}</span>
       )}
 
       <div className="flex-1" />
@@ -803,14 +803,14 @@ function AspectSelector() {
     <select
       value={aspect}
       onChange={(e) => setAspect(e.target.value as any)}
-      className="cursor-pointer rounded-xl border border-white/[0.08] bg-[#222226] px-2.5 py-1 text-xs font-medium text-white/80 outline-none hover:bg-[#28282d] hover:border-white/20 transition"
+      className="cursor-pointer rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium text-[var(--text)] outline-none hover:bg-[var(--btn-squircle-hover)] transition"
       aria-label={t('editor.aspect')}
     >
-      <option value="16:9" className="bg-[#1c1c1f]">16:9</option>
-      <option value="4:3" className="bg-[#1c1c1f]">4:3</option>
-      <option value="1:1" className="bg-[#1c1c1f]">1:1</option>
-      <option value="9:16" className="bg-[#1c1c1f]">9:16</option>
-      <option value="auto" className="bg-[#1c1c1f]">Auto</option>
+      <option value="16:9" className="bg-[var(--panel)]">16:9</option>
+      <option value="4:3" className="bg-[var(--panel)]">4:3</option>
+      <option value="1:1" className="bg-[var(--panel)]">1:1</option>
+      <option value="9:16" className="bg-[var(--panel)]">9:16</option>
+      <option value="auto" className="bg-[var(--panel)]">Auto</option>
     </select>
   );
 }

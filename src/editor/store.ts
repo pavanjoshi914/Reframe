@@ -633,6 +633,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setTheme: (t) => {
     try { localStorage.setItem('reframe.theme', t); } catch { /* private mode */ }
     document.documentElement.setAttribute('data-theme', t);
+    void window.api?.setTheme?.(t);
     set({ theme: t });
   },
   mainVideoEl: null,
