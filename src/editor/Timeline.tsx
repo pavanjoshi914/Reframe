@@ -247,22 +247,24 @@ export function Timeline() {
   const emptyLanes = laneRows.filter((r) => r.laneItems.length === 0).map((r) => r.lane);
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl bg-[var(--panel)]">
-      <div className="flex items-center justify-between border-b border-white/5 px-3 py-1.5 text-xs text-[var(--muted)]">
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-[#161619] shadow-2xl">
+      <div className="flex items-center justify-between border-b border-white/[0.06] bg-[#1a1a1e]/80 backdrop-blur-md px-3.5 py-2 text-xs text-white/70">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-[var(--text)]">{formatTime(currentMs)} / {formatTime(durationMs)}</span>
+          <span className="font-mono text-xs font-medium text-white/90 px-2.5 py-0.5 rounded-lg bg-black/30 border border-white/[0.04]">
+            {formatTime(currentMs)} / {formatTime(durationMs)}
+          </span>
           <AspectSelector />
-          <span className="text-[11px]">{t('tl.addHint')}</span>
+          <span className="text-[11px] text-white/50">{t('tl.addHint')}</span>
         </div>
         <div className="flex items-center gap-2 text-[11px]">
           <button
             onClick={() => applyManualZoom(pixelsPerSecond / PPS_STEP)}
             disabled={pixelsPerSecond <= PPS_MIN + 0.01}
-            className="flex h-5 w-5 items-center justify-center rounded border border-[var(--line)] bg-[var(--panel-2)] text-[var(--muted)] hover:bg-[var(--panel-3)] disabled:opacity-40"
+            className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white disabled:opacity-30 transition"
             title={t('tl.zoomOut')}
             aria-label={t('tl.zoomOut')}
           >
-            <Minus size={11} />
+            <Minus size={12} />
           </button>
           <input
             type="range"
@@ -270,35 +272,35 @@ export function Timeline() {
             max={1000}
             value={Math.round(ppsToSlider(pixelsPerSecond) * 1000)}
             onChange={(e) => applyManualZoom(sliderToPps(Number(e.target.value) / 1000))}
-            className="h-1 w-28 cursor-pointer accent-[var(--accent)]"
+            className="h-1.5 w-28 cursor-pointer accent-[#0A84FF]"
             aria-label={t('tl.timelineZoom')}
             title={t('tl.timelineZoom')}
           />
           <button
             onClick={() => applyManualZoom(pixelsPerSecond * PPS_STEP)}
             disabled={pixelsPerSecond >= PPS_MAX - 0.01}
-            className="flex h-5 w-5 items-center justify-center rounded border border-[var(--line)] bg-[var(--panel-2)] text-[var(--muted)] hover:bg-[var(--panel-3)] disabled:opacity-40"
+            className="flex h-6 w-6 items-center justify-center rounded-lg border border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white disabled:opacity-30 transition"
             title={t('tl.zoomIn')}
             aria-label={t('tl.zoomIn')}
           >
-            <Plus size={11} />
+            <Plus size={12} />
           </button>
           <button
             onClick={() => setFitToWidth(true)}
             disabled={fitToWidth}
             className={
-              'flex items-center gap-1 rounded border border-[var(--line)] px-1.5 py-0.5 ' +
+              'flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition ' +
               (fitToWidth
-                ? 'bg-[var(--accent-dim)] text-[var(--accent)]'
-                : 'bg-[var(--panel-2)] text-[var(--muted)] hover:bg-[var(--panel-3)]')
+                ? 'border-[#0A84FF]/40 bg-[#0A84FF]/20 text-[#0A84FF]'
+                : 'border-white/[0.06] bg-[#222226] text-white/70 hover:bg-[#28282d] hover:text-white')
             }
             title={t('tl.fitWidth')}
           >
-            <Maximize2 size={11} />
+            <Maximize2 size={12} />
             {t('tl.fit')}
           </button>
-          <span className="text-[var(--faint)]">|</span>
-          <span>{t('tl.zoomHint')}</span>
+          <span className="text-white/20">|</span>
+          <span className="text-white/50">{t('tl.zoomHint')}</span>
         </div>
       </div>
 
@@ -474,29 +476,29 @@ export function Timeline() {
       </div>
 
       {emptyLanes.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-white/5 px-2 py-1.5">
-          <span className="mr-0.5 text-[10px] uppercase tracking-wider text-[var(--faint)]">{t('tl.addLane')}</span>
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-white/[0.06] bg-[#1a1a1e]/60 px-3 py-2">
+          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">{t('tl.addLane')}</span>
           {emptyLanes.map((lane) => (
             <span key={lane.kind} className="flex items-center">
               <button
                 onClick={() => addItem(lane.kind, currentMs)}
-                className="group flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-white/[0.03] px-2 py-1 text-[11px] text-[var(--muted)] transition hover:border-[var(--line-2)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
+                className="group flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#222226] px-2.5 py-1 text-xs font-medium text-white/80 hover:bg-[#28282d] hover:border-white/20 hover:text-white transition shadow-sm"
                 title={`${t('tl.add', { label: t('tl.' + lane.kind) })} (${lane.key})`}
               >
-                <lane.icon size={11} />
-                {t('tl.' + lane.kind)}
-                <kbd className="rounded bg-white/10 px-1 py-0.5 font-mono text-[9px] font-semibold leading-none text-[var(--faint)] group-hover:text-[var(--muted)]">{lane.key}</kbd>
+                <lane.icon size={12} className="text-white/60 group-hover:text-white transition" />
+                <span>{t('tl.' + lane.kind)}</span>
+                <kbd className="rounded-md bg-white/[0.08] px-1.5 py-0.5 font-mono text-[9px] font-semibold leading-none text-white/40 group-hover:text-white/70">{lane.key}</kbd>
               </button>
               {lane.kind === 'zoom' ? (
                 <button
                   data-testid="suggest-zooms"
                   onClick={() => suggestZooms()}
                   disabled={!hasActivity}
-                  className="ml-1 flex h-6 w-6 items-center justify-center rounded-md bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent-dim)] disabled:opacity-30"
+                  className="ml-1.5 flex h-7 w-7 items-center justify-center rounded-xl border border-[#0A84FF]/30 bg-[#0A84FF]/15 text-[#0A84FF] hover:bg-[#0A84FF]/25 disabled:opacity-30 transition"
                   title={hasActivity ? t('tl.suggestZooms') : t('tl.noCursorData')}
                   aria-label={t('tl.suggestZooms')}
                 >
-                  <Sparkles size={11} />
+                  <Sparkles size={12} />
                 </button>
               ) : null}
             </span>
@@ -763,31 +765,31 @@ function SelectedItemInspector() {
   const showSidebarHint = item.kind === 'zoom' || item.kind === 'speed' || item.kind === 'titleCard';
 
   return (
-    <div className="flex items-center gap-3 border-b border-white/5 bg-[var(--panel)] px-3 py-1.5 text-xs">
-      <span className="font-medium uppercase tracking-wide text-[var(--muted)]">{item.kind === 'titleCard' ? t('tl.titleCard') : item.kind}</span>
-      <span className="font-mono text-[var(--faint)]">
+    <div className="flex items-center gap-3 border-b border-white/[0.06] bg-[#1a1a1e]/90 px-3.5 py-2 text-xs">
+      <span className="font-semibold uppercase tracking-wider text-white/80 text-[11px]">{item.kind === 'titleCard' ? t('tl.titleCard') : item.kind}</span>
+      <span className="font-mono text-white/60 text-[11px] px-2 py-0.5 rounded-lg bg-black/30 border border-white/[0.04]">
         {formatTime(item.startMs)} → {formatTime(item.endMs)}
       </span>
 
       {item.kind === 'annotation' && (
-        <span className="truncate text-[11px] text-[var(--faint)]">{t('tl.annotationEditHint')}</span>
+        <span className="truncate text-xs text-white/50">{t('tl.annotationEditHint')}</span>
       )}
 
       {item.kind === 'titleCard' && (
-        <span className="truncate text-[11px] text-[var(--faint)]">{t('tl.titleCardEditHint')}</span>
+        <span className="truncate text-xs text-white/50">{t('tl.titleCardEditHint')}</span>
       )}
 
       {showSidebarHint && item.kind !== 'titleCard' && (
-        <span className="text-[11px] text-[var(--faint)]">{t('tl.adjustHint')}</span>
+        <span className="text-xs text-white/50">{t('tl.adjustHint')}</span>
       )}
 
       <div className="flex-1" />
       <button
         onClick={() => { removeItem(item.id); selectItem(null); }}
-        className="flex items-center gap-1 rounded border border-[var(--line)] bg-rose-500/10 px-2 py-1 text-[11px] text-rose-300 hover:bg-rose-500/20"
+        className="flex items-center gap-1.5 rounded-lg border border-rose-500/25 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-300 hover:bg-rose-500/20 transition"
         title={t('tl.deleteDel')}
       >
-        <Trash2 size={11} /> {t('common.delete')}
+        <Trash2 size={12} /> {t('common.delete')}
       </button>
     </div>
   );
@@ -801,14 +803,14 @@ function AspectSelector() {
     <select
       value={aspect}
       onChange={(e) => setAspect(e.target.value as any)}
-      className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2 py-0.5 text-xs text-[var(--text)]"
+      className="cursor-pointer rounded-xl border border-white/[0.08] bg-[#222226] px-2.5 py-1 text-xs font-medium text-white/80 outline-none hover:bg-[#28282d] hover:border-white/20 transition"
       aria-label={t('editor.aspect')}
     >
-      <option value="16:9">16:9</option>
-      <option value="4:3">4:3</option>
-      <option value="1:1">1:1</option>
-      <option value="9:16">9:16</option>
-      <option value="auto">Auto</option>
+      <option value="16:9" className="bg-[#1c1c1f]">16:9</option>
+      <option value="4:3" className="bg-[#1c1c1f]">4:3</option>
+      <option value="1:1" className="bg-[#1c1c1f]">1:1</option>
+      <option value="9:16" className="bg-[#1c1c1f]">9:16</option>
+      <option value="auto" className="bg-[#1c1c1f]">Auto</option>
     </select>
   );
 }
