@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart, Sun, Moon, ChevronUp, ChevronDown, Camera, Check, Crop, Copy, Upload, Minus, Square, X } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Play, Pause, Maximize2, Minimize2, Volume2, VolumeX, Undo2, Redo2, Heart, Sun, Moon, ChevronUp, ChevronDown, Camera, Check, Crop, Copy, Upload } from 'lucide-react';
 import { SPONSOR_URL } from '@shared/sponsor';
 import { Preview } from './Preview';
 import { Sidebar } from './Sidebar';
@@ -11,100 +11,9 @@ import { isTextEntry } from './textEntry';
 import type { ProjectFile } from '@shared/ipc';
 import { saveStillNow, copyImageToClipboardNow } from './export';
 import wordmarkUrl from '../../assets/logo-wordmark-transparent.png';
-import logoUrl from '../../assets/logo-transparent.png';
 import { useT } from '../i18n';
 import { LanguageSelector } from '../i18n/LanguageSelector';
 import { ReframeCat } from './ReframeCat';
-
-function TitleBar() {
-  const [isMaximized, setIsMaximized] = useState(false);
-  const currentProjectPath = useEditor((s) => s.currentProjectPath);
-  const recording = useEditor((s) => s.recording);
-  const imageMeta = useEditor((s) => s.imageMeta);
-
-  useEffect(() => {
-    void window.api?.isWindowMaximized?.().then((max) => {
-      if (typeof max === 'boolean') setIsMaximized(max);
-    });
-    const unsub = window.apiEvents?.onMaximizedChange?.((max: boolean) => {
-      setIsMaximized(max);
-    });
-    return () => unsub?.();
-  }, []);
-
-  const title = useMemo(() => {
-    if (currentProjectPath) {
-      const base = currentProjectPath.split('/').pop()?.split('\\').pop() || '';
-      return `${base.replace(/\.reframe\.json$/, '').replace(/\.json$/, '')} — Reframe`;
-    }
-    if (recording?.filePath) {
-      const base = recording.filePath.split('/').pop()?.split('\\').pop() || '';
-      return `${base.replace(/\.[^.]+$/, '')} — Reframe`;
-    }
-    if (imageMeta?.name) {
-      return `${imageMeta.name} — Reframe`;
-    }
-    return 'Reframe';
-  }, [currentProjectPath, recording, imageMeta]);
-
-  const isMac = window.api?.platform === 'darwin';
-
-  return (
-    <div
-      className="flex h-7 shrink-0 items-center justify-between border-b border-[var(--card-border)] bg-[var(--bg)] px-3 select-none transition-colors duration-150 z-30"
-      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-      onDoubleClick={() => void window.api?.maximizeWindow?.()}
-    >
-      <div className="flex items-center gap-2 min-w-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-        {isMac ? (
-          <div className="w-14" />
-        ) : (
-          <div className="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
-            <img src={logoUrl} alt="Reframe" className="h-3.5 w-3.5 object-contain" />
-            <span className="text-[11px] font-semibold text-[var(--muted)]">Reframe</span>
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center justify-center min-w-0 px-2 truncate pointer-events-none">
-        <span className="truncate text-[11px] font-medium text-[var(--muted)] tracking-wide">
-          {title}
-        </span>
-      </div>
-
-      <div className="flex items-center justify-end min-w-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-        {!isMac && (
-          <div className="flex items-center">
-            <button
-              onClick={() => void window.api?.minimizeWindow?.()}
-              className="flex h-6 w-8 items-center justify-center rounded hover:bg-[var(--btn-squircle-hover)] text-[var(--muted)] hover:text-[var(--text)] transition"
-              title="Minimize"
-              aria-label="Minimize"
-            >
-              <Minus size={11} />
-            </button>
-            <button
-              onClick={() => void window.api?.maximizeWindow?.()}
-              className="flex h-6 w-8 items-center justify-center rounded hover:bg-[var(--btn-squircle-hover)] text-[var(--muted)] hover:text-[var(--text)] transition"
-              title={isMaximized ? 'Restore' : 'Maximize'}
-              aria-label={isMaximized ? 'Restore' : 'Maximize'}
-            >
-              {isMaximized ? <Copy size={10} className="rotate-180" /> : <Square size={10} />}
-            </button>
-            <button
-              onClick={() => void window.api?.closeWindow?.()}
-              className="flex h-6 w-8 items-center justify-center rounded hover:bg-rose-500 hover:text-white text-[var(--muted)] transition"
-              title="Close"
-              aria-label="Close"
-            >
-              <X size={12} />
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export function EditorApp() {
   const [shotFlash, setShotFlash] = useState(false);
@@ -535,10 +444,9 @@ export function EditorApp() {
   }
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-[var(--bg)] overflow-hidden">
-      <TitleBar />
+    <div className="flex h-screen w-screen flex-col bg-[var(--bg)]">
       {/* top toolbar */}
-      <div className="flex h-11 shrink-0 items-center justify-between bg-transparent px-4">
+      <div className="flex h-12 shrink-0 items-center justify-between bg-transparent px-4">
         <div className="flex items-center gap-3 text-sm">
           <img
             src={wordmarkUrl}

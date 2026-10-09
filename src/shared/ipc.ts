@@ -221,10 +221,6 @@ export type Api = {
   exportCaptionsSrt: (req: { cues: CaptionCue[]; defaultName?: string }) => Promise<{ success: boolean; path?: string }>;
   onCaptionDownloadProgress: (cb: (progress: number) => void) => () => void;
   setTheme: (theme: 'dark' | 'light') => Promise<void>;
-  minimizeWindow: () => Promise<void>;
-  maximizeWindow: () => Promise<void>;
-  closeWindow: () => Promise<void>;
-  isWindowMaximized: () => Promise<boolean>;
 };
 
 export type CaptionWord = {
@@ -272,7 +268,6 @@ declare global {
         cb: (p: { state: unknown; path: string; recording: RecordingMeta | null; image?: ImageMeta | null; mediaType?: 'video' | 'image' }) => void
       ) => () => void;
       onImageOpened?: (cb: (img: ImageMeta) => void) => () => void;
-      onMaximizedChange?: (cb: (maximized: boolean) => void) => () => void;
     };
   }
 }

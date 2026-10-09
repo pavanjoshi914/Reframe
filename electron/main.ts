@@ -326,9 +326,6 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
     y: offset ? 60 + offset : undefined,
     minWidth: 960,
     minHeight: 600,
-    frame: false,
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
-    trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
     backgroundColor: currentAppTheme === 'dark' ? '#0c0c0e' : '#f5f7fb',
     darkTheme: currentAppTheme === 'dark',
     show: false,
@@ -348,12 +345,6 @@ function createEditor(recording: import('../src/shared/ipc.js').RecordingMeta) {
   editorRecordings.set(win, recording.filePath);
   lastFocusedEditor = win;
   win.on('focus', () => { lastFocusedEditor = win; });
-  win.on('maximize', () => {
-    win.webContents.send('window:maximized-change', true);
-  });
-  win.on('unmaximize', () => {
-    win.webContents.send('window:maximized-change', false);
-  });
   // Keep the per-window title: loading the page would otherwise let the HTML
   // <title> (identical in every editor) overwrite it.
   win.on('page-title-updated', (e) => e.preventDefault());
@@ -416,9 +407,6 @@ function createEditorForImage(image: import('../src/shared/ipc.js').ImageMeta) {
     y: offset ? 60 + offset : undefined,
     minWidth: 960,
     minHeight: 600,
-    frame: false,
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
-    trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
     backgroundColor: currentAppTheme === 'dark' ? '#0c0c0e' : '#f5f7fb',
     darkTheme: currentAppTheme === 'dark',
     show: false,
@@ -436,12 +424,6 @@ function createEditorForImage(image: import('../src/shared/ipc.js').ImageMeta) {
   editorRecordings.set(win, image.filePath);
   lastFocusedEditor = win;
   win.on('focus', () => { lastFocusedEditor = win; });
-  win.on('maximize', () => {
-    win.webContents.send('window:maximized-change', true);
-  });
-  win.on('unmaximize', () => {
-    win.webContents.send('window:maximized-change', false);
-  });
   win.on('page-title-updated', (e) => e.preventDefault());
   const isFirst = editorWindows.size === 1;
   win.once('ready-to-show', () => {
@@ -789,31 +771,6 @@ ipcMain.handle('editor:openForImage', (_evt, image: import('../src/shared/ipc.js
 
 ipcMain.handle('app:setTheme', (_evt, theme: 'dark' | 'light') => {
   setAppTheme(theme);
-});
-
-ipcMain.handle('window:minimize', (e) => {
-  const win = BrowserWindow.fromWebContents(e.sender);
-  win?.minimize();
-});
-
-ipcMain.handle('window:maximize', (e) => {
-  const win = BrowserWindow.fromWebContents(e.sender);
-  if (!win) return;
-  if (win.isMaximized()) {
-    win.unmaximize();
-  } else {
-    win.maximize();
-  }
-});
-
-ipcMain.handle('window:close', (e) => {
-  const win = BrowserWindow.fromWebContents(e.sender);
-  win?.close();
-});
-
-ipcMain.handle('window:isMaximized', (e) => {
-  const win = BrowserWindow.fromWebContents(e.sender);
-  return win?.isMaximized() ?? false;
 });
 
 ipcMain.handle('recording:meta', () => lastRecording);
