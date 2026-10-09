@@ -214,6 +214,48 @@ export type Api = {
   // Load the sidecar cursor data (samples + clicks) for a recording. Returns
   // null if there's no sidecar. Normalizes the legacy bare-array format.
   getCursorData: (filePath: string) => Promise<CursorData | null>;
+  // Captions
+  getCaptionModelStatus: () => Promise<{ exists: boolean; path: string | null; name: string }>;
+  downloadCaptionModel: () => Promise<{ success: boolean; path?: string; error?: string }>;
+  generateCaptions: (req: { videoPath: string; webcamPath?: string; language?: string }) => Promise<{ cues: CaptionCue[]; error?: string }>;
+  exportCaptionsSrt: (req: { cues: CaptionCue[]; defaultName?: string }) => Promise<{ success: boolean; path?: string }>;
+  onCaptionDownloadProgress: (cb: (progress: number) => void) => () => void;
+};
+
+export type CaptionWord = {
+  text: string;
+  startMs: number;
+  endMs: number;
+  leadingSpace?: boolean;
+};
+
+export type CaptionCue = {
+  id: string;
+  startMs: number;
+  endMs: number;
+  text: string;
+  words?: CaptionWord[];
+};
+
+export type CaptionAnimation = 'none' | 'highlight' | 'word' | 'bounce';
+
+export type CaptionSettings = {
+  enabled: boolean;
+  fontSize: number;          // in base 1080p pixels (default: 38)
+  fontFamily: string;        // default: 'Inter'
+  textColor: string;         // default: '#ffffff'
+  highlightColor: string;    // default: '#38bdf8'
+  backgroundColor: string;   // default: '#000000'
+  backgroundOpacity: number; // 0..1 (default: 0.75)
+  textAlign: 'left' | 'center' | 'right';
+  posY: number;              // 0..1 fraction from top (default: 0.85)
+  posX: number;              // 0..1 fraction from left (default: 0.5)
+  maxWidth: number;          // 0..1 fraction (default: 0.85)
+  animation: CaptionAnimation; // 'highlight' (karaoke), 'word', 'bounce', 'none'
+  boxRadius: number;         // default: 10
+  uppercase: boolean;        // default: false
+  strokeWidth: number;       // text outline stroke width (default: 3)
+  strokeColor: string;       // default: '#000000'
 };
 
 declare global {

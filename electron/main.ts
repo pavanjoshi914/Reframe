@@ -5,6 +5,8 @@ import { Readable } from 'node:stream';
 import { spawn, spawnSync, execFileSync, type ChildProcess } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkForUpdates } from './updater';
+import { getWhisperModelStatus, downloadWhisperModel } from './captions/whisper';
+import { generateCaptions } from './captions/generate';
 
 // Custom scheme so the renderer (running on http://localhost:5173 in dev) can
 // load on-disk recordings without tripping webSecurity. Must be declared
@@ -2443,6 +2445,67 @@ ipcMain.handle('export:save', async (evt, req: { defaultName: string; data: Arra
   if (res.canceled || !res.filePath) return { saved: false };
   fs.writeFileSync(res.filePath, payload);
   return { saved: true, path: res.filePath };
+});
+
+function formatSrtTime(ms: number): string {
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  const milli = Math.floor(ms % 1000);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(milli).padStart(3, '0')}`;
+}
+
+ipcMain.handle('captions:getModelStatus', async () => {
+  return await getWhisperModelStatus();
+});
+
+ipcMain.handle('captions:downloadModel', async (evt) => {
+  try {
+    const downloadedPath = await downloadWhisperModel((p) => {
+      evt.sender.send('captions:downloadProgress', p);
+    });
+    return { success: true, path: downloadedPath };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[captions] Download failed:', msg);
+    return { success: false, error: msg };
+  }
+});
+
+ipcMain.handle('captions:generate', async (evt, req: { videoPath: string; webcamPath?: string; language?: string }) => {
+  try {
+    const cues = await generateCaptions({
+      videoPath: req.videoPath,
+      webcamPath: req.webcamPath,
+      language: req.language,
+      onProgress: (p) => {
+        evt.sender.send('captions:downloadProgress', p);
+      }
+    });
+    return { cues };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[captions] Generation failed:', msg);
+    return { cues: [], error: msg };
+  }
+});
+
+ipcMain.handle('captions:exportSrt', async (evt, req: { cues: import('../src/shared/ipc.js').CaptionCue[]; defaultName?: string }) => {
+  const win = BrowserWindow.fromWebContents(evt.sender) ?? liveEditor() ?? undefined;
+  const safeName = (req.defaultName || 'captions').replace(/[^a-z0-9._-]+/gi, '-') + '.srt';
+  const res = await dialog.showSaveDialog(win!, {
+    title: 'Export Captions (SRT)',
+    defaultPath: path.join(exportsDir, safeName),
+    filters: [{ name: 'SubRip Subtitle (*.srt)', extensions: ['srt'] }]
+  });
+  if (res.canceled || !res.filePath) return { success: false };
+
+  const srtContent = req.cues
+    .map((c, i) => `${i + 1}\n${formatSrtTime(c.startMs)} --> ${formatSrtTime(c.endMs)}\n${c.text}\n`)
+    .join('\n');
+
+  fs.writeFileSync(res.filePath, srtContent, 'utf-8');
+  return { success: true, path: res.filePath };
 });
 
 app.whenReady().then(async () => {

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Minus, ZoomIn, Scissors, MessageSquare, Gauge, Trash2, Maximize2, Sparkles, Search, Flashlight, EyeOff, type LucideIcon, Rotate3d, Film, Heading } from 'lucide-react';
-import { useEditor, type LaneItem, type LaneKind } from './store';
+import { Plus, Minus, ZoomIn, Scissors, MessageSquare, Gauge, Trash2, Maximize2, Sparkles, Search, Flashlight, EyeOff, type LucideIcon, Rotate3d, Film, Heading, Subtitles } from 'lucide-react';
+import { useEditor, type LaneItem, type LaneKind, type CaptionCue } from './store';
 import { isTextEntry } from './textEntry';
 import { useT } from '../i18n';
 
@@ -70,6 +70,10 @@ export function Timeline() {
   const setPixelsPerSecond = useEditor((s) => s.setPixelsPerSecond);
   const cursorSamples = useEditor((s) => s.cursorSamples);
   const cursorClicks = useEditor((s) => s.cursorClicks);
+  // Captions
+  const captionCues = useEditor((s) => s.captionCues);
+  const selectedCaptionId = useEditor((s) => s.selectedCaptionId);
+  const addCaptionCue = useEditor((s) => s.addCaptionCue);
   // Auto-zoom now uses clicks as well as movement, so enable the button when
   // either was captured.
   const hasActivity = cursorSamples.length > 0 || cursorClicks.length > 0;
@@ -95,7 +99,7 @@ export function Timeline() {
     return () => ro.disconnect();
   }, []);
 
-  // Keyboard shortcuts: Z/T/A/S add items, Delete removes selected
+  // Keyboard shortcuts: Z/T/A/S add items, C adds caption, Delete removes selected
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       // Stand down only for real TEXT entry. A range slider is an <input> too,
@@ -114,14 +118,24 @@ export function Timeline() {
         useEditor.getState().addWholeVideoEffect(k === 'l' ? 'spotlight' : 'magnify');
         return;
       }
+      if (k === 'c') {
+        e.preventDefault();
+        useEditor.getState().addCaptionCue({ startMs: currentMs });
+        return;
+      }
       if (map[k]) {
         e.preventDefault();
         addItem(map[k], currentMs);
         return;
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedItemId) {
-        e.preventDefault();
-        removeItem(selectedItemId);
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedItemId) {
+          e.preventDefault();
+          removeItem(selectedItemId);
+        } else if (useEditor.getState().selectedCaptionId) {
+          e.preventDefault();
+          useEditor.getState().deleteCaptionCue(useEditor.getState().selectedCaptionId!);
+        }
       }
     }
     window.addEventListener('keydown', onKey);
@@ -328,6 +342,57 @@ export function Timeline() {
 
           {/* lanes */}
           <div className="relative">
+            {/* captions lane */}
+            <div className="flex h-11 items-stretch border-b border-white/5 bg-sky-950/[0.12]">
+              <div
+                className="sticky left-0 z-20 flex shrink-0 items-center justify-between border-r border-white/5 bg-[var(--bg)] px-2 text-[11px] text-[var(--muted)]"
+                style={{ width: LANE_LABEL_W }}
+              >
+                <span className="flex min-w-0 items-center gap-1.5 truncate text-sky-400 font-medium" title="Captions">
+                  <Subtitles size={12} className="shrink-0 text-sky-400" />
+                  <span className="truncate">Captions</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-1">
+                  <button
+                    onClick={() => addCaptionCue({ startMs: currentMs })}
+                    className="group flex h-5 items-center gap-1 rounded bg-[var(--panel-2)] px-1.5 text-sky-300 transition hover:bg-sky-500/20 hover:text-white"
+                    title="Add Caption at Playhead (C)"
+                    aria-label="Add Caption at Playhead (C)"
+                  >
+                    <Plus size={10} />
+                    <kbd className="rounded bg-white/10 px-1 py-0.5 font-mono text-[9px] font-semibold leading-none text-sky-300 group-hover:text-white">
+                      C
+                    </kbd>
+                  </button>
+                </span>
+              </div>
+              <div
+                className="relative cursor-pointer touch-none select-none"
+                style={{ width: trackWidth }}
+                onPointerDown={(e) => {
+                  if (e.target === e.currentTarget) onScrubDown(e);
+                }}
+                onPointerMove={onScrubMove}
+                onPointerUp={onScrubUp}
+                onPointerCancel={onScrubUp}
+              >
+                {captionCues.length === 0 && (
+                  <div className="pointer-events-none flex h-full items-center justify-center text-[10px] text-sky-400/30">
+                    Press C to add caption or generate in Captions tab
+                  </div>
+                )}
+                {captionCues.map((cue) => (
+                  <CaptionChip
+                    key={cue.id}
+                    cue={cue}
+                    pixelsPerSecond={pixelsPerSecond}
+                    durationMs={durationMs}
+                    selected={selectedCaptionId === cue.id}
+                  />
+                ))}
+              </div>
+            </div>
+
             {activeRows.map(({ lane, laneItems }) => {
               return (
                 <div key={lane.kind} className="flex h-12 items-stretch border-b border-white/5">
@@ -595,6 +660,88 @@ function ItemChip({
         onPointerMove={onDragMove}
         onPointerUp={onDragEnd}
         className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize bg-white/0 hover:bg-white/40"
+      />
+    </div>
+  );
+}
+
+function CaptionChip({
+  cue,
+  pixelsPerSecond,
+  durationMs,
+  selected
+}: {
+  cue: CaptionCue;
+  pixelsPerSecond: number;
+  durationMs: number;
+  selected: boolean;
+}) {
+  const updateCaptionCue = useEditor((s) => s.updateCaptionCue);
+  const selectCaption = useEditor((s) => s.selectCaption);
+
+  const left = (cue.startMs / 1000) * pixelsPerSecond;
+  const width = Math.max(12, ((cue.endMs - cue.startMs) / 1000) * pixelsPerSecond);
+
+  const dragRef = useRef<{ kind: 'move' | 'left' | 'right'; startX: number; startMs: number; endMs: number } | null>(null);
+
+  function onDragStart(kind: 'move' | 'left' | 'right', e: React.PointerEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    selectCaption(cue.id);
+    dragRef.current = { kind, startX: e.clientX, startMs: cue.startMs, endMs: cue.endMs };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function onDragMove(e: React.PointerEvent) {
+    const d = dragRef.current;
+    if (!d) return;
+    const dxMs = ((e.clientX - d.startX) / pixelsPerSecond) * 1000;
+    let nextStart = d.startMs;
+    let nextEnd = d.endMs;
+
+    if (d.kind === 'move') {
+      const len = d.endMs - d.startMs;
+      nextStart = Math.max(0, Math.min(durationMs - len, d.startMs + dxMs));
+      nextEnd = nextStart + len;
+    } else if (d.kind === 'left') {
+      nextStart = Math.max(0, Math.min(d.endMs - 150, d.startMs + dxMs));
+    } else if (d.kind === 'right') {
+      nextEnd = Math.max(d.startMs + 150, Math.min(durationMs, d.endMs + dxMs));
+    }
+
+    updateCaptionCue(cue.id, { startMs: Math.round(nextStart), endMs: Math.round(nextEnd) });
+  }
+
+  function onDragEnd(e: React.PointerEvent) {
+    if (!dragRef.current) return;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
+    dragRef.current = null;
+  }
+
+  return (
+    <div
+      className={`group absolute top-1 bottom-1 flex items-center overflow-hidden rounded-md border text-[11px] font-medium transition-shadow select-none ${
+        selected ? 'border-sky-400 bg-sky-500/40 shadow-lg shadow-sky-500/20 ring-1 ring-sky-400' : 'border-sky-500/30 bg-sky-500/20 hover:border-sky-400/60'
+      }`}
+      style={{ left, width }}
+      onPointerDown={(e) => onDragStart('move', e)}
+      onPointerMove={onDragMove}
+      onPointerUp={onDragEnd}
+      onPointerCancel={onDragEnd}
+      title={cue.text}
+    >
+      <div
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40"
+        onPointerDown={(e) => onDragStart('left', e)}
+      />
+      <div className="flex-1 truncate px-2 text-sky-200">
+        {cue.text}
+      </div>
+      <div
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40"
+        onPointerDown={(e) => onDragStart('right', e)}
       />
     </div>
   );

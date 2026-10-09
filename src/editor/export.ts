@@ -838,7 +838,7 @@ export async function runExport({ onProgress }: { onProgress: ProgressFn }): Pro
   const ctx = canvas.getContext('2d', { willReadFrequently: isGif });
   if (!ctx) throw new Error('2D canvas unavailable');
 
-  const drawCtx: DrawCtx = { items, background, effects, border: state.border, borderStyle: state.borderStyle, fieldStyle: state.fieldStyle, webcam, layoutPreset, cropRegion, fullBleed: state.fullBleed, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorKinds: state.cursorKinds, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle, aspect: state.aspect };
+  const drawCtx: DrawCtx = { items, background, effects, border: state.border, borderStyle: state.borderStyle, fieldStyle: state.fieldStyle, webcam, layoutPreset, cropRegion, fullBleed: state.fullBleed, bgImage, cursorSamples: state.cursorSamples, cursorSamplesSmooth: state.cursorSamplesSmooth, cursorClicks: state.cursorClicks, cursorKinds: state.cursorKinds, cursorFx: state.cursorFx, zoomStyle: state.zoomStyle, aspect: state.aspect, captionCues: state.captionCues, captionSettings: state.captionSettings };
 
   // Motion blur: composite each frame onto a scratch canvas, then blend it onto
   // the output at alpha (1-k) so the output is an exponential frame average
@@ -1534,6 +1534,8 @@ export type DrawCtx = {
   cursorFx?: { enabled: boolean; size: number; clicks: boolean; clickPress?: boolean; smoothing?: number; style?: string; color?: string; hideWhenIdle?: boolean; hideCompletely?: boolean; emoji?: string; motionBlur?: number; tilt?: number };
   zoomStyle?: ZoomStyle;
   aspect?: ReturnType<typeof useEditor.getState>['aspect'];
+  captionCues?: import('./store').CaptionCue[];
+  captionSettings?: import('./store').CaptionSettings;
 };
 
 // Interpolated cursor position (normalized 0..1 of the source frame) at `ms`,
@@ -1789,7 +1791,9 @@ export async function captureStill(
     cursorSamplesSmooth: state.cursorSamplesSmooth,
     cursorClicks: state.cursorClicks,
     cursorKinds: state.cursorKinds,
-    cursorFx: state.cursorFx
+    cursorFx: state.cursorFx,
+    captionCues: state.captionCues,
+    captionSettings: state.captionSettings
   });
 
   const format = options?.format ?? 'png';
@@ -2515,6 +2519,13 @@ export function drawFrame(
 
   if (activeTitleCard) {
     drawTitleCard(ctx, activeTitleCard, ms, outW, outH);
+  }
+
+  const activeCaptionCue = d.captionCues?.find(
+    (c: import('./store').CaptionCue) => ms >= c.startMs && ms <= c.endMs
+  );
+  if (activeCaptionCue && (d.captionSettings?.enabled ?? true)) {
+    drawCaptionCue(ctx, activeCaptionCue, d.captionSettings ?? ({} as any), ms, outW, outH);
   }
 
   ctx.restore();
@@ -3719,6 +3730,178 @@ function drawAnnotation(
   lines.forEach((l, i) => {
     const y = cy - totalH / 2 + lineHeight * (i + 0.5);
     ctx.fillText(l, cx, y);
+  });
+
+  ctx.restore();
+}
+
+/**
+ * Draws active caption cue with modern word-level animations:
+ *  - 'highlight': Karaoke style active spoken word in highlight color
+ *  - 'bounce': Active spoken word scales up smoothly
+ *  - 'word': Words pop in as spoken
+ *  - 'none': Clean static subtitle
+ * Outlined with stroke and optional rounded background box for crystal-clear readability.
+ */
+function drawCaptionCue(
+  ctx: CanvasRenderingContext2D,
+  cue: import('./store').CaptionCue,
+  settings: import('./store').CaptionSettings,
+  ms: number,
+  outW: number,
+  outH: number
+) {
+  if (!cue || !cue.text) return;
+
+  const scale = outH / 1080;
+  const fontSize = Math.max(12, Math.round((settings.fontSize ?? 38) * scale));
+  const rawFamily = settings.fontFamily?.trim() || 'Inter';
+  const fontFamily = `"${rawFamily.replace(/["']/g, '')}", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif`;
+  const textColor = settings.textColor || '#ffffff';
+  const highlightColor = settings.highlightColor || '#38bdf8';
+  const strokeColor = settings.strokeColor || '#000000';
+  const strokeWidth = (settings.strokeWidth ?? 3) * scale;
+  const uppercase = !!settings.uppercase;
+  const anim = settings.animation || 'highlight';
+
+  ctx.save();
+  ctx.font = `800 ${fontSize}px ${fontFamily}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+
+  const maxLineW = outW * (settings.maxWidth ?? 0.85);
+
+  type DisplayWord = {
+    text: string;
+    startMs: number;
+    endMs: number;
+    width: number;
+  };
+
+  const rawWordStrings = cue.text.split(/\s+/).filter(Boolean);
+  const cueWords = cue.words && cue.words.length === rawWordStrings.length ? cue.words : null;
+  const wordCount = rawWordStrings.length;
+  if (wordCount === 0) {
+    ctx.restore();
+    return;
+  }
+
+  const duration = Math.max(100, cue.endMs - cue.startMs);
+  const wordDuration = duration / wordCount;
+
+  const words: DisplayWord[] = [];
+  for (let i = 0; i < wordCount; i++) {
+    const rawText = cueWords ? cueWords[i].text : rawWordStrings[i];
+    const text = uppercase ? rawText.toUpperCase() : rawText;
+    const startMs = cueWords ? cueWords[i].startMs : cue.startMs + i * wordDuration;
+    const endMs = cueWords ? cueWords[i].endMs : startMs + wordDuration;
+    const width = ctx.measureText(text).width;
+    words.push({ text, startMs, endMs, width });
+  }
+
+  // Word wrapping into lines
+  const measuredSpace = ctx.measureText(' ').width;
+  const spaceW = Math.max(measuredSpace, fontSize * 0.28);
+  const lines: DisplayWord[][] = [];
+  let currentLine: DisplayWord[] = [];
+  let currentLineW = 0;
+
+  for (const w of words) {
+    const needed = currentLine.length === 0 ? w.width : currentLineW + spaceW + w.width;
+    if (needed > maxLineW && currentLine.length > 0) {
+      lines.push(currentLine);
+      currentLine = [w];
+      currentLineW = w.width;
+    } else {
+      currentLine.push(w);
+      currentLineW = needed;
+    }
+  }
+  if (currentLine.length > 0) lines.push(currentLine);
+
+  const lineHeight = fontSize * 1.35;
+  const totalH = lines.length * lineHeight;
+  const paddingX = fontSize * 0.6;
+  const paddingY = fontSize * 0.4;
+
+  const posX = settings.posX ?? 0.5;
+  const posY = settings.posY ?? 0.85;
+  const centerX = posX * outW;
+  const centerY = posY * outH;
+
+  const lineWidths = lines.map((line) => {
+    return line.reduce((sum, w, idx) => sum + w.width + (idx > 0 ? spaceW : 0), 0);
+  });
+  const maxActualW = Math.max(...lineWidths, 10);
+
+  // Background pill / box
+  const bgOpacity = settings.backgroundOpacity ?? 0.75;
+  if (bgOpacity > 0) {
+    const boxW = maxActualW + paddingX * 2;
+    const boxH = totalH + paddingY * 2;
+    const boxX = centerX - boxW / 2;
+    const boxY = centerY - boxH / 2;
+    const radius = Math.min(boxH / 2, (settings.boxRadius ?? 10) * scale);
+
+    ctx.save();
+    ctx.fillStyle = settings.backgroundColor || '#000000';
+    ctx.globalAlpha = bgOpacity;
+    roundedRectPath(ctx, boxX, boxY, boxW, boxH, radius);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Render each word
+  lines.forEach((line, lineIdx) => {
+    const lineW = lineWidths[lineIdx];
+    let startX = centerX - lineW / 2;
+    if (settings.textAlign === 'left') startX = centerX - maxActualW / 2;
+    else if (settings.textAlign === 'right') startX = centerX + maxActualW / 2 - lineW;
+
+    const lineY = centerY - totalH / 2 + lineHeight * (lineIdx + 0.5);
+
+    let curX = startX;
+    for (const w of line) {
+      const isActive = ms >= w.startMs && ms <= w.endMs;
+
+      if (anim === 'word' && ms < w.startMs) {
+        curX += w.width + spaceW;
+        continue;
+      }
+
+      ctx.save();
+      let color = textColor;
+      let scaleEffect = 1;
+
+      if (anim === 'highlight' && isActive) {
+        color = highlightColor;
+      } else if (anim === 'bounce' && isActive) {
+        color = highlightColor;
+        scaleEffect = 1.15;
+      }
+
+      const wordCenterX = curX + w.width / 2;
+      const wordCenterY = lineY;
+
+      if (scaleEffect !== 1) {
+        ctx.translate(wordCenterX, wordCenterY);
+        ctx.scale(scaleEffect, scaleEffect);
+        ctx.translate(-wordCenterX, -wordCenterY);
+      }
+
+      if (strokeWidth > 0) {
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = strokeWidth;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(w.text, curX, lineY);
+      }
+
+      ctx.fillStyle = color;
+      ctx.fillText(w.text, curX, lineY);
+
+      ctx.restore();
+      curX += w.width + spaceW;
+    }
   });
 
   ctx.restore();

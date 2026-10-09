@@ -382,7 +382,7 @@ export function EditorApp() {
         return;
       }
       if (typing) return;
-      if ((e.key === 'c' || e.key === 'C') && !mod && !e.altKey) {
+      if ((e.key === 'c' || e.key === 'C') && !mod && !e.altKey && e.shiftKey) {
         e.preventDefault();
         if (useEditor.getState().fileUrl) setCropModalOpen((v) => !v);
         return;
@@ -710,7 +710,7 @@ function FileMenu({
         items={[
           { label: t('editor.undo'), onClick: () => useEditor.getState().undo(), shortcut: 'Ctrl+Z' },
           { label: t('editor.redo'), onClick: () => useEditor.getState().redo(), shortcut: 'Ctrl+Shift+Z' },
-          ...(onCrop ? [{ label: t('editor.crop'), onClick: onCrop, shortcut: 'C' }] : []),
+          ...(onCrop ? [{ label: t('editor.crop'), onClick: onCrop, shortcut: 'Shift+C' }] : []),
           { label: t('editor.deleteSelected'), onClick: () => {
               const id = useEditor.getState().selectedItemId;
               if (id) useEditor.getState().removeItem(id);

@@ -513,7 +513,7 @@ export default {
   'crop.original': 'Original',
   'crop.resetFull': 'Reset to Full',
   'editor.crop': 'Crop Video',
-  'editor.cropShortcut': 'Crop Video (C)',
+  'editor.cropShortcut': 'Crop Video (Shift+C)',
   'side.videoFraming': 'Video Crop & Framing',
   'side.cropped': 'Cropped',
   'picker.loading': 'Loading sources…',

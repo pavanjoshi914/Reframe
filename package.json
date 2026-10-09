@@ -80,9 +80,11 @@
       "dist/**/*",
       "dist-electron/**/*",
       "assets/**/*",
+      "electron/native/**/*",
       "node_modules/ffmpeg-static/**/*"
     ],
     "asarUnpack": [
+      "electron/native/**/*",
       "node_modules/ffmpeg-static/**/*"
     ],
     "directories": {

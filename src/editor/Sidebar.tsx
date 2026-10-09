@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight, Camera, Crosshair, LayoutTemplate, Palette, MousePointer2, Music, Play, Pause, Scissors, ExternalLink, Copy, Check, Heading, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Download, Upload, X, Loader2, Circle, Square, RectangleHorizontal, Trash2, ZoomIn, Gauge, Crop, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Type, Search, Flashlight, Camera, Crosshair, LayoutTemplate, Palette, MousePointer2, Music, Play, Pause, Scissors, ExternalLink, Copy, Check, Heading, Subtitles, type LucideIcon } from 'lucide-react';
 import { BORDER_IDS, BORDER_LABELS, BORDER_COLORS, BORDER_DEFAULTS, type BorderId } from './borders';
 import { useEditor, type PolishPreset, DEFAULT_CROP_REGION, ANNOTATION_DEFAULTS, type LaneItem, type CursorStyle } from './store';
 import { runExport, cancelExport, saveStillNow, copyImageToClipboardNow } from './export';
@@ -12,6 +12,7 @@ import { CropModal } from './CropModal';
 import { AudioTrimModal } from './AudioTrimModal';
 import { useT } from '../i18n';
 import { BUNDLED_AUDIO_TRACKS } from './audioTracks';
+import { CaptionsSection } from './CaptionsSection';
 
 const ZOOM_PRESETS = [1.25, 1.5, 1.8, 2.2, 3.5, 5];
 const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.25, 1.5, 2, 3, 5];
@@ -21,11 +22,19 @@ export function Sidebar() {
   const selectedItemId = useEditor((s) => s.selectedItemId);
   const selectedItem = useEditor((s) => s.items.find((it) => it.id === s.selectedItemId) ?? null);
 
+  const selectedCaptionId = useEditor((s) => s.selectedCaptionId);
+
   useEffect(() => {
     if (selectedItemId) {
       setTab('selection');
     }
   }, [selectedItemId]);
+
+  useEffect(() => {
+    if (selectedCaptionId) {
+      setTab('captions');
+    }
+  }, [selectedCaptionId]);
 
   const showSelection = selectedItem && (
     selectedItem.kind === 'zoom' ||
@@ -44,6 +53,7 @@ export function Sidebar() {
   const TABS: { id: string; label: string; icon: LucideIcon }[] = [
     ...(showSelection ? [{ id: 'selection', label: 'Select', icon: Crosshair }] : []),
     { id: 'canvas', label: 'Canvas', icon: LayoutTemplate },
+    { id: 'captions', label: 'Captions', icon: Subtitles },
     { id: 'style', label: 'Style', icon: Palette },
     { id: 'border', label: 'Border', icon: Square },
     { id: 'cursor', label: 'Cursor', icon: MousePointer2 },
@@ -84,6 +94,7 @@ export function Sidebar() {
       <div className="flex w-[318px] min-w-0 shrink-0 flex-col overflow-hidden rounded-xl bg-[var(--panel)]">
         <div className="sb-scroll flex-1 overflow-y-auto px-3 py-2">
           {activeTab === 'selection' && <SelectionSection />}
+          {activeTab === 'captions' && <CaptionsSection />}
           {activeTab === 'cursor' && <CursorSection />}
           {activeTab === 'canvas' && <CompositionSection />}
           {activeTab === 'style' && (

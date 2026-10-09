@@ -642,7 +642,9 @@ export function Preview() {
         cursorKinds: st.cursorKinds,
         cursorFx: st.cursorFx,
         zoomStyle: st.zoomStyle,
-        aspect: st.aspect
+        aspect: st.aspect,
+        captionCues: st.captionCues,
+        captionSettings: st.captionSettings
       });
       const k = Math.max(0, Math.min(0.9, st.effects.motionBlur || 0));
       if (st.playing) {

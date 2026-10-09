@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { RecordingMeta, CursorSample, ClickSample, CursorKindSample } from '@shared/ipc';
+import type { RecordingMeta, CursorSample, ClickSample, CursorKindSample, CaptionWord, CaptionCue, CaptionSettings, CaptionAnimation } from '@shared/ipc';
 import { suggestZoomsFromActivity } from './autoZoom';
 import type { CursorStyleId } from './cursorGlyphs';
 import type { ZoomStyle } from './export';
@@ -45,6 +45,27 @@ export const DEFAULT_BACKGROUND_AUDIO: BackgroundAudio = {
   startSec: 0,
   endSec: null,
   trackDuration: 0
+};
+
+export type { CaptionWord, CaptionCue, CaptionSettings, CaptionAnimation };
+
+export const DEFAULT_CAPTION_SETTINGS: CaptionSettings = {
+  enabled: true,
+  fontSize: 38,
+  fontFamily: 'Inter',
+  textColor: '#ffffff',
+  highlightColor: '#38bdf8',
+  backgroundColor: '#000000',
+  backgroundOpacity: 0.75,
+  textAlign: 'center',
+  posY: 0.85,
+  posX: 0.5,
+  maxWidth: 0.85,
+  animation: 'highlight',
+  boxRadius: 10,
+  uppercase: false,
+  strokeWidth: 3,
+  strokeColor: '#000000'
 };
 
 export type AnnotationStyle = {
@@ -328,6 +349,14 @@ export type EditorState = {
     motionBlur: number; tilt: number;
   };
 
+  // Captions
+  captionCues: CaptionCue[];
+  captionSettings: CaptionSettings;
+  selectedCaptionId: string | null;
+  captionGenerating: boolean;
+  captionDownloadProgress: number;
+  captionDownloadStatus: 'idle' | 'downloading' | 'downloaded' | 'error';
+
   // Undo/redo history (session-only; never serialized). past/future hold
   // document snapshots; _applyingHistory suppresses capture while a snapshot is
   // being restored. The capture subscription baselines off currentProjectPath,
@@ -390,6 +419,16 @@ export type EditorState = {
   setCursorClicks: (c: ClickSample[]) => void;
   setCursorKinds: (k: CursorKindSample[]) => void;
   setCursorFx: (patch: Partial<EditorState['cursorFx']>) => void;
+  // Captions
+  setCaptionSettings: (patch: Partial<CaptionSettings>) => void;
+  setCaptionCues: (cues: CaptionCue[]) => void;
+  addCaptionCue: (cue?: Partial<CaptionCue>) => string;
+  updateCaptionCue: (id: string, patch: Partial<CaptionCue>) => void;
+  deleteCaptionCue: (id: string) => void;
+  selectCaption: (id: string | null) => void;
+  clearCaptionCues: () => void;
+  setCaptionGenerating: (generating: boolean) => void;
+  setCaptionDownloadStatus: (status: 'idle' | 'downloading' | 'downloaded' | 'error', progress?: number) => void;
   // Replace existing zoom items with auto-suggested ones derived from the
   // captured cursor movement. Returns how many were added.
   suggestZooms: () => number;
@@ -411,6 +450,8 @@ export type SerializedProject = {
   polish: PolishPreset;
   showAdvanced: boolean;
   effects: EditorState['effects'];
+  captionCues?: CaptionCue[];
+  captionSettings?: CaptionSettings;
   // Optional: projects saved before borders existed load with no border.
   border?: BorderId;
   borderStyle?: BorderStyle;
@@ -535,7 +576,9 @@ function docOf(s: EditorState): SerializedProject {
     cursorFx: s.cursorFx,
     videoVolume: s.videoVolume,
     videoMuted: s.videoMuted,
-    backgroundAudio: s.backgroundAudio
+    backgroundAudio: s.backgroundAudio,
+    captionCues: s.captionCues,
+    captionSettings: s.captionSettings
   };
 }
 
@@ -658,6 +701,13 @@ export const useEditor = create<EditorState>((set, get) => ({
   cursorClicks: [],
   cursorKinds: [],
   cursorFx: { ...DEFAULT_CURSOR_FX },
+
+  captionCues: [],
+  captionSettings: { ...DEFAULT_CAPTION_SETTINGS },
+  selectedCaptionId: null,
+  captionGenerating: false,
+  captionDownloadProgress: 0,
+  captionDownloadStatus: 'idle',
 
   past: [],
   future: [],
@@ -1096,9 +1146,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     // visible — but only when the playhead isn't already within it, so editing
     // an item you're already viewing doesn't yank the playhead around.
     if (it && (s.currentMs < it.startMs || s.currentMs > it.endMs)) {
-      return { selectedItemId: id, editingAnnotationId: null, currentMs: previewPointFor(it), playing: false };
+      return { selectedItemId: id, selectedCaptionId: null, editingAnnotationId: null, currentMs: previewPointFor(it), playing: false };
     }
-    return { selectedItemId: id, editingAnnotationId: null };
+    return { selectedItemId: id, selectedCaptionId: null, editingAnnotationId: null };
   }),
   // Enter/leave on-canvas annotation text editing. Entering also ensures the
   // annotation is the selected item (so the sidebar editor stays in sync).
@@ -1109,6 +1159,69 @@ export const useEditor = create<EditorState>((set, get) => ({
   setCursorClicks: (c) => set({ cursorClicks: c }),
   setCursorKinds: (k) => set({ cursorKinds: k }),
   setCursorFx: (patch) => set((st) => ({ cursorFx: { ...st.cursorFx, ...patch } })),
+  // Captions
+  setCaptionSettings: (patch) => set((s) => ({ captionSettings: { ...s.captionSettings, ...patch } })),
+  setCaptionCues: (cues) => set({ captionCues: cues }),
+  addCaptionCue: (cue) => {
+    const s = get();
+    const currentMs = s.currentMs;
+    const durationMs = s.durationMs || 10000;
+    const startMs = cue?.startMs ?? currentMs;
+    const endMs = cue?.endMs ?? Math.min(durationMs, startMs + 2500);
+    const id = cue?.id ?? `cue-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const newCue: CaptionCue = {
+      id,
+      startMs,
+      endMs,
+      text: cue?.text ?? 'New Caption',
+      words: cue?.words
+    };
+    const nextCues = [...s.captionCues, newCue].sort((a, b) => a.startMs - b.startMs);
+    set({
+      captionCues: nextCues,
+      selectedCaptionId: id,
+      selectedItemId: null,
+      captionSettings: { ...s.captionSettings, enabled: true }
+    });
+    return id;
+  },
+  updateCaptionCue: (id, patch) => {
+    set((s) => ({
+      captionCues: s.captionCues.map((c) => {
+        if (c.id !== id) return c;
+        const updated = { ...c, ...patch };
+        if (patch.text !== undefined && patch.text !== c.text) {
+          delete updated.words;
+        }
+        return updated;
+      }).sort((a, b) => a.startMs - b.startMs)
+    }));
+  },
+  deleteCaptionCue: (id) => {
+    set((s) => ({
+      captionCues: s.captionCues.filter((c) => c.id !== id),
+      selectedCaptionId: s.selectedCaptionId === id ? null : s.selectedCaptionId
+    }));
+  },
+  selectCaption: (id) => {
+    set((s) => {
+      if (!id) return { selectedCaptionId: null };
+      const cue = s.captionCues.find((c) => c.id === id);
+      if (cue && (s.currentMs < cue.startMs || s.currentMs > cue.endMs)) {
+        return { selectedCaptionId: id, selectedItemId: null, currentMs: cue.startMs, playing: false };
+      }
+      return { selectedCaptionId: id, selectedItemId: null };
+    });
+  },
+  clearCaptionCues: () => {
+    set({ captionCues: [], selectedCaptionId: null });
+  },
+  setCaptionGenerating: (generating) => {
+    set({ captionGenerating: generating });
+  },
+  setCaptionDownloadStatus: (status, progress = 0) => {
+    set({ captionDownloadStatus: status, captionDownloadProgress: progress });
+  },
   suggestZooms: () => {
     const s = get();
     const suggestions = suggestZoomsFromActivity(s.cursorSamples, s.cursorClicks, s.durationMs);
@@ -1189,6 +1302,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       videoVolume: data.videoVolume ?? 1,
       videoMuted: data.videoMuted ?? false,
       backgroundAudio: data.backgroundAudio ? { ...DEFAULT_BACKGROUND_AUDIO, ...data.backgroundAudio } : { ...DEFAULT_BACKGROUND_AUDIO },
+      captionCues: data.captionCues ?? [],
+      captionSettings: data.captionSettings ? { ...DEFAULT_CAPTION_SETTINGS, ...data.captionSettings } : { ...DEFAULT_CAPTION_SETTINGS },
+      selectedCaptionId: null,
       selectedItemId: null,
       // Loading a project is a fresh document → reset undo history.
       past: [],
@@ -1229,6 +1345,8 @@ export const useEditor = create<EditorState>((set, get) => ({
         videoVolume: snap.videoVolume ?? s.videoVolume,
         videoMuted: snap.videoMuted ?? s.videoMuted,
         backgroundAudio: snap.backgroundAudio ? { ...DEFAULT_BACKGROUND_AUDIO, ...snap.backgroundAudio } : s.backgroundAudio,
+        captionCues: snap.captionCues ?? s.captionCues,
+        captionSettings: snap.captionSettings ? { ...DEFAULT_CAPTION_SETTINGS, ...snap.captionSettings } : s.captionSettings,
         selectedItemId: snap.items.some((it) => it.id === s.selectedItemId) ? s.selectedItemId : null
       };
     }),

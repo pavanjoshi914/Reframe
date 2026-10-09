@@ -67,6 +67,15 @@ const api: Api = {
     const handler = () => cb();
     ipcRenderer.on('hud:stop-shortcut', handler);
     return () => ipcRenderer.off('hud:stop-shortcut', handler);
+  },
+  getCaptionModelStatus: () => ipcRenderer.invoke('captions:getModelStatus'),
+  downloadCaptionModel: () => ipcRenderer.invoke('captions:downloadModel'),
+  generateCaptions: (req) => ipcRenderer.invoke('captions:generate', req),
+  exportCaptionsSrt: (req) => ipcRenderer.invoke('captions:exportSrt', req),
+  onCaptionDownloadProgress: (cb) => {
+    const handler = (_e: unknown, progress: number) => cb(progress);
+    ipcRenderer.on('captions:downloadProgress', handler);
+    return () => ipcRenderer.off('captions:downloadProgress', handler);
   }
 };
 
