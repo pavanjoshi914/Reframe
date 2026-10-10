@@ -75,6 +75,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.6.3" date="2026-10-10">
+      <description>
+        <p>Modern Apple-Grade UI &amp; Full Light/Dark Mode: Completely redesigned inspector sidebar with unified rounded container, sleek icon rail, Apple squircle controls, and native-feeling toggles. Full light mode theme overhaul adapting the sidebar, icon rail, sliders, auto-generate captions box, cue editor, transport controls, and companion cat speech bubble. Streamlined playback scrubber and keyboard shortcuts.</p>
+      </description>
+    </release>
     <release version="0.6.2" date="2026-10-06">
       <description>
         <p>Custom Cursor Studio &amp; Authentic Pointing Hand: Authentic macOS pointing hand cursor with exact SVG geometry, uniform stroke widths, and distinct finger creases. Recordly pointer styles (Tahoe, Windows 11 Fluent, Figma multiplayer wedge), high-contrast halo on dark cursors, and full scrollable emoji picker with category jump filtering. New Slow Motion camera presets (Slow Pan, Slow Zoom In, Slow Tilt) with flat continuous moves. Scene inspector animation layout enhancements, timeline add button keyboard shortcut badges, magnetic snapping, and image project video export optimizations.</p>
