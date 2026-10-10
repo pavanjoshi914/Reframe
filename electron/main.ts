@@ -1181,22 +1181,35 @@ function ffprobeBin(): string {
   return 'ffprobe';
 }
 
-// Record the mic ALONE in a separate ffmpeg/PulseAudio process. A microphone is
+// Record the mic ALONE in a separate process. A microphone is
 // a distinct hardware capture clock: it deadlocks pipewiresrc if muxed into the
 // same GStreamer pipeline, and mixing it with the system monitor as a second
 // LIVE ffmpeg input is unreliable too (the monitor can starve amix). So the mic
 // is captured on its own here and combined with the video (and system audio, if
-// any) OFFLINE at finalize, where mixing is deterministic. Returns the AAC file
-// path, or null on failure (recording continues without the mic).
+// any) OFFLINE at finalize, where mixing is deterministic.
+//
+// On Linux/PulseAudio, `ffmpeg -f pulse` frequently hangs on connection handshakes,
+// so we prefer native `parecord` (standard on all PulseAudio systems) or `-f alsa -i pulse`.
 function startSeparateMicAudio(ts: string, source: string): { proc: ChildProcess; path: string } | null {
-  const outPath = path.join(recordingsTempDir, `${ts}-mic.m4a`);
-  const args = [
-    '-hide_banner', '-loglevel', 'error', '-y',
-    '-f', 'pulse', '-i', source, '-map', '0:a', '-c:a', 'aac', '-b:a', '128k', outPath,
-  ];
+  const isLinux = process.platform === 'linux';
+  const outPath = path.join(recordingsTempDir, isLinux ? `${ts}-mic.wav` : `${ts}-mic.m4a`);
+
   try {
-    const proc = spawn(ffmpegBin(), args, { stdio: ['pipe', 'ignore', 'ignore'] });
-    return { proc, path: outPath };
+    if (isLinux) {
+      // Use parecord directly into a WAV container: zero-latency, rock-solid, and never hangs
+      const proc = spawn('parecord', ['-d', source, '--file-format=wav', outPath], {
+        stdio: ['ignore', 'ignore', 'ignore']
+      });
+      console.log(`[main] started mic capture via parecord on ${source}`);
+      return { proc, path: outPath };
+    } else {
+      const args = [
+        '-hide_banner', '-loglevel', 'error', '-y',
+        '-f', 'pulse', '-i', source, '-map', '0:a', '-c:a', 'aac', '-b:a', '128k', outPath,
+      ];
+      const proc = spawn(ffmpegBin(), args, { stdio: ['pipe', 'ignore', 'ignore'] });
+      return { proc, path: outPath };
+    }
   } catch (err) {
     console.warn('[main] separate mic capture failed to start', err);
     return null;
@@ -1349,10 +1362,7 @@ function finalizePipewire(videoMkv: string, micFile: string | null): string {
     let micDelayMs = 0;
     if (haveMic) {
       const vdur = parseFloat(probe(videoMkv, ['-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1']).trim());
-      const aInfo = probe(micFile as string, ['-select_streams', 'a:0', '-count_frames', '-show_entries', 'stream=nb_read_frames,sample_rate', '-of', 'default=nw=1']);
-      const aFrames = parseFloat((/nb_read_frames=(\d+)/.exec(aInfo) || [])[1]);
-      const aRate = parseFloat((/sample_rate=(\d+)/.exec(aInfo) || [])[1]);
-      const adur = (aFrames * 1024) / aRate;
+      const adur = parseFloat(probe(micFile as string, ['-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1']).trim());
       micDelayMs = isFinite(vdur) && isFinite(adur) ? Math.max(0, Math.round((vdur - adur) * 1000)) : 0;
     }
 
