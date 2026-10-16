@@ -12,3 +12,20 @@ __pycache__/
 docs/
 .vercel
 electron/mac-capture
+
+# Marketing and video making (unrelated to core Reframe product)
+reframe-video/
+videos/
+marketing/
+promo/
+scripts/launch_video/
+recordings/
+raw-footage/
+*snap-cn*
+*snapcn*
+*.mp4
+*.mov
+*.webm
+*.avi
+*.mkv
+!website/public/videos/**

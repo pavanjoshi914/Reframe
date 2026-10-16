@@ -1,0 +1,185 @@
+================================================================================
+          TOP 52 SAAS & STARTUP DIRECTORIES (SORTED BY POPULARITY / DR)
+================================================================================
+Purpose: Directory submission playbook to boost new SaaS Domain Rating (DR),
+acquire initial dofollow/nofollow backlinks, and get indexed by search & AI engines.
+Format: [Rank] [Platform Name] (Domain Rating) - Direct URL
+================================================================================
+
+--- TIER 1: THE AUTHORITY GIANTS (DR 85 - 95+) ---
+01. Trustpilot (DR 94)
+    https://www.trustpilot.com/
+
+02. SourceForge (DR 92)
+    https://sourceforge.net/
+
+03. Google Workspace Marketplace (DR 92)
+    https://workspace.google.com/marketplace
+
+04. Product Hunt (DR 91)
+    https://www.producthunt.com/
+
+05. Hacker News (Show HN) (DR 91)
+    https://news.ycombinator.com/show
+
+06. G2 (DR 91)
+    https://www.g2.com/
+
+07. Capterra (DR 91)
+    https://www.capterra.com/
+
+08. Crunchbase (DR 91)
+    https://www.crunchbase.com/
+
+09. GitHub Marketplace (DR 91)
+    https://github.com/marketplace
+
+10. GetApp (DR 88)
+    https://www.getapp.com/
+
+11. Slack App Directory (DR 88)
+    https://slack.com/apps
+
+12. Software Advice (DR 87)
+    https://www.softwareadvice.com/
+
+13. Notion Integrations Gallery (DR 85)
+    https://www.notion.so/integrations
+
+14. TrustRadius (DR 84)
+    https://www.trustradius.com/
+
+15. Chrome Web Store (DR 84)
+    https://chromewebstore.google.com/
+
+16. F6S (DR 83)
+    https://www.f6s.com/
+
+17. AppSumo (DR 83)
+    https://appsumo.com/
+
+
+--- TIER 2: SAAS ALTERNATIVES & DISCOVERY (DR 70 - 83) ---
+18. Indie Hackers (DR 81)
+    https://www.indiehackers.com/
+
+19. SaaSHub (DR 80)
+    https://www.saashub.com/
+
+20. AlternativeTo (DR 78)
+    https://alternativeto.net/
+
+21. StackShare (DR 78)
+    https://stackshare.io/
+
+22. BetaList (DR 77)
+    https://betalist.com/
+
+23. Devpost (DR 76)
+    https://devpost.com/
+
+24. Peerlist (DR 76)
+    https://peerlist.io/
+
+25. Alternative.me (DR 75)
+    https://alternative.me/
+
+26. Uneed (DR 74)
+    https://www.uneed.best/
+
+27. Zapier App Directory (DR 73)
+    https://zapier.com/apps
+
+28. GetLatka (DR 72)
+    https://getlatka.com/
+
+29. Crozdesk (DR 72)
+    https://crozdesk.com/
+
+
+--- TIER 3: AI DIRECTORIES & MID-TIER HUBS (DR 55 - 69) ---
+30. Slant.co (DR 69)
+    https://www.slant.co/
+
+31. SaaSCity (DR 68)
+    https://saascity.io/
+
+32. There's An AI For That (TAAFT) (DR 65)
+    https://theresanaiforthat.com/
+
+33. Futurepedia (DR 65)
+    https://www.futurepedia.io/
+
+34. Startup Stash (DR 65)
+    https://startupstash.com/
+
+35. Raycast Store (DR 65)
+    https://www.raycast.com/store
+
+36. Toolify.ai (DR 62)
+    https://www.toolify.ai/
+
+37. KillerStartups (DR 60)
+    https://www.killerstartups.com/
+
+38. FutureTools.io (DR 58)
+    https://www.futuretools.io/
+
+39. SaaSGenius (DR 57)
+    https://www.saasgenius.com/
+
+40. TopAI.tools (DR 55)
+    https://topai.tools/
+
+41. Betabound (DR 55)
+    https://www.betabound.com/
+
+
+--- TIER 4: INDIE MAKER & FAST-INDEXING LAUNCHPADS (DR 35 - 54) ---
+42. AI Valley (DR 53)
+    https://aivalley.ai/
+
+43. Launching Next (DR 50)
+    https://www.launchingnext.com/
+
+44. TechPluto (DR 49)
+    https://www.techpluto.com/
+
+45. BetaPage (DR 45)
+    https://betapage.co/
+
+46. MicroLaunch (DR 43)
+    https://microlaunch.net/
+
+47. Fazier (DR 42)
+    https://fazier.com/
+
+48. TinyLaunch (DR 40)
+    https://tinylaunch.com/
+
+49. Startup Fame (DR 39)
+    https://startupfame.com/
+
+50. Startup Buffer (DR 38)
+    https://startupbuffer.com/
+
+51. Dang.ai (DR 37)
+    https://dang.ai/
+
+52. Indiebase (DR 35)
+    https://indiebase.io/
+
+================================================================================
+FAST SUBMISSION TEMPLATE (COPY-PASTE INTO DIRECTORY FORMS):
+================================================================================
+• Product Name: [Your SaaS Name]
+• Website URL: https://yourdomain.com
+• One-Line Tagline (<10 words): [Clear benefit + Target audience]
+• Short Description (<50 words): [The core problem, the solution, and 1 key metric]
+• Long Description (150-200 words): [3-4 bullet points highlighting key features, security, pricing]
+• 3 Main Competitors (for AlternativeTo / SaaSHub mapping): [Competitor 1], [Competitor 2], [Competitor 3]
+• Pricing Model: [Free / Freemium / Paid / One-time]
+• Logo: 512x512 transparent PNG
+• Screenshots: 3x 1280x720 clean product UI images
+================================================================================
+
