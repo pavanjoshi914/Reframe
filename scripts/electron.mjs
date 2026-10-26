@@ -70,6 +70,15 @@ if (viteUp) {
 }
 
 if (process.platform === 'linux' && !env.DISPLAY) env.DISPLAY = ':1';
+if (process.platform === 'darwin') {
+  const macCap = path.join(projectRoot, 'electron', 'mac-capture');
+  const curKind = path.join(projectRoot, 'electron', 'cursor-kind');
+  if (!existsSync(macCap) || !existsSync(curKind)) {
+    console.log('[electron] macOS native helpers missing; compiling via scripts/setup-mac.mjs...');
+    const { spawnSync } = await import('node:child_process');
+    spawnSync('node', ['scripts/setup-mac.mjs'], { stdio: 'inherit', cwd: projectRoot });
+  }
+}
 
 const userArgs = process.argv.slice(2);
 const args = ['.', '--no-sandbox', ...userArgs];

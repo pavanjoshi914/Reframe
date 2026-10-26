@@ -75,6 +75,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.6.5" date="2026-10-26">
+      <description>
+        <p>macOS Native Capture &amp; Custom Cursor Fixes: Native ScreenCaptureKit capture and AppKit cursor kind detection now compile automatically for local development and macOS distribution. Resolved 8-second avfoundation startup delay and eliminated redundant window thumbnail captures. Fixed Retina cursor coordinate normalization so custom cursors and click ripples track accurately across the full screen without distortion.</p>
+      </description>
+    </release>
     <release version="0.6.4" date="2026-10-10">
       <description>
         <p>Fix Linux microphone capture: Resolved deadlock with PulseAudio/PipeWire when recording audio with external USB microphones (Fifine PD200X) and system defaults using native parecord integration.</p>

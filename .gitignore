@@ -12,6 +12,7 @@ __pycache__/
 docs/
 .vercel
 electron/mac-capture
+electron/cursor-kind
 
 # Marketing and video making (unrelated to core Reframe product)
 reframe-video/

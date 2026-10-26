@@ -703,6 +703,18 @@ function writeRecordingSidecars(
             .filter((p) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1);
         }
         if (cursorFromUio) {
+          // On macOS, uiohook reports CoreGraphics points (the same logical space as
+          // disp.bounds and getCursorScreenPoint). On Linux and Windows, it reports
+          // physical device pixels (the same space as vw/vh).
+          if (process.platform === 'darwin') {
+            return arr
+              .map((p) => ({
+                t: p.t,
+                x: (p.x - disp.bounds.x) / Math.max(1, disp.bounds.width),
+                y: (p.y - disp.bounds.y) / Math.max(1, disp.bounds.height)
+              }))
+              .filter((p) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1);
+          }
           const scaleX = vw / Math.max(1, disp.bounds.width);
           const scaleY = vh / Math.max(1, disp.bounds.height);
           const oX = disp.bounds.x * scaleX;
@@ -1040,13 +1052,20 @@ function consumeHelperOrigins(chunk: string) {
 }
 
 ipcMain.handle('capture:setPendingSource', async (_evt, sourceId: string) => {
+  if (pendingCaptureSourceId === sourceId && (recordedDisplay || pendingWindow)) {
+    return;
+  }
   pendingCaptureSourceId = sourceId;
   recordedDisplay = null;
   pendingWindow = null;
   recordedWindowSize = null;
   recordedWindowOrigins = [];
   try {
-    const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
+    const sources = await desktopCapturer.getSources({
+      types: ['screen', 'window'],
+      thumbnailSize: { width: 0, height: 0 },
+      fetchWindowIcons: false
+    });
     const src = sources.find((s) => s.id === sourceId);
     if (sourceId.startsWith('window:')) {
       const handle = sourceId.split(':')[1] ?? '';

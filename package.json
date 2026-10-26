@@ -1,8 +1,8 @@
 {
   "name": "reframe",
   "private": true,
-  "version": "0.6.4",
-  "description": "Reframe \u2014 cross-platform screen recorder + post-recording editor (Linux/Windows/macOS).",
+  "version": "0.6.5",
+  "description": "Reframe — cross-platform screen recorder + post-recording editor (Linux/Windows/macOS).",
   "author": {
     "name": "Pavan Joshi",
     "email": "pavanj914@gmail.com"
@@ -31,7 +31,8 @@
   "scripts": {
     "dev": "vite",
     "setup:linux": "node scripts/setup-linux.mjs",
-    "postinstall": "node scripts/setup-linux.mjs --check",
+    "setup:mac": "node scripts/setup-mac.mjs",
+    "postinstall": "node scripts/setup-linux.mjs --check && node scripts/setup-mac.mjs --check",
     "electron": "node scripts/electron.mjs",
     "start": "npm run build && node scripts/electron.mjs",
     "build": "tsc -b && vite build",
@@ -39,7 +40,7 @@
     "package": "npm run build && electron-builder",
     "package:linux": "npm run build && electron-builder --linux",
     "package:win": "npm run build && electron-builder --win",
-    "package:mac": "npm run build && electron-builder --mac"
+    "package:mac": "node scripts/setup-mac.mjs && npm run build && electron-builder --mac"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
@@ -161,5 +162,12 @@
         }
       ]
     }
+  },
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "esbuild@0.21.5": true,
+    "ffmpeg-static@5.3.0": true,
+    "fsevents@2.3.3": true,
+    "uiohook-napi@1.5.5": true
   }
 }
