@@ -367,28 +367,28 @@ export function HudApp() {
     <div className="flex h-screen w-screen items-end justify-center overflow-hidden px-1 pb-0.5">
       <div
         ref={pillRef}
-        className="draggable relative flex h-12 w-max shrink-0 items-center gap-0.5 rounded-full px-2"
+        className="draggable relative flex h-12 w-max shrink-0 items-center gap-1 rounded-full px-2.5 transition-all duration-200"
         title={t('hud.dragMove')}
         style={{
           zoom: pillZoom,
           background:
-            'linear-gradient(180deg, rgba(32,34,40,0.94) 0%, rgba(20,22,26,0.94) 60%, rgba(14,15,18,0.94) 100%)',
+            'linear-gradient(180deg, rgba(28,31,40,0.88) 0%, rgba(16,18,24,0.94) 100%)',
           boxShadow:
-            'inset 0 1px 0 0 rgba(255,255,255,0.08), 0 1px 0 0 rgba(0,0,0,0.6), 0 12px 28px -8px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06)',
-          WebkitBackdropFilter: 'blur(14px)',
-          backdropFilter: 'blur(14px)'
+            'inset 0 1px 0 0 rgba(255,255,255,0.22), inset 0 0 0 1px rgba(255,255,255,0.08), 0 20px 48px -8px rgba(0,0,0,0.7), 0 6px 16px -2px rgba(0,0,0,0.4)',
+          WebkitBackdropFilter: 'blur(24px) saturate(190%)',
+          backdropFilter: 'blur(24px) saturate(190%)'
         }}
       >
         {/* Subtle glossy highlight at the very top of the pill */}
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-x-3 top-0 h-1/2 rounded-t-full opacity-40"
-          style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0))' }}
+          className="pointer-events-none absolute inset-x-4 top-0 h-1/2 rounded-t-full opacity-60"
+          style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0))' }}
         />
 
         {/* Drag grip */}
-        <span className="relative mr-1 flex h-9 w-4 items-center justify-center text-hud-icon/40">
-          <MdDragIndicator size={16} />
+        <span className="relative flex h-8 w-4 items-center justify-center text-white/30 hover:text-white/60 transition-colors">
+          <MdDragIndicator size={15} />
         </span>
 
         {/* Source chip */}
@@ -396,17 +396,14 @@ export function HudApp() {
           onClick={handlePickSource}
           disabled={recording}
           className={
-            'no-drag relative flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition disabled:opacity-50 ' +
-            // Lit green once a screen/window/area has actually been chosen, the
-            // same active treatment the other toggles use — so "selected" reads
-            // at a glance instead of the chip looking identical either way.
+            'no-drag relative flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-all duration-150 disabled:opacity-50 active:scale-95 ' +
             (sourceActive
-              ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/30 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.10)] hover:bg-emerald-500/20'
-              : 'bg-white/[0.04] text-hud-icon ring-1 ring-white/10 hover:bg-white/[0.07] hover:ring-white/15')
+              ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/40 shadow-[0_0_12px_rgba(16,185,129,0.2),inset_0_1px_0_rgba(255,255,255,0.15)] hover:bg-emerald-500/25'
+              : 'bg-white/[0.05] text-white/80 ring-1 ring-white/10 hover:bg-white/[0.09] hover:ring-white/20')
           }
           title={t('hud.pickSource')}
         >
-          <MdMonitor size={14} className={sourceActive ? 'text-emerald-300' : 'text-hud-icon/80'} />
+          <MdMonitor size={14} className={sourceActive ? 'text-emerald-300' : 'text-white/70'} />
           <span className="max-w-[120px] truncate">{sourceLabel}</span>
         </button>
 
@@ -509,9 +506,15 @@ function RecordButton({ onClick }: { onClick: () => void }) {
     <button
       onClick={onClick}
       title={t('hud.startRecording')}
-      className="no-drag group flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.04] ring-1 ring-white/10 transition hover:scale-105 hover:bg-white/[0.07] hover:ring-red-400/30 active:scale-95"
+      className="no-drag group relative flex h-9 w-9 items-center justify-center rounded-full transition-all duration-200 active:scale-90"
     >
-      <span className="block h-3.5 w-3.5 rounded-full bg-[#ef4444] shadow-[0_0_8px_2px_rgba(239,68,68,0.45)] transition group-hover:shadow-[0_0_14px_3px_rgba(239,68,68,0.65)]" />
+      {/* Outer subtle metallic ring */}
+      <span
+        aria-hidden
+        className="absolute inset-0 rounded-full border border-white/20 bg-white/[0.05] shadow-[0_2px_8px_rgba(0,0,0,0.3)] transition-all duration-200 group-hover:border-red-400/50 group-hover:bg-red-500/10"
+      />
+      {/* Vibrant Apple crimson circle with specular highlight and ambient glow */}
+      <span className="relative block h-4 w-4 rounded-full bg-gradient-to-b from-[#ff453a] to-[#d70015] shadow-[0_0_12px_rgba(255,69,58,0.6),inset_0_1px_0_rgba(255,255,255,0.4)] transition-transform duration-200 group-hover:scale-110" />
     </button>
   );
 }
@@ -522,11 +525,20 @@ function StopButton({ onClick }: { onClick: () => void }) {
     <button
       onClick={onClick}
       title={t('hud.stopRecording')}
-      className="no-drag relative flex h-9 w-9 items-center justify-center rounded-full bg-red-500/[0.18] ring-1 ring-red-400/40 transition hover:scale-105 hover:bg-red-500/25 active:scale-95"
+      className="no-drag relative flex h-9 w-9 items-center justify-center rounded-full transition-all duration-200 active:scale-90"
     >
       {/* Outer pulsing halo */}
-      <span aria-hidden className="absolute inset-0 animate-pulse rounded-full ring-2 ring-red-400/30" />
-      <span className="block h-3 w-3 rounded-[3px] bg-[#ef4444] shadow-[0_0_8px_2px_rgba(239,68,68,0.45)]" />
+      <span
+        aria-hidden
+        className="absolute inset-0 animate-ping rounded-full bg-red-500/25 ring-2 ring-red-400/40"
+        style={{ animationDuration: '2s' }}
+      />
+      <span
+        aria-hidden
+        className="absolute inset-0 rounded-full border border-red-400/50 bg-red-500/20 shadow-[0_0_16px_rgba(255,69,58,0.35)]"
+      />
+      {/* Squircle stop shape */}
+      <span className="relative block h-3.5 w-3.5 rounded-[4px] bg-gradient-to-b from-[#ff453a] to-[#d70015] shadow-[0_0_10px_rgba(255,69,58,0.7),inset_0_1px_0_rgba(255,255,255,0.4)]" />
     </button>
   );
 }
@@ -534,10 +546,10 @@ function StopButton({ onClick }: { onClick: () => void }) {
 function RecordingTimer({ ms }: { ms: number }) {
   return (
     <span
-      className="no-drag flex h-8 items-center gap-1.5 rounded-full bg-red-500/[0.14] px-2.5 text-xs font-medium tabular-nums text-red-200 ring-1 ring-red-400/25"
+      className="no-drag flex h-8 items-center gap-1.5 rounded-full bg-red-500/15 px-3 text-xs font-semibold tabular-nums text-red-200 ring-1 ring-red-500/30 shadow-[0_0_12px_rgba(239,68,68,0.2),inset_0_1px_0_rgba(255,255,255,0.1)]"
     >
-      <span className="block h-1.5 w-1.5 animate-pulse rounded-full bg-red-400" />
-      <span className="font-mono">{fmt(ms)}</span>
+      <span className="block h-2 w-2 animate-pulse rounded-full bg-red-400 shadow-[0_0_6px_rgba(239,68,68,0.9)]" />
+      <span className="font-mono tracking-tight">{fmt(ms)}</span>
     </span>
   );
 }
@@ -546,10 +558,10 @@ function Divider() {
   return (
     <span
       aria-hidden
-      className="mx-0.5 h-4 w-px"
+      className="mx-1 h-5 w-px"
       style={{
         background:
-          'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.14) 50%, rgba(255,255,255,0.02))'
+          'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.16) 50%, rgba(255,255,255,0.02))'
       }}
     />
   );
@@ -569,7 +581,7 @@ function IconBtn({
     <button
       title={title}
       onClick={onClick}
-      className="no-drag flex h-9 w-9 items-center justify-center rounded-full text-hud-icon transition hover:bg-white/[0.06]"
+      className="no-drag flex h-9 w-9 items-center justify-center rounded-full text-white/75 transition-all duration-150 hover:bg-white/[0.08] hover:text-white active:scale-95"
     >
       {children}
     </button>
@@ -628,8 +640,8 @@ function ToggleWithMenu({
   // emerald tint.
   const activeChip = active || open;
   const chipBase = activeChip
-    ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/30 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.10)]'
-    : 'text-hud-icon hover:bg-white/[0.06]';
+    ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/40 shadow-[0_0_12px_rgba(16,185,129,0.2),inset_0_1px_0_rgba(255,255,255,0.15)]'
+    : 'text-white/75 hover:bg-white/[0.08] hover:text-white';
 
   return (
     <div ref={wrapRef} className="no-drag relative flex h-9 items-center">
@@ -637,7 +649,7 @@ function ToggleWithMenu({
         title={title}
         onClick={onToggle}
         className={
-          'flex h-9 w-9 items-center justify-center transition ' +
+          'flex h-9 w-9 items-center justify-center transition-all duration-150 active:scale-95 ' +
           (hideChevron ? 'rounded-full ' : 'rounded-l-full ') +
           chipBase
         }
@@ -649,7 +661,7 @@ function ToggleWithMenu({
           title={t('hud.deviceMenu', { label: menuLabel })}
           onClick={() => setOpen(!open)}
           className={
-            'flex h-9 w-4 items-center justify-center rounded-r-full border-l border-black/20 transition ' +
+            'flex h-9 w-4 items-center justify-center rounded-r-full border-l border-black/20 transition-all duration-150 active:scale-95 ' +
             chipBase
           }
         >
@@ -688,13 +700,13 @@ function DeviceMenu({
   const t = useT();
   return (
     <div
-      className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 overflow-hidden rounded-lg border border-white/10 bg-[#15171c] shadow-2xl shadow-black/60 ring-1 ring-black/40"
-      style={{ backdropFilter: 'blur(12px)' }}
+      className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 overflow-hidden rounded-2xl border border-white/12 bg-[#161822]/95 p-1.5 shadow-[0_20px_48px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.15)] ring-1 ring-black/50"
+      style={{ WebkitBackdropFilter: 'blur(24px) saturate(190%)', backdropFilter: 'blur(24px) saturate(190%)' }}
     >
-      <div className="border-b border-white/5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+      <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
         {label}
       </div>
-      <div className="max-h-64 overflow-y-auto py-1">
+      <div className="max-h-64 space-y-0.5 overflow-y-auto py-0.5">
         <DeviceMenuItem
           label={t('hud.systemDefault')}
           active={!selectedId}
@@ -729,12 +741,14 @@ function DeviceMenuItem({
     <button
       onClick={onClick}
       className={
-        'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition ' +
-        (active ? 'bg-emerald-500/10 text-emerald-200' : 'text-white/80 hover:bg-white/5')
+        'flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-xs font-medium transition-all duration-150 ' +
+        (active
+          ? 'bg-[#0A84FF]/20 text-[#60a5fa]'
+          : 'text-white/80 hover:bg-white/[0.08] hover:text-white')
       }
     >
       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-        {active && <MdCheck size={14} className="text-emerald-400" />}
+        {active && <MdCheck size={14} className="text-[#0A84FF]" />}
       </span>
       <span className="truncate">{label}</span>
     </button>
@@ -758,10 +772,10 @@ function ToggleBtn({
       title={title}
       onClick={onClick}
       className={
-        'no-drag flex h-9 w-9 items-center justify-center rounded-full transition ' +
+        'no-drag flex h-9 w-9 items-center justify-center rounded-full transition-all duration-150 active:scale-95 ' +
         (active
-          ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/30 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.10)]'
-          : 'text-hud-icon hover:bg-white/[0.06]')
+          ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/40 shadow-[0_0_12px_rgba(16,185,129,0.2),inset_0_1px_0_rgba(255,255,255,0.15)]'
+          : 'text-white/75 hover:bg-white/[0.08] hover:text-white')
       }
     >
       {children}

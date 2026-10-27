@@ -596,23 +596,23 @@ export function CropModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] p-6 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] p-6 backdrop-blur-xl"
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] shadow-2xl">
+      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-[var(--line-2)] bg-[var(--panel)]/95 shadow-[0_24px_64px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.15)] backdrop-blur-2xl">
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-white/5 px-6 py-3.5">
           <div className="flex items-center gap-3">
             <h2 className="text-base font-semibold text-[var(--text)]">{t('side.cropVideo')}</h2>
             {intrinsic && (
-              <span className="rounded bg-[var(--fill)] px-2 py-0.5 font-mono text-xs text-[var(--muted)]">
+              <span className="rounded-lg bg-[var(--fill)] px-2.5 py-0.5 font-mono text-xs text-[var(--muted)] border border-[var(--stroke)] shadow-inner">
                 {px.w} × {px.h} px
               </span>
             )}
             {isCropped && (
-              <span className="rounded bg-[var(--accent-dim)] px-2 py-0.5 text-xs font-medium text-[var(--accent)]">
+              <span className="rounded-lg bg-[var(--accent-dim)] px-2.5 py-0.5 text-xs font-medium text-[var(--accent)] border border-[var(--accent)]/30">
                 {Math.round(crop.width * 100)}% × {Math.round(crop.height * 100)}%
               </span>
             )}
@@ -625,7 +625,7 @@ export function CropModal({ onClose }: { onClose: () => void }) {
                 setAspectValue(null);
                 setActivePreset('Free');
               }}
-              className="flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2.5 py-1 text-xs text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
+              className="flex items-center gap-1.5 rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all active:scale-95 shadow-sm"
               title={t('crop.resetFull')}
             >
               <RotateCcw size={12} />
@@ -633,7 +633,7 @@ export function CropModal({ onClose }: { onClose: () => void }) {
             </button>
             <button
               onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded hover:bg-[var(--panel-3)] text-[var(--muted)] hover:text-[var(--text)]"
+              className="flex h-7 w-7 items-center justify-center rounded-xl hover:bg-[var(--btn-squircle-hover)] text-[var(--muted)] hover:text-[var(--text)] transition-all active:scale-95"
               aria-label={t('common.close')}
             >
               <X size={16} />
@@ -812,7 +812,7 @@ export function CropModal({ onClose }: { onClose: () => void }) {
         <div className="shrink-0 border-t border-white/5 bg-[var(--bg)] px-6 py-4 space-y-3">
           {/* Presets row */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-xs text-[var(--muted)]">{t('crop.aspect')}:</span>
+            <span className="mr-1 text-xs font-medium text-[var(--muted)]">{t('crop.aspect')}:</span>
             {ASPECT_PRESETS.map((p) => {
               const isSelected = activePreset === p.label;
 
@@ -821,10 +821,10 @@ export function CropModal({ onClose }: { onClose: () => void }) {
                   key={p.label}
                   onClick={() => applyAspectPreset(p.label, p.value)}
                   className={
-                    'rounded-md px-2.5 py-1 text-xs font-medium transition ' +
+                    'rounded-xl px-3 py-1.5 text-xs font-medium transition-all duration-150 active:scale-95 ' +
                     (isSelected
-                      ? 'bg-[var(--accent)] text-[var(--accent-fg)] shadow-sm'
-                      : 'border border-[var(--line)] bg-[var(--panel-2)] text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]')
+                      ? 'bg-gradient-to-b from-[#0A84FF] to-[#0070E0] text-white shadow-[0_2px_8px_rgba(10,132,255,0.35),inset_0_1px_0_rgba(255,255,255,0.25)]'
+                      : 'border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] shadow-sm')
                   }
                 >
                   {p.value === null
@@ -840,10 +840,10 @@ export function CropModal({ onClose }: { onClose: () => void }) {
               onClick={() => setAspectLocked((v) => !v)}
               disabled={aspectValue == null}
               className={
-                'flex h-7 items-center justify-center rounded-md border px-2 text-xs ml-1 ' +
+                'flex h-7 items-center justify-center rounded-xl border px-2.5 text-xs ml-1 transition-all duration-150 active:scale-95 ' +
                 (aspectLocked
-                  ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
-                  : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--muted)] hover:bg-[var(--panel-3)]') +
+                  ? 'border-[#0A84FF]/40 bg-[#0A84FF]/20 text-[#0A84FF]'
+                  : 'border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] shadow-sm') +
                 ' disabled:opacity-40 disabled:cursor-not-allowed'
               }
               title={aspectLocked ? t('crop.aspectLocked') : t('crop.aspectUnlocked')}
@@ -868,13 +868,13 @@ export function CropModal({ onClose }: { onClose: () => void }) {
               </div>
               <button
                 onClick={onClose}
-                className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-4 py-1.5 text-xs text-[var(--text)] hover:bg-[var(--panel-3)]"
+                className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-4 py-2 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] transition-all active:scale-95 shadow-sm"
               >
                 {t('common.cancel')}
               </button>
               <button
                 onClick={handleCommit}
-                className="rounded-md bg-[var(--accent)] px-5 py-1.5 text-xs font-semibold text-[var(--accent-fg)] hover:opacity-90 shadow-sm"
+                className="rounded-xl bg-gradient-to-b from-[#0A84FF] to-[#0070E0] px-5 py-2 text-xs font-semibold text-white shadow-[0_2px_12px_rgba(10,132,255,0.4),inset_0_1px_0_rgba(255,255,255,0.25)] hover:brightness-105 active:scale-95 transition-all"
               >
                 {t('common.done')}
               </button>

@@ -208,7 +208,7 @@ export function ReframeCat() {
         className="cursor-grab active:cursor-grabbing select-none"
         title="Click to wake Cat, or drag to reposition"
       >
-        <div className="flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-[#0f1322]/90 px-2.5 py-1 text-xs text-indigo-200 shadow-xl backdrop-blur-md transition hover:scale-105 hover:border-indigo-400 hover:bg-indigo-950">
+        <div className="flex items-center gap-1.5 rounded-full border border-white/12 bg-[#12151e]/85 px-3 py-1 text-xs text-white/80 shadow-[0_8px_24px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.15)] backdrop-blur-xl transition-all duration-200 hover:scale-105 hover:border-amber-400/50 hover:text-amber-200">
           <span className="text-sm">🐱</span>
           <span className="font-medium text-[11px] tracking-wide">Wake Cat</span>
         </div>

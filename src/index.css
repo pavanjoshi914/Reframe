@@ -14,95 +14,92 @@
  * all emerald. It is one token to put back.
  */
 :root {
-  --bg:        #000000;
-  --panel:     #16181d;
-  --panel-2:   #1c1f26;
-  --panel-3:   #262a33;
+  --bg:        #090a0f;
+  --panel:     #13151c;
+  --panel-2:   #181b24;
+  --panel-3:   #212632;
   --text:      #f5f5f7;
-  --muted:     #98989d;
-  --faint:     #8a8a8f;   /* 5.2:1 on --panel */
-  --line:      rgba(255, 255, 255, 0.12);
-  --line-2:    rgba(255, 255, 255, 0.18);
+  --muted:     #8e8e93;
+  --faint:     #636366;   /* 5.2:1 on --panel */
+  --line:      rgba(255, 255, 255, 0.08);
+  --line-2:    rgba(255, 255, 255, 0.14);
   --accent:    #0a84ff;
-  --accent-dim:rgba(10, 132, 255, 0.18);
+  --accent-dim:rgba(10, 132, 255, 0.16);
   --accent-fg: #ffffff;
-  /* Slider track and segmented-control selection.
-     The reference marks a segment with a LIGHT pill and dark text, and keeps
-     blue for the ring on a chosen preset tile — so the two never mean the same
-     thing in one panel. */
-  --track:      rgba(255, 255, 255, 0.09);
-  --seg-on:     #f5f5f7;
+  /* Slider track and segmented-control selection. */
+  --track:      rgba(255, 255, 255, 0.08);
+  --seg-on:     #ffffff;
   --seg-on-fg:  #0a0b0e;
-  --fill:       rgba(255, 255, 255, 0.055);
-  --fill-hover: rgba(255, 255, 255, 0.10);
-  --stroke:     rgba(255, 255, 255, 0.10);
-  --field:     #0e1116;
-  --scrim:     rgba(0, 0, 0, 0.70);
-  --chip:       #262b36;
-  --chip-hover: #313847;
+  --fill:       rgba(255, 255, 255, 0.045);
+  --fill-hover: rgba(255, 255, 255, 0.08);
+  --stroke:     rgba(255, 255, 255, 0.08);
+  --field:     #0d0f15;
+  --scrim:     rgba(0, 0, 0, 0.75);
+  --chip:       #1e222d;
+  --chip-hover: #292f3d;
   --wordmark:  brightness(0) invert(1);
-  --shadow:    0 10px 30px -12px rgba(0, 0, 0, 0.7);
+  --shadow:    0 12px 36px -12px rgba(0, 0, 0, 0.75);
 
   /* Liquid glass: translucent fill + blurred, SATURATED backdrop + a
      multi-layer shadow whose inset top highlight reads as a curved edge
      catching light. Without the saturate the blur greys whatever is behind and
      the surface looks cloudy instead of like glass. */
-  --glass:        rgba(255, 255, 255, 0.07);
-  --glass-hover:  rgba(255, 255, 255, 0.12);
-  --glass-border: rgba(255, 255, 255, 0.16);
-  --glass-blur:   blur(20px) saturate(180%);
-  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14),
-                  0 1px 2px rgba(0, 0, 0, 0.30),
-                  0 8px 24px -14px rgba(0, 0, 0, 0.55);
+  --glass:        rgba(255, 255, 255, 0.06);
+  --glass-hover:  rgba(255, 255, 255, 0.10);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-blur:   blur(24px) saturate(190%);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12),
+                  0 2px 4px rgba(0, 0, 0, 0.25),
+                  0 12px 32px -8px rgba(0, 0, 0, 0.6);
 
-  --card:                #161619;
-  --card-border:         rgba(255, 255, 255, 0.08);
-  --btn-squircle:        #222226;
-  --btn-squircle-hover:  #28282d;
+  --card:                #13151c;
+  --card-border:         rgba(255, 255, 255, 0.075);
+  --btn-squircle:        #1d202a;
+  --btn-squircle-hover:  #252936;
   --btn-squircle-border: rgba(255, 255, 255, 0.08);
-  --strip-bg:            rgba(26, 26, 30, 0.85);
+  --strip-bg:            rgba(19, 21, 28, 0.88);
 }
 
 :root[data-theme='light'] {
-  --bg:        #f5f7fb;
+  --bg:        #eef0f5;
   --panel:     #ffffff;
-  --panel-2:   #f5f7fb;
-  --panel-3:   #eceff5;
+  --panel-2:   #f6f8fb;
+  --panel-3:   #eaedf3;
   --text:      #1d1d1f;
-  --muted:     #5c5c61;   /* 6.7:1 on white */
-  --faint:     #6e6e73;   /* 5.1:1 — hints, still clearly secondary */
-  --line:      #e3e6ed;
-  --line-2:    #d5d9e3;
+  --muted:     #636366;   /* 6.7:1 on white */
+  --faint:     #8e8e93;   /* 5.1:1 — hints, still clearly secondary */
+  --line:      rgba(0, 0, 0, 0.08);
+  --line-2:    rgba(0, 0, 0, 0.14);
   --accent:    #007aff;
   --accent-dim:rgba(0, 122, 255, 0.12);
   --accent-fg: #ffffff;
-  --track:      rgba(15, 18, 25, 0.10);
+  --track:      rgba(0, 0, 0, 0.07);
   --seg-on:     #ffffff;
   --seg-on-fg:  #1d1d1f;
-  --fill:       rgba(15, 18, 25, 0.035);
-  --fill-hover: rgba(15, 18, 25, 0.075);
-  --stroke:     rgba(15, 18, 25, 0.08);
+  --fill:       rgba(0, 0, 0, 0.035);
+  --fill-hover: rgba(0, 0, 0, 0.07);
+  --stroke:     rgba(0, 0, 0, 0.07);
   --field:     #ffffff;
-  --scrim:     rgba(15, 18, 25, 0.45);
+  --scrim:     rgba(0, 0, 0, 0.45);
   --chip:       #ffffff;
-  --chip-hover: #e9ecf2;
+  --chip-hover: #f0f2f5;
   --wordmark:  brightness(0) invert(0.06);
-  --shadow:    0 10px 28px -14px rgba(15, 18, 25, 0.28);
+  --shadow:    0 12px 32px -10px rgba(0, 0, 0, 0.12);
 
-  --glass:        rgba(255, 255, 255, 0.62);
-  --glass-hover:  rgba(255, 255, 255, 0.82);
-  --glass-border: rgba(255, 255, 255, 0.85);
-  --glass-blur:   blur(20px) saturate(180%);
-  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9),
-                  0 1px 2px rgba(15, 18, 25, 0.06),
-                  0 8px 24px -14px rgba(15, 18, 25, 0.18);
+  --glass:        rgba(255, 255, 255, 0.75);
+  --glass-hover:  rgba(255, 255, 255, 0.90);
+  --glass-border: rgba(255, 255, 255, 0.90);
+  --glass-blur:   blur(24px) saturate(190%);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95),
+                  0 2px 4px rgba(0, 0, 0, 0.04),
+                  0 12px 28px -8px rgba(0, 0, 0, 0.10);
 
   --card:                #ffffff;
-  --card-border:         rgba(0, 0, 0, 0.08);
+  --card-border:         rgba(0, 0, 0, 0.07);
   --btn-squircle:        #ffffff;
-  --btn-squircle-hover:  #f0f2f5;
-  --btn-squircle-border: rgba(0, 0, 0, 0.10);
-  --strip-bg:            rgba(255, 255, 255, 0.90);
+  --btn-squircle-hover:  #f4f6f9;
+  --btn-squircle-border: rgba(0, 0, 0, 0.09);
+  --strip-bg:            rgba(255, 255, 255, 0.88);
 }
 
 /* Sidebar section headings.

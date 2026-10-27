@@ -52,17 +52,17 @@ export function PickerApp() {
 
   return (
     <div className="flex h-screen w-screen items-center justify-center p-4">
-      <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#15171c]/95 shadow-2xl backdrop-blur-md">
+      <div className="flex h-full w-full flex-col overflow-hidden rounded-3xl border border-white/12 bg-[#14161f]/95 shadow-[0_24px_64px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.15)] backdrop-blur-2xl">
         {/* Pill tabs. The row doubles as the window's drag handle — the picker
             is frameless, so without one there is no way to move it at all. The
             tab group itself opts back out so the tabs stay clickable. */}
         <div className="draggable flex items-center justify-center px-4 pb-1 pt-4" title={t('hud.dragMove')}>
-          <div className="no-drag inline-flex items-center rounded-full bg-black/40 p-1 ring-1 ring-white/10">
+          <div className="no-drag inline-flex items-center rounded-full bg-black/40 p-1 ring-1 ring-white/10 shadow-inner">
             <PillTab active={tab === 'screen'} onClick={() => setTab('screen')}>
-              {t('picker.screens')} <span className="text-white/40">({screens.length})</span>
+              {t('picker.screens')} <span className={tab === 'screen' ? 'text-black/60' : 'text-white/40'}>({screens.length})</span>
             </PillTab>
             <PillTab active={tab === 'window'} onClick={() => setTab('window')}>
-              {t('picker.windows')} <span className="text-white/40">({windows.length})</span>
+              {t('picker.windows')} <span className={tab === 'window' ? 'text-black/60' : 'text-white/40'}>({windows.length})</span>
             </PillTab>
             <PillTab active={tab === 'area'} onClick={() => setTab('area')}>
               {t('picker.area')}
@@ -97,7 +97,7 @@ export function PickerApp() {
         <div className="flex items-center justify-end gap-2 border-t border-white/5 px-4 py-3">
           <button
             onClick={() => window.api.cancelSourcePicker()}
-            className="rounded-full px-5 py-2 text-sm text-white/80 hover:bg-white/5"
+            className="rounded-full px-5 py-2 text-sm text-white/80 hover:bg-white/[0.08] transition-colors"
           >
             {t('common.cancel')}
           </button>
@@ -106,9 +106,9 @@ export function PickerApp() {
               onClick={handleShare}
               disabled={!selected}
               className={
-                'rounded-full px-6 py-2 text-sm font-medium transition ' +
+                'rounded-full px-6 py-2 text-sm font-semibold transition-all duration-150 ' +
                 (selected
-                  ? 'bg-emerald-500 text-black hover:bg-emerald-400'
+                  ? 'bg-gradient-to-b from-[#0A84FF] to-[#0070E0] text-white shadow-[0_2px_12px_rgba(10,132,255,0.4),inset_0_1px_0_rgba(255,255,255,0.25)] hover:brightness-105 active:scale-95'
                   : 'bg-white/10 text-white/30 cursor-not-allowed')
               }
             >
@@ -188,8 +188,10 @@ function PillTab({ active, onClick, children }: { active: boolean; onClick: () =
     <button
       onClick={onClick}
       className={
-        'rounded-full px-5 py-1.5 text-sm font-medium transition ' +
-        (active ? 'bg-white text-black shadow-sm' : 'text-white/60 hover:text-white/80')
+        'rounded-full px-5 py-1.5 text-xs font-semibold transition-all duration-150 ' +
+        (active
+          ? 'bg-white text-black shadow-md'
+          : 'text-white/60 hover:text-white/90 hover:bg-white/[0.05]')
       }
     >
       {children}
@@ -210,31 +212,31 @@ function SourceCard({
     <button
       onClick={onClick}
       className={
-        'group relative flex flex-col overflow-hidden rounded-xl border-2 bg-black/30 p-2 text-left transition ' +
+        'group relative flex flex-col overflow-hidden rounded-2xl border-2 p-2 text-left transition-all duration-200 active:scale-[0.99] ' +
         (selected
-          ? 'border-emerald-400 ring-2 ring-emerald-400/30'
-          : 'border-transparent hover:border-white/15')
+          ? 'border-[#0A84FF] bg-[#0A84FF]/10 ring-4 ring-[#0A84FF]/25 shadow-lg'
+          : 'border-white/5 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06] hover:shadow-md')
       }
       aria-pressed={selected}
     >
-      <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
-        <img src={source.thumbnailDataUrl} alt={source.name} className="h-full w-full object-contain" />
+      <div className="aspect-video w-full overflow-hidden rounded-xl bg-black/60 border border-white/5">
+        <img src={source.thumbnailDataUrl} alt={source.name} className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-105" />
       </div>
       {/* App icon beside the title so a window is recognisable at a glance
           (Chrome's globe, VS Code's ribbon, ours) rather than by reading text.
           Screens have no icon, and some window managers don't supply one, so a
           generic monitor glyph stands in. */}
-      <div className="mt-2 flex items-center gap-1.5 px-1">
+      <div className="mt-2.5 flex items-center gap-2 px-1">
         {source.appIconDataUrl ? (
           <img src={source.appIconDataUrl} alt="" aria-hidden="true" className="h-4 w-4 shrink-0 rounded-[3px] object-contain" />
         ) : (
-          <Monitor size={14} className="shrink-0 text-white/35" aria-hidden="true" />
+          <Monitor size={14} className="shrink-0 text-white/40" aria-hidden="true" />
         )}
-        <span className="truncate text-xs text-white/80">{source.name}</span>
+        <span className="truncate text-xs font-medium text-white/90">{source.name}</span>
       </div>
       {selected && (
-        <span className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-400 text-black shadow-lg">
-          <Check size={16} strokeWidth={3} />
+        <span className="absolute right-3.5 top-3.5 flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-b from-[#0A84FF] to-[#0070E0] text-white shadow-lg ring-2 ring-white/30">
+          <Check size={15} strokeWidth={3} />
         </span>
       )}
     </button>

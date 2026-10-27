@@ -446,88 +446,103 @@ export function EditorApp() {
   return (
     <div className="flex h-screen w-screen flex-col bg-[var(--bg)]">
       {/* top toolbar */}
-      <div className="flex h-12 shrink-0 items-center justify-between bg-transparent px-4">
-        <div className="flex items-center gap-3 text-sm">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--card-border)] bg-[var(--panel)]/70 backdrop-blur-xl px-4 text-sm z-30">
+        <div className="flex items-center gap-3">
           <img
             src={wordmarkUrl}
             alt="Reframe"
-            className="h-7 object-contain"
+            className="h-6.5 object-contain"
             style={{ filter: 'var(--wordmark)' }}
           />
           <Divider />
           <FileMenu onSave={handleSaveProject} onLoad={handleLoadProject} onOpenMedia={handleOpenMedia} onCrop={() => setCropModalOpen(true)} />
           <Divider />
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] p-0.5 shadow-sm">
             <button
               onClick={() => useEditor.getState().undo()}
               disabled={!canUndo}
-              className="flex h-7 w-7 items-center justify-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-30 transition"
+              className="flex h-6.5 w-6.5 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-30 transition-all duration-150 active:scale-95"
               aria-label={t('editor.undo')}
               title={`${t('editor.undo')} (Ctrl+Z)`}
             >
               <Undo2 size={13} />
             </button>
+            <span className="h-3 w-px bg-[var(--line)]" />
             <button
               onClick={() => useEditor.getState().redo()}
               disabled={!canRedo}
-              className="flex h-7 w-7 items-center justify-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-30 transition"
+              className="flex h-6.5 w-6.5 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-30 transition-all duration-150 active:scale-95"
               aria-label={t('editor.redo')}
               title={`${t('editor.redo')} (Ctrl+Shift+Z)`}
             >
               <Redo2 size={13} />
             </button>
           </div>
-          {currentProjectPath && (
-            <>
-              <Divider />
-              <ProjectNameField path={currentProjectPath} />
-            </>
-          )}
         </div>
+
+        {/* Center Document Title Capsule */}
+        {currentProjectPath && (
+          <div className="flex items-center justify-center">
+            <ProjectNameField path={currentProjectPath} />
+          </div>
+        )}
+
+        {/* Right Toolbar Actions */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-            className="flex h-7 w-7 items-center justify-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition"
-          >
-            {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
-          </button>
-          <LanguageSelector />
+          {/* Aspect ratio */}
+          <div className="flex items-center gap-1.5 rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium shadow-sm">
+            <span className="text-[11px] text-[var(--muted)] font-medium">{t('editor.aspect')}</span>
+            <select
+              value={aspect}
+              onChange={(e) => setAspect(e.target.value as any)}
+              className="bg-transparent font-semibold text-[var(--text)] outline-none cursor-pointer"
+            >
+              <option value="16:9" className="bg-[var(--panel)]">16:9</option>
+              <option value="4:3" className="bg-[var(--panel)]">4:3</option>
+              <option value="1:1" className="bg-[var(--panel)]">1:1</option>
+              <option value="9:16" className="bg-[var(--panel)]">9:16</option>
+              <option value="auto" className="bg-[var(--panel)]">Auto</option>
+            </select>
+          </div>
+
           <Divider />
-          <label className="text-xs font-medium text-[var(--muted)]">{t('editor.aspect')}</label>
-          <select
-            value={aspect}
-            onChange={(e) => setAspect(e.target.value as any)}
-            className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium text-[var(--text)] outline-none hover:bg-[var(--btn-squircle-hover)] transition cursor-pointer"
-          >
-            <option value="16:9" className="bg-[var(--panel)]">16:9</option>
-            <option value="4:3" className="bg-[var(--panel)]">4:3</option>
-            <option value="1:1" className="bg-[var(--panel)]">1:1</option>
-            <option value="9:16" className="bg-[var(--panel)]">9:16</option>
-            <option value="auto" className="bg-[var(--panel)]">Auto</option>
-          </select>
-          <Divider />
+
           <button
             onClick={handleOpenMedia}
-            className="flex items-center gap-1.5 rounded-xl border border-[#0A84FF]/30 bg-[#0A84FF]/15 px-3 py-1 text-xs font-medium text-[#0A84FF] hover:bg-[#0A84FF]/25 transition"
+            className="flex items-center gap-1.5 rounded-xl border border-[#0A84FF]/40 bg-[#0A84FF]/15 px-3 py-1.5 text-xs font-semibold text-[#0A84FF] hover:bg-[#0A84FF]/25 shadow-sm transition-all duration-150 active:scale-95"
             title={`${t('editor.uploadMedia')} (Ctrl+I)`}
           >
             <Upload size={13} />
             <span>{t('editor.uploadMediaShort')}</span>
           </button>
-          <button onClick={handleLoadProject} className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] transition">{t('editor.loadProject')}</button>
-          <button onClick={handleSaveProject} className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] transition">{t('editor.saveProjectBtn')}</button>
+          <button
+            onClick={handleSaveProject}
+            className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-1.5 text-xs font-semibold text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] shadow-sm transition-all duration-150 active:scale-95"
+          >
+            {t('editor.saveProjectBtn')}
+          </button>
+
           <Divider />
-          {/* Always-available way to support the project, so the post-export
-              prompt can stay rare and dismissible. */}
+
+          <div className="flex items-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] p-0.5 shadow-sm">
+            <button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+              className="flex h-6.5 w-6.5 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95"
+            >
+              {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
+            </button>
+            <span className="h-3 w-px bg-[var(--line)]" />
+            <LanguageSelector className="border-0 bg-transparent py-0.5 text-xs" />
+          </div>
+
           <button
             onClick={() => void window.api.openExternal(SPONSOR_URL)}
             title={t('editor.sponsorTitle')}
             aria-label={t('editor.sponsorTitle')}
-            className="flex items-center gap-1.5 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20"
+            className="flex items-center justify-center h-8 w-8 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 transition-all duration-150 hover:bg-rose-500/20 active:scale-95 shadow-sm"
           >
-            <Heart size={13} fill="currentColor" className="text-rose-400" />
-            {t('editor.sponsor')}
+            <Heart size={14} fill="currentColor" className="text-rose-400" />
           </button>
         </div>
       </div>
@@ -547,29 +562,29 @@ export function EditorApp() {
             </div>
             {/* playback strip — kept inside the fullscreen wrapper so play /
                 scrub / exit remain reachable when the preview is fullscreened. */}
-            <div className="flex h-12 shrink-0 items-center gap-3 border-t border-[var(--card-border)] bg-[var(--strip-bg)] backdrop-blur-md px-4 text-xs">
+            <div className="flex h-12 shrink-0 items-center gap-3 border-t border-[var(--card-border)] bg-[var(--strip-bg)] backdrop-blur-xl px-4 text-xs">
               <button
                 onClick={() => setPlaying(!playing)}
-                className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#0A84FF] text-white shadow-[0_2px_10px_rgba(10,132,255,0.35)] hover:brightness-110 active:scale-95 transition"
+                className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-b from-[#0A84FF] to-[#0070E0] text-white shadow-[0_2px_12px_rgba(10,132,255,0.4),inset_0_1px_0_rgba(255,255,255,0.25)] hover:brightness-105 active:scale-95 transition-all duration-150"
                 aria-label={playing ? t('editor.pause') : t('editor.play')}
                 title={playing ? t('editor.pause') : t('editor.play')}
               >
                 {playing ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
               </button>
-              <span className="font-mono text-xs font-medium text-[var(--muted)] px-2 py-0.5 rounded-lg bg-[var(--fill)] border border-[var(--stroke)]">
+              <span className="font-mono tabular-nums text-xs font-medium text-[var(--muted)] px-2.5 py-1 rounded-xl bg-[var(--fill)] border border-[var(--stroke)] shadow-inner">
                 {fmt(currentMs)} / {fmt(durationMs)}
               </span>
 
               {/* Apple-grade scrubber */}
               <div className="relative flex-1 flex items-center h-6 group cursor-pointer">
-                <div className="w-full h-1.5 rounded-full bg-[var(--track)] overflow-hidden group-hover:h-2 transition-all">
+                <div className="w-full h-1.5 rounded-full bg-[var(--track)] overflow-hidden group-hover:h-2 transition-all duration-150 shadow-inner">
                   <div
-                    className="h-full bg-[#0A84FF] rounded-full"
+                    className="h-full bg-gradient-to-r from-[#0A84FF] to-[#38bdf8] rounded-full shadow-[0_0_8px_rgba(10,132,255,0.4)]"
                     style={{ width: `${Math.min(100, Math.max(0, (currentMs / Math.max(1, durationMs)) * 100))}%` }}
                   />
                 </div>
                 <div
-                  className="absolute h-3.5 w-3.5 -ml-1.75 rounded-full bg-white shadow-[0_1px_4px_rgba(0,0,0,0.5)] transition-transform group-hover:scale-125 pointer-events-none"
+                  className="absolute h-3.5 w-3.5 -ml-1.75 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.4),0_0_0_1px_rgba(0,0,0,0.08)] transition-transform duration-150 group-hover:scale-125 pointer-events-none"
                   style={{ left: `${Math.min(100, Math.max(0, (currentMs / Math.max(1, durationMs)) * 100))}%` }}
                 />
                 <input
@@ -587,7 +602,7 @@ export function EditorApp() {
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setVideoMuted(!videoMuted)}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition"
+                  className="flex h-7 w-7 items-center justify-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95 shadow-sm"
                   aria-label={videoMuted ? t('editor.unmute') : t('editor.mute')}
                   title={videoMuted ? t('editor.unmuteHint') : t('editor.muteHint')}
                 >
@@ -598,9 +613,9 @@ export function EditorApp() {
                   )}
                 </button>
                 <div className="relative flex items-center w-20 h-5 group">
-                  <div className="w-full h-1 rounded-full bg-[var(--track)] overflow-hidden group-hover:h-1.5 transition-all">
+                  <div className="w-full h-1 rounded-full bg-[var(--track)] overflow-hidden group-hover:h-1.5 transition-all duration-150 shadow-inner">
                     <div
-                      className="h-full bg-[#0A84FF] rounded-full"
+                      className="h-full bg-gradient-to-r from-[#0A84FF] to-[#38bdf8] rounded-full"
                       style={{ width: `${(videoMuted ? 0 : videoVolume) * 100}%` }}
                     />
                   </div>
@@ -622,71 +637,72 @@ export function EditorApp() {
                 </div>
               </div>
 
-              {/* Fullscreen */}
-              <button
-                onClick={handleFullscreen}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition"
-                aria-label={isFullscreen ? t('editor.exitFullscreen') : t('editor.fullscreen')}
-                title={isFullscreen ? 'Exit fullscreen (Esc)' : t('editor.fullscreen')}
-              >
-                {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-              </button>
+              {/* Capture Tools Group */}
+              <div className="flex items-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] p-0.5 shadow-sm">
+                <button
+                  onClick={() => setCropModalOpen(true)}
+                  disabled={!fileUrl}
+                  title={t('editor.cropShortcut')}
+                  aria-label={t('editor.crop')}
+                  className={
+                    'relative flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-150 active:scale-95 ' +
+                    (isCropped
+                      ? 'bg-[#0A84FF]/25 text-[#0A84FF]'
+                      : 'text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]') +
+                    ' disabled:cursor-not-allowed disabled:opacity-30'
+                  }
+                >
+                  <Crop size={13} />
+                  {isCropped && (
+                    <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-[#0A84FF]" />
+                  )}
+                </button>
+                <span className="h-3 w-px bg-[var(--line)]" />
+                <button
+                  onClick={async () => {
+                    const p = await saveStillNow();
+                    if (p) { setShotFlash(true); window.setTimeout(() => setShotFlash(false), 1400); }
+                  }}
+                  title={t('side.captureFrameHint')}
+                  aria-label={t('side.captureFrame')}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95"
+                >
+                  {shotFlash ? <Check size={13} className="text-emerald-400" /> : <Camera size={13} />}
+                </button>
+                <span className="h-3 w-px bg-[var(--line)]" />
+                <button
+                  onClick={async () => {
+                    const ok = await copyImageToClipboardNow();
+                    if (ok) { setCopyFlash(true); window.setTimeout(() => setCopyFlash(false), 1400); }
+                  }}
+                  title={t('editor.copyImage')}
+                  aria-label={t('editor.copyImage')}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95"
+                >
+                  {copyFlash ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                </button>
+              </div>
 
-              {/* Crop tool */}
-              <button
-                onClick={() => setCropModalOpen(true)}
-                disabled={!fileUrl}
-                title={t('editor.cropShortcut')}
-                aria-label={t('editor.crop')}
-                className={
-                  'relative flex h-7 w-7 items-center justify-center rounded-lg border transition ' +
-                  (isCropped
-                    ? 'border-[#0A84FF]/40 bg-[#0A84FF]/20 text-[#0A84FF]'
-                    : 'border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]') +
-                  ' disabled:cursor-not-allowed disabled:opacity-30'
-                }
-              >
-                <Crop size={13} />
-                {isCropped && (
-                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[#0A84FF] ring-2 ring-[var(--card)]" />
-                )}
-              </button>
-
-              {/* Capture the current frame as still image */}
-              <button
-                onClick={async () => {
-                  const p = await saveStillNow();
-                  if (p) { setShotFlash(true); window.setTimeout(() => setShotFlash(false), 1400); }
-                }}
-                title={t('side.captureFrameHint')}
-                aria-label={t('side.captureFrame')}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition"
-              >
-                {shotFlash ? <Check size={13} className="text-emerald-400" /> : <Camera size={13} />}
-              </button>
-
-              {/* Quick copy frame to clipboard */}
-              <button
-                onClick={async () => {
-                  const ok = await copyImageToClipboardNow();
-                  if (ok) { setCopyFlash(true); window.setTimeout(() => setCopyFlash(false), 1400); }
-                }}
-                title={t('editor.copyImage')}
-                aria-label={t('editor.copyImage')}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition"
-              >
-                {copyFlash ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-              </button>
-
-              {/* Toggle Timeline */}
-              <button
-                onClick={() => setTimelineCollapsed((v) => !v)}
-                title={timelineCollapsed ? 'Show timeline' : 'Hide timeline'}
-                aria-expanded={!timelineCollapsed}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition"
-              >
-                {timelineCollapsed ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-              </button>
+              {/* View Tools Group */}
+              <div className="flex items-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] p-0.5 shadow-sm">
+                <button
+                  onClick={handleFullscreen}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95"
+                  aria-label={isFullscreen ? t('editor.exitFullscreen') : t('editor.fullscreen')}
+                  title={isFullscreen ? 'Exit fullscreen (Esc)' : t('editor.fullscreen')}
+                >
+                  {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                </button>
+                <span className="h-3 w-px bg-[var(--line)]" />
+                <button
+                  onClick={() => setTimelineCollapsed((v) => !v)}
+                  title={timelineCollapsed ? 'Show timeline' : 'Hide timeline'}
+                  aria-expanded={!timelineCollapsed}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95"
+                >
+                  {timelineCollapsed ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                </button>
+              </div>
             </div>
           </div>
           {!timelineCollapsed && <Timeline />}
@@ -861,10 +877,19 @@ function ProjectNameField({ path }: { path: string }) {
       <button
         onClick={enterEdit}
         title={`${path}\n\n${t('editor.clickToRename')}`}
-        className="group flex max-w-[360px] items-center gap-2 truncate rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] transition"
+        className="group flex max-w-[360px] items-center gap-2 truncate rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] shadow-sm transition-all duration-150 active:scale-98"
       >
+        <span className="flex h-3.5 w-3.5 items-center justify-center text-[var(--muted)] group-hover:text-[var(--text)] transition-colors">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </span>
         <span className="truncate">{projectDisplayName(path)}</span>
-        <span className="shrink-0 text-[#0A84FF]">· {formatSavedAgo(lastSavedAt, t)}</span>
+        <span className="flex items-center gap-1 shrink-0 text-[11px] text-[#0A84FF] font-normal">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#0A84FF]" />
+          {formatSavedAgo(lastSavedAt, t)}
+        </span>
       </button>
     );
   }
@@ -888,7 +913,7 @@ function ProjectNameField({ path }: { path: string }) {
             cancel();
           }
         }}
-        className="w-[280px] rounded-xl border border-[#0A84FF] bg-[var(--field)] px-2.5 py-1 text-xs text-[var(--text)] outline-none focus:ring-1 focus:ring-[#0A84FF]"
+        className="w-[280px] rounded-xl border border-[#0A84FF] bg-[var(--field)] px-3 py-1 text-xs text-[var(--text)] outline-none ring-2 ring-[#0A84FF]/25 shadow-sm transition-all"
       />
       {error && <span className="text-xs text-red-400" title={error}>!</span>}
     </div>

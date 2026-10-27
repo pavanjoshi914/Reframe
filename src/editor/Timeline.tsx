@@ -250,46 +250,52 @@ export function Timeline() {
     <div className="flex flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-2xl">
       <div className="flex items-center justify-between border-b border-[var(--card-border)] bg-[var(--strip-bg)] backdrop-blur-md px-3.5 py-2 text-xs text-[var(--muted)]">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-xs font-medium text-[var(--text)] px-2.5 py-0.5 rounded-lg bg-[var(--fill)] border border-[var(--stroke)]">
-            {formatTime(currentMs)} / {formatTime(durationMs)}
-          </span>
-          <AspectSelector />
+          <div className="flex items-center gap-1.5 rounded-xl bg-white/[0.04] px-2.5 py-1 text-xs font-semibold text-[var(--text)] border border-[var(--stroke)] shadow-inner">
+            <Film size={13} className="text-[#0A84FF]" />
+            <span>Timeline</span>
+            <span className="rounded-md bg-white/[0.08] px-1.5 py-0.5 font-mono text-[10px] text-[var(--muted)]">
+              {items.length + captionCues.length}
+            </span>
+          </div>
           <span className="text-[11px] text-[var(--faint)]">{t('tl.addHint')}</span>
         </div>
         <div className="flex items-center gap-2 text-[11px]">
-          <button
-            onClick={() => applyManualZoom(pixelsPerSecond / PPS_STEP)}
-            disabled={pixelsPerSecond <= PPS_MIN + 0.01}
-            className="flex h-6 w-6 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:opacity-30 transition"
-            title={t('tl.zoomOut')}
-            aria-label={t('tl.zoomOut')}
-          >
-            <Minus size={12} />
-          </button>
+          <div className="flex items-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] p-0.5 shadow-sm">
+            <button
+              onClick={() => applyManualZoom(pixelsPerSecond / PPS_STEP)}
+              disabled={pixelsPerSecond <= PPS_MIN + 0.01}
+              className="flex h-6 w-6 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:opacity-30 transition-all duration-150 active:scale-95"
+              title={t('tl.zoomOut')}
+              aria-label={t('tl.zoomOut')}
+            >
+              <Minus size={12} />
+            </button>
+            <span className="h-3 w-px bg-[var(--line)]" />
+            <button
+              onClick={() => applyManualZoom(pixelsPerSecond * PPS_STEP)}
+              disabled={pixelsPerSecond >= PPS_MAX - 0.01}
+              className="flex h-6 w-6 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:opacity-30 transition-all duration-150 active:scale-95"
+              title={t('tl.zoomIn')}
+              aria-label={t('tl.zoomIn')}
+            >
+              <Plus size={12} />
+            </button>
+          </div>
           <input
             type="range"
             min={0}
             max={1000}
             value={Math.round(ppsToSlider(pixelsPerSecond) * 1000)}
             onChange={(e) => applyManualZoom(sliderToPps(Number(e.target.value) / 1000))}
-            className="h-1.5 w-28 cursor-pointer accent-[#0A84FF]"
+            className="h-1.5 w-24 cursor-pointer accent-[#0A84FF]"
             aria-label={t('tl.timelineZoom')}
             title={t('tl.timelineZoom')}
           />
           <button
-            onClick={() => applyManualZoom(pixelsPerSecond * PPS_STEP)}
-            disabled={pixelsPerSecond >= PPS_MAX - 0.01}
-            className="flex h-6 w-6 items-center justify-center rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:opacity-30 transition"
-            title={t('tl.zoomIn')}
-            aria-label={t('tl.zoomIn')}
-          >
-            <Plus size={12} />
-          </button>
-          <button
             onClick={() => setFitToWidth(true)}
             disabled={fitToWidth}
             className={
-              'flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition ' +
+              'flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-medium transition-all duration-150 active:scale-95 shadow-sm ' +
               (fitToWidth
                 ? 'border-[#0A84FF]/40 bg-[#0A84FF]/20 text-[#0A84FF]'
                 : 'border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]')
@@ -357,7 +363,7 @@ export function Timeline() {
                 <span className="flex shrink-0 items-center gap-1">
                   <button
                     onClick={() => addCaptionCue({ startMs: currentMs })}
-                    className="group flex h-5 items-center gap-1 rounded bg-[var(--panel-2)] px-1.5 text-sky-300 transition hover:bg-sky-500/20 hover:text-white"
+                    className="group flex h-5 items-center gap-1 rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-1.5 text-sky-300 transition hover:bg-[var(--btn-squircle-hover)] hover:text-white"
                     title="Add Caption at Playhead (C)"
                     aria-label="Add Caption at Playhead (C)"
                   >
@@ -412,7 +418,7 @@ export function Timeline() {
                           data-testid="suggest-zooms"
                           onClick={() => suggestZooms()}
                           disabled={!hasActivity}
-                          className="flex h-5 w-5 items-center justify-center rounded bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent-dim)] disabled:opacity-30"
+                          className="flex h-5 w-5 items-center justify-center rounded-lg border border-[#0A84FF]/30 bg-[#0A84FF]/20 text-[#0A84FF] hover:bg-[#0A84FF]/30 disabled:opacity-30 transition"
                           title={hasActivity ? t('tl.suggestZooms') : t('tl.noCursorData')}
                           aria-label={t('tl.suggestZooms')}
                         >
@@ -421,7 +427,7 @@ export function Timeline() {
                       )}
                       <button
                         onClick={() => addItem(lane.kind, currentMs)}
-                        className="group flex h-5 items-center gap-1 rounded bg-[var(--panel-2)] px-1.5 text-[var(--muted)] transition hover:bg-white/15 hover:text-[var(--text)]"
+                        className="group flex h-5 items-center gap-1 rounded-lg border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-1.5 text-[var(--muted)] transition hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]"
                         title={`${t('tl.add', { label: t('tl.' + lane.kind) })} (${lane.key})`}
                         aria-label={`${t('tl.add', { label: t('tl.' + lane.kind) })} (${lane.key})`}
                       >
@@ -466,10 +472,10 @@ export function Timeline() {
 
             {/* playhead spans all lanes */}
             <div
-              className="pointer-events-none absolute inset-y-0 w-px bg-[var(--accent)] shadow-[0_0_8px_rgba(74,222,128,0.6)]"
+              className="pointer-events-none absolute inset-y-0 w-[1.5px] bg-[#0A84FF] shadow-[0_0_10px_rgba(10,132,255,0.7)] z-20"
               style={{ left: LANE_LABEL_W + playheadPx }}
             >
-              <div className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-[var(--accent)]" />
+              <div className="absolute -top-1 left-1/2 -translate-x-1/2 h-2.5 w-2.5 rotate-45 rounded-xs bg-[#0A84FF] shadow-sm" />
             </div>
           </div>
         </div>
@@ -482,19 +488,19 @@ export function Timeline() {
             <span key={lane.kind} className="flex items-center">
               <button
                 onClick={() => addItem(lane.kind, currentMs)}
-                className="group flex items-center gap-1.5 rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] transition shadow-sm"
+                className="group flex items-center gap-1.5 rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] transition shadow-sm active:scale-95"
                 title={`${t('tl.add', { label: t('tl.' + lane.kind) })} (${lane.key})`}
               >
                 <lane.icon size={12} className="text-[var(--muted)] group-hover:text-[var(--text)] transition" />
                 <span>{t('tl.' + lane.kind)}</span>
-                <kbd className="rounded-md bg-[var(--fill)] px-1.5 py-0.5 font-mono text-[9px] font-semibold leading-none text-[var(--faint)] group-hover:text-[var(--muted)]">{lane.key}</kbd>
+                <kbd className="rounded-md bg-[var(--fill)] px-1.5 py-0.5 font-mono text-[9px] font-semibold leading-none text-[var(--faint)] group-hover:text-[var(--muted)] border border-[var(--stroke)] shadow-2xs">{lane.key}</kbd>
               </button>
               {lane.kind === 'zoom' ? (
                 <button
                   data-testid="suggest-zooms"
                   onClick={() => suggestZooms()}
                   disabled={!hasActivity}
-                  className="ml-1.5 flex h-7 w-7 items-center justify-center rounded-xl border border-[#0A84FF]/30 bg-[#0A84FF]/15 text-[#0A84FF] hover:bg-[#0A84FF]/25 disabled:opacity-30 transition"
+                  className="ml-1.5 flex h-7 w-7 items-center justify-center rounded-xl border border-[#0A84FF]/30 bg-[#0A84FF]/15 text-[#0A84FF] hover:bg-[#0A84FF]/25 disabled:opacity-30 transition active:scale-95 shadow-sm"
                   title={hasActivity ? t('tl.suggestZooms') : t('tl.noCursorData')}
                   aria-label={t('tl.suggestZooms')}
                 >
@@ -641,13 +647,13 @@ function ItemChip({
       onPointerMove={onDragMove}
       onPointerUp={onDragEnd}
       className={
-        'group absolute top-1.5 h-9 cursor-grab rounded border ' + borderColor + ' ' + chipBg + ' ' +
-        (selected ? 'ring-2 ring-white/60 ring-offset-1 ring-offset-[#0a0b0e]' : '')
+        'group absolute top-1.5 h-9 cursor-grab rounded-xl border backdrop-blur-md shadow-md transition-all select-none ' + borderColor + ' ' + chipBg + ' ' +
+        (selected ? 'ring-2 ring-[#0A84FF] ring-offset-1 ring-offset-[#0a0b0e] shadow-[0_0_12px_rgba(10,132,255,0.4)]' : 'hover:brightness-110')
       }
       style={{ left, width }}
       title="Drag to move; drag edges to resize; click to select"
     >
-      <div className={'truncate px-1.5 pt-1 text-[10px] tracking-wide text-[var(--text)] ' + (item.kind === 'annotation' || item.kind === 'titleCard' ? 'normal-case' : 'uppercase')}>
+      <div className={'truncate px-2 pt-1.5 text-[10.5px] font-semibold tracking-wide text-[var(--text)] drop-shadow-xs ' + (item.kind === 'annotation' || item.kind === 'titleCard' ? 'normal-case' : 'uppercase')}>
         {labelText}
       </div>
       {/* resize handles */}
@@ -655,14 +661,18 @@ function ItemChip({
         onPointerDown={(e) => onDragStart('left', e)}
         onPointerMove={onDragMove}
         onPointerUp={onDragEnd}
-        className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize bg-white/0 hover:bg-white/40"
-      />
+        className="absolute inset-y-0 left-0 w-2.5 flex items-center justify-center cursor-ew-resize rounded-l-xl hover:bg-white/20 transition-colors"
+      >
+        <span className="h-3 w-0.5 rounded-full bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
       <div
         onPointerDown={(e) => onDragStart('right', e)}
         onPointerMove={onDragMove}
         onPointerUp={onDragEnd}
-        className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize bg-white/0 hover:bg-white/40"
-      />
+        className="absolute inset-y-0 right-0 w-2.5 flex items-center justify-center cursor-ew-resize rounded-r-xl hover:bg-white/20 transition-colors"
+      >
+        <span className="h-3 w-0.5 rounded-full bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
     </div>
   );
 }
@@ -724,8 +734,8 @@ function CaptionChip({
 
   return (
     <div
-      className={`group absolute top-1 bottom-1 flex items-center overflow-hidden rounded-md border text-[11px] font-medium transition-shadow select-none ${
-        selected ? 'border-sky-400 bg-sky-500/40 shadow-lg shadow-sky-500/20 ring-1 ring-sky-400' : 'border-sky-500/30 bg-sky-500/20 hover:border-sky-400/60'
+      className={`group absolute top-1 bottom-1 flex items-center overflow-hidden rounded-xl border text-[11px] font-medium backdrop-blur-md select-none transition-all ${
+        selected ? 'border-[#0A84FF] bg-[#0A84FF]/30 shadow-lg shadow-[#0A84FF]/25 ring-2 ring-[#0A84FF]/60 ring-offset-1 ring-offset-[#0a0b0e]' : 'border-[#0A84FF]/30 bg-[#0A84FF]/15 hover:border-[#0A84FF]/60 hover:bg-[#0A84FF]/25'
       }`}
       style={{ left, width }}
       onPointerDown={(e) => onDragStart('move', e)}
@@ -735,16 +745,20 @@ function CaptionChip({
       title={cue.text}
     >
       <div
-        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40"
+        className="absolute left-0 top-0 bottom-0 w-2.5 flex items-center justify-center cursor-ew-resize rounded-l-xl hover:bg-white/20 transition-colors"
         onPointerDown={(e) => onDragStart('left', e)}
-      />
-      <div className="flex-1 truncate px-2 text-sky-200">
+      >
+        <span className="h-3 w-0.5 rounded-full bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+      <div className="flex-1 truncate px-2 text-sky-200 text-[10.5px] font-medium">
         {cue.text}
       </div>
       <div
-        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-white/40"
+        className="absolute right-0 top-0 bottom-0 w-2.5 flex items-center justify-center cursor-ew-resize rounded-r-xl hover:bg-white/20 transition-colors"
         onPointerDown={(e) => onDragStart('right', e)}
-      />
+      >
+        <span className="h-3 w-0.5 rounded-full bg-white/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
     </div>
   );
 }
@@ -795,22 +809,4 @@ function SelectedItemInspector() {
   );
 }
 
-function AspectSelector() {
-  const t = useT();
-  const aspect = useEditor((s) => s.aspect);
-  const setAspect = useEditor((s) => s.setAspect);
-  return (
-    <select
-      value={aspect}
-      onChange={(e) => setAspect(e.target.value as any)}
-      className="cursor-pointer rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium text-[var(--text)] outline-none hover:bg-[var(--btn-squircle-hover)] transition"
-      aria-label={t('editor.aspect')}
-    >
-      <option value="16:9" className="bg-[var(--panel)]">16:9</option>
-      <option value="4:3" className="bg-[var(--panel)]">4:3</option>
-      <option value="1:1" className="bg-[var(--panel)]">1:1</option>
-      <option value="9:16" className="bg-[var(--panel)]">9:16</option>
-      <option value="auto" className="bg-[var(--panel)]">Auto</option>
-    </select>
-  );
-}
+

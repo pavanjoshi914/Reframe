@@ -108,13 +108,19 @@ export function Sidebar() {
               aria-label={x.label}
               aria-current={on}
               className={
-                'flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150 ' +
+                'relative flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200 active:scale-95 ' +
                 (on
-                  ? 'bg-[#0A84FF] text-white shadow-[0_2px_12px_rgba(10,132,255,0.4)]'
+                  ? 'bg-gradient-to-b from-[#0A84FF] to-[#0070E0] text-white shadow-[0_4px_14px_rgba(10,132,255,0.4),inset_0_1px_0_rgba(255,255,255,0.25)]'
                   : 'text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]')
               }
             >
               <Icon size={19} />
+              {on && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute -right-2 h-4 w-1 rounded-l-full bg-[#0A84FF] shadow-[0_0_8px_rgba(10,132,255,0.8)]"
+                />
+              )}
             </button>
           );
         })}
@@ -485,9 +491,9 @@ function BgTab({ active, onClick, children }: { active: boolean; onClick: () => 
     <button
       onClick={onClick}
       className={
-        'flex-1 basis-[28%] rounded-full px-2 py-1 text-[11px] font-medium transition-colors ' +
+        'flex-1 min-w-0 rounded-lg py-1.5 px-2 text-center text-[11px] font-medium transition-all duration-150 ' +
         (active
-          ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)] shadow-sm'
+          ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)] shadow-[0_1px_3px_rgba(0,0,0,0.25)] font-semibold'
           : 'text-[var(--muted)] hover:text-[var(--text)]')
       }
     >
@@ -501,8 +507,10 @@ function ChipBtn({ active, onClick, children }: { active: boolean; onClick: () =
     <button
       onClick={onClick}
       className={
-        'rounded-md px-2 py-1.5 text-xs font-medium ' +
-        (active ? 'bg-[var(--accent)] text-[var(--accent-fg)]' : 'glass glass-hover text-[var(--muted)]')
+        'rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all duration-150 active:scale-95 ' +
+        (active
+          ? 'bg-gradient-to-b from-[#0A84FF] to-[#0070E0] text-white shadow-[0_2px_8px_rgba(10,132,255,0.35),inset_0_1px_0_rgba(255,255,255,0.2)]'
+          : 'glass glass-hover text-[var(--muted)] hover:text-[var(--text)]')
       }
     >
       {children}
@@ -543,7 +551,7 @@ function RangeRow({
         <div className="relative h-[5px] w-full rounded-full bg-[var(--track)] overflow-hidden">
           {/* Active progress fill */}
           <div
-            className="absolute left-0 top-0 h-full rounded-full bg-[#0A84FF]"
+            className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-[#0A84FF] to-[#38bdf8]"
             style={{ width: `${pct}%` }}
           />
         </div>
@@ -559,7 +567,7 @@ function RangeRow({
 
         {/* Apple white circular thumb */}
         <div
-          className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-white shadow-[0_1px_4px_rgba(0,0,0,0.3)] border border-black/10"
+          className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-white shadow-[0_2px_5px_rgba(0,0,0,0.35)] border border-black/10 transition-transform active:scale-110"
           style={{ left: `calc(${pct}% + ${8 - pct * 0.16}px)` }}
         />
 
@@ -824,7 +832,7 @@ function TitleCardBackgroundSelector({
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
 
       {/* Primary Category Selector Tabs */}
-      <div className="flex flex-wrap gap-1">
+      <div className="mb-2 flex items-center rounded-xl bg-black/25 dark:bg-black/40 p-0.5 border border-[var(--stroke)] shadow-inner">
         <BgTab active={activeTab === 'project'} onClick={() => onChange({ titleBgMode: 'project', titleBgValue: '' })}>
           Project
         </BgTab>
@@ -2150,7 +2158,7 @@ function CompositionSection() {
         <div className="flex items-center justify-between mb-1.5">
           <Label>{isImage ? t('side.image') : t('side.videoFraming')}</Label>
           {cropActive && (
-            <span className="rounded bg-[var(--accent-dim)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent)]">
+            <span className="rounded-lg bg-[var(--accent-dim)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)] border border-[var(--accent)]/30">
               {t('side.cropped')}
             </span>
           )}
@@ -2159,14 +2167,14 @@ function CompositionSection() {
           <button
             onClick={() => setCropOpen(true)}
             disabled={!fileUrl}
-            className="flex flex-1 items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs font-medium hover:bg-[var(--panel-3)] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-2 text-xs font-semibold text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] shadow-sm transition-all duration-150 active:scale-98 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Crop size={14} /> {cropActive ? t('side.editCrop') : (isImage ? t('side.cropImage') : t('side.cropVideo'))}
           </button>
           {cropActive && (
             <button
               onClick={() => setCropRegion(DEFAULT_CROP_REGION)}
-              className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2.5 text-xs text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
+              className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 text-xs font-medium text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] shadow-sm transition-all duration-150 active:scale-95"
               title={t('side.clearCrop')}
             >
               {t('common.reset')}
@@ -2174,15 +2182,14 @@ function CompositionSection() {
           )}
         </div>
         {dims && (
-          <div className="mt-1.5 flex items-center justify-between text-[11px] text-[var(--faint)]">
-            <span>
-              {Math.round(cropRegion.width * dims.width)} ×{' '}
-              {Math.round(cropRegion.height * dims.height)} px
+          <div className="mt-2 flex items-center justify-between rounded-xl bg-black/20 dark:bg-black/30 border border-[var(--stroke)] px-2.5 py-1.5 text-[11px] text-[var(--muted)]">
+            <span className="font-mono tabular-nums text-[var(--text)] font-medium">
+              {Math.round(cropRegion.width * dims.width)} × {Math.round(cropRegion.height * dims.height)} px
             </span>
-            <span>
+            <span className="rounded-md bg-white/[0.06] px-1.5 py-0.5 font-mono text-[10px] text-[var(--muted)]">
               {cropActive
-                ? `${Math.round(cropRegion.width * 100)}% of source`
-                : '100% (full frame)'}
+                ? `${Math.round(cropRegion.width * 100)}% source`
+                : '100% full'}
             </span>
           </div>
         )}
@@ -2234,14 +2241,14 @@ function CompositionSection() {
             <select
               value={layoutPreset}
               onChange={(e) => setLayoutPreset(e.target.value as any)}
-              className="w-full rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2 py-1.5 text-sm"
+              className="w-full cursor-pointer rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-2 text-xs font-medium text-[var(--text)] outline-none hover:bg-[var(--btn-squircle-hover)] shadow-sm transition-all"
             >
-              <option value="pip-bottom-right">{t('side.pipBottomRight')}</option>
-              <option value="pip-bottom-left">{t('side.pipBottomLeft')}</option>
-              <option value="pip-top-right">{t('side.pipTopRight')}</option>
-              <option value="pip-top-left">{t('side.pipTopLeft')}</option>
-              <option value="side-by-side">{t('side.sideBySide')}</option>
-              <option value="vertical-9-16">{t('side.vertical916')}</option>
+              <option value="pip-bottom-right" className="bg-[var(--panel)]">{t('side.pipBottomRight')}</option>
+              <option value="pip-bottom-left" className="bg-[var(--panel)]">{t('side.pipBottomLeft')}</option>
+              <option value="pip-top-right" className="bg-[var(--panel)]">{t('side.pipTopRight')}</option>
+              <option value="pip-top-left" className="bg-[var(--panel)]">{t('side.pipTopLeft')}</option>
+              <option value="side-by-side" className="bg-[var(--panel)]">{t('side.sideBySide')}</option>
+              <option value="vertical-9-16" className="bg-[var(--panel)]">{t('side.vertical916')}</option>
             </select>
           </div>
 
@@ -2251,15 +2258,15 @@ function CompositionSection() {
             <RangeRow label={t('side.size')} value={webcam.size} min={0.08} max={0.6} step={0.01} onChange={(v) => setWebcam({ size: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
             <div className="mt-2">
               <Label>{t('side.shape')}</Label>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="flex items-center rounded-xl bg-black/25 dark:bg-black/40 p-0.5 border border-[var(--stroke)] shadow-inner">
                 <ShapeBtn active={webcam.shape === 'rectangle'} onClick={() => setWebcam({ shape: 'rectangle' })} label={t('side.rectangle')}>
-                  <RectangleHorizontal size={14} />
+                  <RectangleHorizontal size={13} />
                 </ShapeBtn>
                 <ShapeBtn active={webcam.shape === 'square'} onClick={() => setWebcam({ shape: 'square' })} label={t('side.square')}>
-                  <Square size={14} />
+                  <Square size={13} />
                 </ShapeBtn>
                 <ShapeBtn active={webcam.shape === 'circle'} onClick={() => setWebcam({ shape: 'circle' })} label={t('side.circle')}>
-                  <Circle size={14} />
+                  <Circle size={13} />
                 </ShapeBtn>
               </div>
             </div>
@@ -2275,7 +2282,7 @@ function CompositionSection() {
         <ToggleRow label={t('side.fullScreen')} checked={fullBleed} onChange={setFullBleed} />
         <p className="mb-2 text-[11px] leading-snug text-[var(--faint)]">{t('side.fullScreenHint')}</p>
         <div className={fullBleed ? 'pointer-events-none opacity-40' : undefined} aria-hidden={fullBleed}>
-        <div className="mb-2 flex flex-wrap gap-1">
+        <div className="mb-3 flex items-center rounded-xl bg-black/25 dark:bg-black/40 p-0.5 border border-[var(--stroke)] shadow-inner">
           <BgTab active={background.mode === 'image'} onClick={() => setBackground({ mode: 'image', value: background.mode === 'image' ? background.value : '' })}>{t('side.image')}</BgTab>
           <BgTab active={background.mode === 'color'} onClick={() => setBackground({ mode: 'color', value: background.mode === 'color' ? background.value : '#1a1d23' })}>{t('side.color')}</BgTab>
           <BgTab active={background.mode === 'gradient'} onClick={() => setBackground({ mode: 'gradient', value: background.mode === 'gradient' ? background.value : 'linear-gradient(135deg,#fb923c,#ec4899)' })}>{t('side.gradient')}</BgTab>
@@ -2285,7 +2292,7 @@ function CompositionSection() {
         {(background.mode === 'field' || background.mode === 'shader') && <FieldPanel />}
         {background.mode === 'mesh' && (
           <div className="space-y-2">
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-4 gap-2">
               {MESH_PRESETS.map((m, i) => (
                 <button
                   key={m.id}
@@ -2293,10 +2300,10 @@ function CompositionSection() {
                   title={`Mesh ${i + 1}`}
                   onClick={() => setBackground({ mode: 'mesh', value: m.id })}
                   className={
-                    'overflow-hidden rounded transition ' +
+                    'aspect-[16/10] overflow-hidden rounded-xl border transition-all duration-200 active:scale-95 shadow-sm ' +
                     (background.value === m.id
-                      ? 'ring-2 ring-[var(--accent)]'
-                      : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+                      ? 'border-[#0A84FF] ring-2 ring-[#0A84FF]/50 shadow-[0_0_12px_rgba(10,132,255,0.4)]'
+                      : 'border-white/10 hover:border-white/30 hover:scale-105')
                   }
                 >
                   <MeshThumb id={m.id} />
@@ -2310,7 +2317,7 @@ function CompositionSection() {
           <div className="space-y-2">
             {/* Live preview tile — large, shows the current hex prominently */}
             <div
-              className="flex h-16 w-full items-center justify-center rounded-md border border-[var(--line)] font-mono text-xs"
+              className="flex h-16 w-full items-center justify-center rounded-xl border border-[var(--line)] font-mono text-xs shadow-inner"
               style={{
                 backgroundColor: background.value,
                 color: pickReadableTextColor(background.value)
@@ -2327,10 +2334,10 @@ function CompositionSection() {
                   title={c}
                   onClick={() => setBackground({ mode: 'color', value: c })}
                   className={
-                    'aspect-square rounded transition ' +
+                    'aspect-square rounded-lg transition-transform hover:scale-110 active:scale-95 ' +
                     (background.value.toLowerCase() === c.toLowerCase()
-                      ? 'ring-2 ring-[var(--accent)]'
-                      : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+                      ? 'ring-2 ring-[#0A84FF] shadow-[0_0_8px_rgba(10,132,255,0.5)]'
+                      : 'ring-1 ring-white/10 hover:ring-white/30')
                   }
                   style={{ backgroundColor: c }}
                 />
@@ -2342,7 +2349,7 @@ function CompositionSection() {
                 type="color"
                 value={background.value}
                 onChange={(e) => setBackground({ mode: 'color', value: e.target.value })}
-                className="h-8 w-8 shrink-0 cursor-pointer rounded border border-[var(--line)] bg-transparent"
+                className="h-8 w-8 shrink-0 cursor-pointer rounded-lg border border-[var(--btn-squircle-border)] bg-transparent"
                 aria-label="Pick color"
               />
               <input
@@ -2355,13 +2362,13 @@ function CompositionSection() {
                   }
                 }}
                 placeholder="#RRGGBB"
-                className="h-8 flex-1 rounded border border-[var(--line)] bg-[var(--field)] px-2 font-mono text-xs uppercase outline-none focus:border-[var(--accent)]"
+                className="h-8 flex-1 rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--field)] px-3 font-mono text-xs uppercase outline-none focus:border-[#0A84FF] shadow-inner"
               />
             </div>
           </div>
         )}
         {background.mode === 'gradient' && (
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-4 gap-2">
             {GRADIENTS.map((g, i) => (
               <button
                 key={g}
@@ -2369,7 +2376,10 @@ function CompositionSection() {
                 title={`Gradient ${i + 1}`}
                 onClick={() => setBackground({ mode: 'gradient', value: g })}
                 className={
-                  'aspect-square rounded ' + (background.value === g ? 'ring-2 ring-[var(--accent)]' : 'ring-1 ring-[var(--line)]')
+                  'aspect-[16/10] rounded-xl border transition-all duration-200 active:scale-95 ' +
+                  (background.value === g
+                    ? 'border-[#0A84FF] ring-2 ring-[#0A84FF]/50 shadow-[0_0_12px_rgba(10,132,255,0.4)]'
+                    : 'border-white/10 hover:border-white/30 hover:scale-105')
                 }
                 style={{ backgroundImage: g }}
               />
@@ -2377,14 +2387,14 @@ function CompositionSection() {
           </div>
         )}
         {background.mode === 'image' && (
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <button
               onClick={handleUploadImage}
-              className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-sm hover:bg-[var(--panel-2)]"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-2 text-xs font-semibold text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] shadow-sm transition-all duration-150 active:scale-[0.99]"
             >
               <Upload size={14} /> {t('side.uploadCustom')}
             </button>
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-4 gap-2">
               {WALLPAPER_URLS.map((url, i) => (
                 <button
                   key={url}
@@ -2392,22 +2402,22 @@ function CompositionSection() {
                   title={`Wallpaper ${i + 1}`}
                   onClick={() => setBackground({ mode: 'image', value: url })}
                   className={
-                    'aspect-square overflow-hidden rounded transition ' +
+                    'group aspect-[16/10] overflow-hidden rounded-xl border transition-all duration-200 active:scale-95 shadow-sm ' +
                     (background.value === url
-                      ? 'ring-2 ring-[var(--accent)]'
-                      : 'ring-1 ring-[var(--line)] hover:ring-white/30')
+                      ? 'border-[#0A84FF] ring-2 ring-[#0A84FF]/50 shadow-[0_0_12px_rgba(10,132,255,0.4)]'
+                      : 'border-white/10 hover:border-white/30 hover:scale-105')
                   }
                 >
-                  <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  <img src={url} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-110" loading="lazy" />
                 </button>
               ))}
             </div>
             {background.value && !WALLPAPER_URLS.includes(background.value) && (
-              <div className="relative h-20 w-full overflow-hidden rounded border border-[var(--line)]">
+              <div className="relative h-20 w-full overflow-hidden rounded-xl border border-[var(--line)] shadow-inner">
                 <img src={background.value} alt="custom background preview" className="h-full w-full object-cover" />
                 <button
                   onClick={() => setBackground({ mode: 'image', value: '' })}
-                  className="absolute right-1 top-1 rounded bg-[var(--panel-2)] p-0.5 text-[var(--text)] hover:bg-[var(--panel-2)]"
+                  className="absolute right-1.5 top-1.5 rounded-lg bg-[var(--panel-2)]/90 backdrop-blur-md p-1 text-[var(--text)] hover:bg-[var(--panel-3)] shadow-md transition"
                   title={t('side.clearImage')}
                   aria-label={t('side.clearImage')}
                 >
@@ -3132,7 +3142,7 @@ function ExportSection() {
         <button
           onClick={handleExport}
           disabled={!!busy || !fileUrl}
-          className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#0A84FF] text-sm font-semibold text-white shadow-[0_2px_12px_rgba(10,132,255,0.4)] hover:brightness-110 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-60 transition"
+          className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-[#0A84FF] to-[#0070E0] text-sm font-semibold text-white shadow-[0_4px_16px_rgba(10,132,255,0.4),inset_0_1px_0_rgba(255,255,255,0.25)] hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 transition-all duration-150"
         >
           {busy ? (
             <Loader2 size={15} className="animate-spin" />
@@ -3148,7 +3158,7 @@ function ExportSection() {
           disabled={!!busy || !fileUrl || shotBusy}
           title={t('side.captureFrameHint')}
           aria-label={t('side.captureFrame')}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--btn-squircle)] border border-[var(--btn-squircle-border)] text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] disabled:cursor-not-allowed disabled:opacity-50 transition"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--btn-squircle)] border border-[var(--btn-squircle-border)] text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-150 shadow-sm"
         >
           {shotBusy ? <Loader2 size={15} className="animate-spin" /> : <Camera size={16} />}
         </button>
@@ -3163,7 +3173,7 @@ function ExportSection() {
           disabled={!!busy || !fileUrl}
           title={t('editor.copyImage')}
           aria-label={t('editor.copyImage')}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--btn-squircle)] border border-[var(--btn-squircle-border)] text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] disabled:cursor-not-allowed disabled:opacity-50 transition"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--btn-squircle)] border border-[var(--btn-squircle-border)] text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-150 shadow-sm"
         >
           {copyFlash ? <Check size={16} className="text-[#0A84FF]" /> : <Copy size={16} />}
         </button>
@@ -3196,16 +3206,16 @@ function InlineChoice({
   return (
     <div className="flex h-8 items-center gap-2" title={hint}>
       <span className="w-[58px] shrink-0 truncate text-[11px] text-[var(--muted)]">{label}</span>
-      <div className="flex min-w-0 flex-1 gap-1">
+      <div className="flex min-w-0 flex-1 rounded-lg bg-black/20 dark:bg-black/40 p-0.5 border border-[var(--stroke)] shadow-inner">
         {options.map(([v, lbl]) => (
           <button
             key={v}
             onClick={() => onPick(v)}
             className={
-              'h-7 min-w-0 flex-1 truncate rounded-[5px] px-1 text-[11px] font-medium ' +
+              'h-6 min-w-0 flex-1 truncate rounded-md px-1.5 text-[11px] font-medium transition-all duration-150 ' +
               (value === v
-                ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
-                : 'glass glass-hover text-[var(--muted)]')
+                ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)] shadow-sm'
+                : 'text-[var(--muted)] hover:text-[var(--text)]')
             }
           >
             {lbl}
@@ -3249,31 +3259,31 @@ function ExportProgressModal({ busy, onCancel }: { busy: BusyState; onCancel: ()
   const encoding = busy.phase === 'Encoding' || busy.phase === 'Encoding GIF';
   const subtitle = cancelling ? t('export.cancelling') : encoding ? t(cheerKey(pct)) : stage;
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--scrim)] backdrop-blur-sm">
-      <div className="w-[380px] rounded-2xl border border-[var(--line)] bg-[var(--panel-2)] p-6 shadow-2xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--scrim)] backdrop-blur-xl">
+      <div className="w-[380px] rounded-3xl border border-[var(--line-2)] bg-[var(--panel)]/95 p-6 shadow-[0_24px_64px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.15)] backdrop-blur-2xl">
         <div className="mb-1 flex items-center gap-2">
-          <Loader2 size={16} className="animate-spin text-[var(--accent)]" />
+          <Loader2 size={16} className="animate-spin text-[#0A84FF]" />
           <h2 className="text-sm font-semibold text-[var(--text)]">{t('export.title')}</h2>
         </div>
         <p className="mb-4 text-xs text-[var(--muted)] transition-opacity">{subtitle}</p>
-        <div className="mb-4 aspect-video w-full overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-2)]">
+        <div className="mb-4 aspect-video w-full overflow-hidden rounded-2xl border border-[var(--line)] bg-black/40 shadow-inner">
           {busy.preview ? (
             <img src={busy.preview} alt="" className="h-full w-full object-contain" />
           ) : (
             <div className="flex h-full items-center justify-center text-[11px] text-[var(--faint)]">{t('export.preparing')}…</div>
           )}
         </div>
-        <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-[var(--panel-3)]">
-          <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150" style={{ width: `${pct}%` }} />
+        <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-[var(--track)] shadow-inner">
+          <div className="h-full rounded-full bg-gradient-to-r from-[#0A84FF] to-[#38bdf8] shadow-[0_0_8px_rgba(10,132,255,0.4)] transition-[width] duration-150" style={{ width: `${pct}%` }} />
         </div>
-        <div className="mb-4 flex items-center justify-between text-[11px] text-[var(--muted)]">
+        <div className="mb-4 flex items-center justify-between text-[11px] text-[var(--muted)] font-medium">
           <span>{busy.totalFrames ? t('export.frame', { n: busy.frame ?? 0, total: busy.totalFrames }) : ''}</span>
-          <span className="font-mono text-[var(--muted)]">{pct}%</span>
+          <span className="font-mono text-[var(--text)] tabular-nums">{pct}%</span>
         </div>
         <button
           onClick={() => { setCancelling(true); onCancel(); }}
           disabled={cancelling}
-          className="w-full rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs font-medium text-[var(--muted)] hover:bg-[var(--panel-3)] disabled:opacity-50"
+          className="w-full rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-2 text-xs font-medium text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] active:scale-95 transition-all disabled:opacity-50 shadow-sm"
         >
           {t('export.cancel')}
         </button>
@@ -3283,7 +3293,11 @@ function ExportProgressModal({ busy, onCancel }: { busy: BusyState; onCancel: ()
 }
 
 function Label({ children }: { children: React.ReactNode }) {
-  return <div className="sb-label text-xs font-semibold text-[var(--text)] tracking-normal">{children}</div>;
+  return (
+    <div className="sb-label text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)] select-none">
+      {children}
+    </div>
+  );
 }
 
 // How zoom transitions move. Document-level, not per-region: mixing a snappy
@@ -3326,11 +3340,13 @@ function AppleSwitch({
       aria-label={ariaLabel}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none ${
-        checked ? 'bg-[#0A84FF]' : 'bg-[var(--track)] border border-[var(--btn-squircle-border)] hover:opacity-80'
+        checked
+          ? 'bg-gradient-to-r from-[#0A84FF] to-[#0070E0] shadow-[0_1px_4px_rgba(10,132,255,0.3)]'
+          : 'bg-[var(--track)] border border-[var(--btn-squircle-border)] hover:opacity-90'
       }`}
     >
       <span
-        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition-transform duration-200 ${
+        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-[0_2px_4px_rgba(0,0,0,0.3)] transition-transform duration-200 ${
           checked ? 'translate-x-[18px]' : 'translate-x-[2px]'
         }`}
       />
@@ -3839,10 +3855,10 @@ function ShapeBtn({
       title={label}
       aria-label={label}
       aria-pressed={active}
-      className={`flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-medium transition-all duration-150 ${
+      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 px-2 text-xs font-medium transition-all duration-150 ${
         active
-          ? 'bg-[#0A84FF] text-white shadow-[0_2px_10px_rgba(10,132,255,0.35)]'
-          : 'bg-[var(--btn-squircle)] text-[var(--muted)] border border-[var(--btn-squircle-border)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]'
+          ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)] shadow-[0_1px_3px_rgba(0,0,0,0.25)] font-semibold'
+          : 'text-[var(--muted)] hover:text-[var(--text)]'
       }`}
     >
       {children}
