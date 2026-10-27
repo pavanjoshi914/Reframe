@@ -446,12 +446,12 @@ export function EditorApp() {
   return (
     <div className="flex h-screen w-screen flex-col bg-[var(--bg)]">
       {/* top toolbar */}
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--card-border)] bg-[var(--panel)]/70 backdrop-blur-xl px-4 text-sm z-30">
-        <div className="flex items-center gap-3">
+      <div className="flex h-12 shrink-0 items-center justify-between bg-transparent px-4">
+        <div className="flex items-center gap-3 text-sm">
           <img
             src={wordmarkUrl}
             alt="Reframe"
-            className="h-6.5 object-contain"
+            className="h-7 object-contain"
             style={{ filter: 'var(--wordmark)' }}
           />
           <Divider />
@@ -461,7 +461,7 @@ export function EditorApp() {
             <button
               onClick={() => useEditor.getState().undo()}
               disabled={!canUndo}
-              className="flex h-6.5 w-6.5 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-30 transition-all duration-150 active:scale-95"
+              className="flex h-6 w-6 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-30 transition-all duration-150 active:scale-95"
               aria-label={t('editor.undo')}
               title={`${t('editor.undo')} (Ctrl+Z)`}
             >
@@ -471,78 +471,64 @@ export function EditorApp() {
             <button
               onClick={() => useEditor.getState().redo()}
               disabled={!canRedo}
-              className="flex h-6.5 w-6.5 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-30 transition-all duration-150 active:scale-95"
+              className="flex h-6 w-6 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-30 transition-all duration-150 active:scale-95"
               aria-label={t('editor.redo')}
               title={`${t('editor.redo')} (Ctrl+Shift+Z)`}
             >
               <Redo2 size={13} />
             </button>
           </div>
+          {currentProjectPath && (
+            <>
+              <Divider />
+              <ProjectNameField path={currentProjectPath} />
+            </>
+          )}
         </div>
-
-        {/* Center Document Title Capsule */}
-        {currentProjectPath && (
-          <div className="flex items-center justify-center">
-            <ProjectNameField path={currentProjectPath} />
-          </div>
-        )}
-
-        {/* Right Toolbar Actions */}
         <div className="flex items-center gap-2">
-          {/* Aspect ratio */}
-          <div className="flex items-center gap-1.5 rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium shadow-sm">
-            <span className="text-[11px] text-[var(--muted)] font-medium">{t('editor.aspect')}</span>
-            <select
-              value={aspect}
-              onChange={(e) => setAspect(e.target.value as any)}
-              className="bg-transparent font-semibold text-[var(--text)] outline-none cursor-pointer"
-            >
-              <option value="16:9" className="bg-[var(--panel)]">16:9</option>
-              <option value="4:3" className="bg-[var(--panel)]">4:3</option>
-              <option value="1:1" className="bg-[var(--panel)]">1:1</option>
-              <option value="9:16" className="bg-[var(--panel)]">9:16</option>
-              <option value="auto" className="bg-[var(--panel)]">Auto</option>
-            </select>
-          </div>
-
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+            className="flex h-7 w-7 items-center justify-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95 shadow-sm"
+          >
+            {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
+          </button>
+          <LanguageSelector />
           <Divider />
-
+          <label className="text-xs font-medium text-[var(--muted)]">{t('editor.aspect')}</label>
+          <select
+            value={aspect}
+            onChange={(e) => setAspect(e.target.value as any)}
+            className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-2.5 py-1 text-xs font-medium text-[var(--text)] outline-none hover:bg-[var(--btn-squircle-hover)] transition-all shadow-sm cursor-pointer"
+          >
+            <option value="16:9" className="bg-[var(--panel)]">16:9</option>
+            <option value="4:3" className="bg-[var(--panel)]">4:3</option>
+            <option value="1:1" className="bg-[var(--panel)]">1:1</option>
+            <option value="9:16" className="bg-[var(--panel)]">9:16</option>
+            <option value="auto" className="bg-[var(--panel)]">Auto</option>
+          </select>
+          <Divider />
           <button
             onClick={handleOpenMedia}
-            className="flex items-center gap-1.5 rounded-xl border border-[#0A84FF]/40 bg-[#0A84FF]/15 px-3 py-1.5 text-xs font-semibold text-[#0A84FF] hover:bg-[#0A84FF]/25 shadow-sm transition-all duration-150 active:scale-95"
+            className="flex items-center gap-1.5 rounded-xl border border-[#0A84FF]/40 bg-[#0A84FF]/15 px-3 py-1 text-xs font-medium text-[#0A84FF] hover:bg-[#0A84FF]/25 shadow-sm transition-all duration-150 active:scale-95"
             title={`${t('editor.uploadMedia')} (Ctrl+I)`}
           >
             <Upload size={13} />
             <span>{t('editor.uploadMediaShort')}</span>
           </button>
-          <button
-            onClick={handleSaveProject}
-            className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-1.5 text-xs font-semibold text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] shadow-sm transition-all duration-150 active:scale-95"
-          >
-            {t('editor.saveProjectBtn')}
-          </button>
-
+          <button onClick={handleLoadProject} className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] shadow-sm transition-all duration-150 active:scale-95">{t('editor.loadProject')}</button>
+          <button onClick={handleSaveProject} className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-1 text-xs font-medium text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] shadow-sm transition-all duration-150 active:scale-95">{t('editor.saveProjectBtn')}</button>
           <Divider />
-
-          <div className="flex items-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] p-0.5 shadow-sm">
-            <button
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-              className="flex h-6.5 w-6.5 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95"
-            >
-              {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
-            </button>
-            <span className="h-3 w-px bg-[var(--line)]" />
-            <LanguageSelector className="border-0 bg-transparent py-0.5 text-xs" />
-          </div>
-
+          {/* Always-available way to support the project, so the post-export
+              prompt can stay rare and dismissible. */}
           <button
             onClick={() => void window.api.openExternal(SPONSOR_URL)}
             title={t('editor.sponsorTitle')}
             aria-label={t('editor.sponsorTitle')}
-            className="flex items-center justify-center h-8 w-8 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 transition-all duration-150 hover:bg-rose-500/20 active:scale-95 shadow-sm"
+            className="flex items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-300 transition-all duration-150 hover:bg-rose-500/20 active:scale-95 shadow-sm"
           >
-            <Heart size={14} fill="currentColor" className="text-rose-400" />
+            <Heart size={13} fill="currentColor" className="text-rose-400" />
+            {t('editor.sponsor')}
           </button>
         </div>
       </div>
@@ -637,72 +623,71 @@ export function EditorApp() {
                 </div>
               </div>
 
-              {/* Capture Tools Group */}
-              <div className="flex items-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] p-0.5 shadow-sm">
-                <button
-                  onClick={() => setCropModalOpen(true)}
-                  disabled={!fileUrl}
-                  title={t('editor.cropShortcut')}
-                  aria-label={t('editor.crop')}
-                  className={
-                    'relative flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-150 active:scale-95 ' +
-                    (isCropped
-                      ? 'bg-[#0A84FF]/25 text-[#0A84FF]'
-                      : 'text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]') +
-                    ' disabled:cursor-not-allowed disabled:opacity-30'
-                  }
-                >
-                  <Crop size={13} />
-                  {isCropped && (
-                    <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-[#0A84FF]" />
-                  )}
-                </button>
-                <span className="h-3 w-px bg-[var(--line)]" />
-                <button
-                  onClick={async () => {
-                    const p = await saveStillNow();
-                    if (p) { setShotFlash(true); window.setTimeout(() => setShotFlash(false), 1400); }
-                  }}
-                  title={t('side.captureFrameHint')}
-                  aria-label={t('side.captureFrame')}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95"
-                >
-                  {shotFlash ? <Check size={13} className="text-emerald-400" /> : <Camera size={13} />}
-                </button>
-                <span className="h-3 w-px bg-[var(--line)]" />
-                <button
-                  onClick={async () => {
-                    const ok = await copyImageToClipboardNow();
-                    if (ok) { setCopyFlash(true); window.setTimeout(() => setCopyFlash(false), 1400); }
-                  }}
-                  title={t('editor.copyImage')}
-                  aria-label={t('editor.copyImage')}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95"
-                >
-                  {copyFlash ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-                </button>
-              </div>
+              {/* Fullscreen */}
+              <button
+                onClick={handleFullscreen}
+                className="flex h-7 w-7 items-center justify-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95 shadow-sm"
+                aria-label={isFullscreen ? t('editor.exitFullscreen') : t('editor.fullscreen')}
+                title={isFullscreen ? 'Exit fullscreen (Esc)' : t('editor.fullscreen')}
+              >
+                {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+              </button>
 
-              {/* View Tools Group */}
-              <div className="flex items-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] p-0.5 shadow-sm">
-                <button
-                  onClick={handleFullscreen}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95"
-                  aria-label={isFullscreen ? t('editor.exitFullscreen') : t('editor.fullscreen')}
-                  title={isFullscreen ? 'Exit fullscreen (Esc)' : t('editor.fullscreen')}
-                >
-                  {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-                </button>
-                <span className="h-3 w-px bg-[var(--line)]" />
-                <button
-                  onClick={() => setTimelineCollapsed((v) => !v)}
-                  title={timelineCollapsed ? 'Show timeline' : 'Hide timeline'}
-                  aria-expanded={!timelineCollapsed}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95"
-                >
-                  {timelineCollapsed ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                </button>
-              </div>
+              {/* Crop tool */}
+              <button
+                onClick={() => setCropModalOpen(true)}
+                disabled={!fileUrl}
+                title={t('editor.cropShortcut')}
+                aria-label={t('editor.crop')}
+                className={
+                  'relative flex h-7 w-7 items-center justify-center rounded-xl border transition-all duration-150 active:scale-95 shadow-sm ' +
+                  (isCropped
+                    ? 'border-[#0A84FF]/40 bg-[#0A84FF]/20 text-[#0A84FF]'
+                    : 'border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]') +
+                  ' disabled:cursor-not-allowed disabled:opacity-30'
+                }
+              >
+                <Crop size={13} />
+                {isCropped && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[#0A84FF] ring-2 ring-[var(--card)]" />
+                )}
+              </button>
+
+              {/* Capture the current frame as still image */}
+              <button
+                onClick={async () => {
+                  const p = await saveStillNow();
+                  if (p) { setShotFlash(true); window.setTimeout(() => setShotFlash(false), 1400); }
+                }}
+                title={t('side.captureFrameHint')}
+                aria-label={t('side.captureFrame')}
+                className="flex h-7 w-7 items-center justify-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95 shadow-sm"
+              >
+                {shotFlash ? <Check size={13} className="text-emerald-400" /> : <Camera size={13} />}
+              </button>
+
+              {/* Quick copy frame to clipboard */}
+              <button
+                onClick={async () => {
+                  const ok = await copyImageToClipboardNow();
+                  if (ok) { setCopyFlash(true); window.setTimeout(() => setCopyFlash(false), 1400); }
+                }}
+                title={t('editor.copyImage')}
+                aria-label={t('editor.copyImage')}
+                className="flex h-7 w-7 items-center justify-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95 shadow-sm"
+              >
+                {copyFlash ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+              </button>
+
+              {/* Toggle Timeline */}
+              <button
+                onClick={() => setTimelineCollapsed((v) => !v)}
+                title={timelineCollapsed ? 'Show timeline' : 'Hide timeline'}
+                aria-expanded={!timelineCollapsed}
+                className="flex h-7 w-7 items-center justify-center rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] transition-all duration-150 active:scale-95 shadow-sm"
+              >
+                {timelineCollapsed ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
             </div>
           </div>
           {!timelineCollapsed && <Timeline />}

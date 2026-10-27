@@ -491,9 +491,9 @@ function BgTab({ active, onClick, children }: { active: boolean; onClick: () => 
     <button
       onClick={onClick}
       className={
-        'flex-1 min-w-0 rounded-lg py-1.5 px-2 text-center text-[11px] font-medium transition-all duration-150 ' +
+        'flex-1 basis-[28%] rounded-full px-2 py-1 text-[11px] font-medium transition-colors ' +
         (active
-          ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)] shadow-[0_1px_3px_rgba(0,0,0,0.25)] font-semibold'
+          ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)] shadow-sm'
           : 'text-[var(--muted)] hover:text-[var(--text)]')
       }
     >
@@ -832,7 +832,7 @@ function TitleCardBackgroundSelector({
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
 
       {/* Primary Category Selector Tabs */}
-      <div className="mb-2 flex items-center rounded-xl bg-black/25 dark:bg-black/40 p-0.5 border border-[var(--stroke)] shadow-inner">
+      <div className="flex flex-wrap gap-1">
         <BgTab active={activeTab === 'project'} onClick={() => onChange({ titleBgMode: 'project', titleBgValue: '' })}>
           Project
         </BgTab>
@@ -2158,7 +2158,7 @@ function CompositionSection() {
         <div className="flex items-center justify-between mb-1.5">
           <Label>{isImage ? t('side.image') : t('side.videoFraming')}</Label>
           {cropActive && (
-            <span className="rounded-lg bg-[var(--accent-dim)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)] border border-[var(--accent)]/30">
+            <span className="rounded bg-[var(--accent-dim)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent)]">
               {t('side.cropped')}
             </span>
           )}
@@ -2167,14 +2167,14 @@ function CompositionSection() {
           <button
             onClick={() => setCropOpen(true)}
             disabled={!fileUrl}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-2 text-xs font-semibold text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] shadow-sm transition-all duration-150 active:scale-98 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex flex-1 items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs font-medium hover:bg-[var(--panel-3)] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Crop size={14} /> {cropActive ? t('side.editCrop') : (isImage ? t('side.cropImage') : t('side.cropVideo'))}
           </button>
           {cropActive && (
             <button
               onClick={() => setCropRegion(DEFAULT_CROP_REGION)}
-              className="rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 text-xs font-medium text-[var(--muted)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)] shadow-sm transition-all duration-150 active:scale-95"
+              className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2.5 text-xs text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
               title={t('side.clearCrop')}
             >
               {t('common.reset')}
@@ -2182,14 +2182,15 @@ function CompositionSection() {
           )}
         </div>
         {dims && (
-          <div className="mt-2 flex items-center justify-between rounded-xl bg-black/20 dark:bg-black/30 border border-[var(--stroke)] px-2.5 py-1.5 text-[11px] text-[var(--muted)]">
-            <span className="font-mono tabular-nums text-[var(--text)] font-medium">
-              {Math.round(cropRegion.width * dims.width)} × {Math.round(cropRegion.height * dims.height)} px
+          <div className="mt-1.5 flex items-center justify-between text-[11px] text-[var(--faint)]">
+            <span>
+              {Math.round(cropRegion.width * dims.width)} ×{' '}
+              {Math.round(cropRegion.height * dims.height)} px
             </span>
-            <span className="rounded-md bg-white/[0.06] px-1.5 py-0.5 font-mono text-[10px] text-[var(--muted)]">
+            <span>
               {cropActive
-                ? `${Math.round(cropRegion.width * 100)}% source`
-                : '100% full'}
+                ? `${Math.round(cropRegion.width * 100)}% of source`
+                : '100% (full frame)'}
             </span>
           </div>
         )}
@@ -2241,14 +2242,14 @@ function CompositionSection() {
             <select
               value={layoutPreset}
               onChange={(e) => setLayoutPreset(e.target.value as any)}
-              className="w-full cursor-pointer rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-2 text-xs font-medium text-[var(--text)] outline-none hover:bg-[var(--btn-squircle-hover)] shadow-sm transition-all"
+              className="w-full rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-2 py-1.5 text-sm"
             >
-              <option value="pip-bottom-right" className="bg-[var(--panel)]">{t('side.pipBottomRight')}</option>
-              <option value="pip-bottom-left" className="bg-[var(--panel)]">{t('side.pipBottomLeft')}</option>
-              <option value="pip-top-right" className="bg-[var(--panel)]">{t('side.pipTopRight')}</option>
-              <option value="pip-top-left" className="bg-[var(--panel)]">{t('side.pipTopLeft')}</option>
-              <option value="side-by-side" className="bg-[var(--panel)]">{t('side.sideBySide')}</option>
-              <option value="vertical-9-16" className="bg-[var(--panel)]">{t('side.vertical916')}</option>
+              <option value="pip-bottom-right">{t('side.pipBottomRight')}</option>
+              <option value="pip-bottom-left">{t('side.pipBottomLeft')}</option>
+              <option value="pip-top-right">{t('side.pipTopRight')}</option>
+              <option value="pip-top-left">{t('side.pipTopLeft')}</option>
+              <option value="side-by-side">{t('side.sideBySide')}</option>
+              <option value="vertical-9-16">{t('side.vertical916')}</option>
             </select>
           </div>
 
@@ -2258,15 +2259,15 @@ function CompositionSection() {
             <RangeRow label={t('side.size')} value={webcam.size} min={0.08} max={0.6} step={0.01} onChange={(v) => setWebcam({ size: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
             <div className="mt-2">
               <Label>{t('side.shape')}</Label>
-              <div className="flex items-center rounded-xl bg-black/25 dark:bg-black/40 p-0.5 border border-[var(--stroke)] shadow-inner">
+              <div className="grid grid-cols-3 gap-1.5">
                 <ShapeBtn active={webcam.shape === 'rectangle'} onClick={() => setWebcam({ shape: 'rectangle' })} label={t('side.rectangle')}>
-                  <RectangleHorizontal size={13} />
+                  <RectangleHorizontal size={14} />
                 </ShapeBtn>
                 <ShapeBtn active={webcam.shape === 'square'} onClick={() => setWebcam({ shape: 'square' })} label={t('side.square')}>
-                  <Square size={13} />
+                  <Square size={14} />
                 </ShapeBtn>
                 <ShapeBtn active={webcam.shape === 'circle'} onClick={() => setWebcam({ shape: 'circle' })} label={t('side.circle')}>
-                  <Circle size={13} />
+                  <Circle size={14} />
                 </ShapeBtn>
               </div>
             </div>
@@ -2282,7 +2283,7 @@ function CompositionSection() {
         <ToggleRow label={t('side.fullScreen')} checked={fullBleed} onChange={setFullBleed} />
         <p className="mb-2 text-[11px] leading-snug text-[var(--faint)]">{t('side.fullScreenHint')}</p>
         <div className={fullBleed ? 'pointer-events-none opacity-40' : undefined} aria-hidden={fullBleed}>
-        <div className="mb-3 flex items-center rounded-xl bg-black/25 dark:bg-black/40 p-0.5 border border-[var(--stroke)] shadow-inner">
+        <div className="mb-2 flex flex-wrap gap-1">
           <BgTab active={background.mode === 'image'} onClick={() => setBackground({ mode: 'image', value: background.mode === 'image' ? background.value : '' })}>{t('side.image')}</BgTab>
           <BgTab active={background.mode === 'color'} onClick={() => setBackground({ mode: 'color', value: background.mode === 'color' ? background.value : '#1a1d23' })}>{t('side.color')}</BgTab>
           <BgTab active={background.mode === 'gradient'} onClick={() => setBackground({ mode: 'gradient', value: background.mode === 'gradient' ? background.value : 'linear-gradient(135deg,#fb923c,#ec4899)' })}>{t('side.gradient')}</BgTab>
@@ -2292,7 +2293,7 @@ function CompositionSection() {
         {(background.mode === 'field' || background.mode === 'shader') && <FieldPanel />}
         {background.mode === 'mesh' && (
           <div className="space-y-2">
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-1.5">
               {MESH_PRESETS.map((m, i) => (
                 <button
                   key={m.id}
@@ -2300,10 +2301,10 @@ function CompositionSection() {
                   title={`Mesh ${i + 1}`}
                   onClick={() => setBackground({ mode: 'mesh', value: m.id })}
                   className={
-                    'aspect-[16/10] overflow-hidden rounded-xl border transition-all duration-200 active:scale-95 shadow-sm ' +
+                    'overflow-hidden rounded transition ' +
                     (background.value === m.id
-                      ? 'border-[#0A84FF] ring-2 ring-[#0A84FF]/50 shadow-[0_0_12px_rgba(10,132,255,0.4)]'
-                      : 'border-white/10 hover:border-white/30 hover:scale-105')
+                      ? 'ring-2 ring-[var(--accent)]'
+                      : 'ring-1 ring-[var(--line)] hover:ring-white/30')
                   }
                 >
                   <MeshThumb id={m.id} />
@@ -2317,7 +2318,7 @@ function CompositionSection() {
           <div className="space-y-2">
             {/* Live preview tile — large, shows the current hex prominently */}
             <div
-              className="flex h-16 w-full items-center justify-center rounded-xl border border-[var(--line)] font-mono text-xs shadow-inner"
+              className="flex h-16 w-full items-center justify-center rounded-md border border-[var(--line)] font-mono text-xs"
               style={{
                 backgroundColor: background.value,
                 color: pickReadableTextColor(background.value)
@@ -2334,10 +2335,10 @@ function CompositionSection() {
                   title={c}
                   onClick={() => setBackground({ mode: 'color', value: c })}
                   className={
-                    'aspect-square rounded-lg transition-transform hover:scale-110 active:scale-95 ' +
+                    'aspect-square rounded transition ' +
                     (background.value.toLowerCase() === c.toLowerCase()
-                      ? 'ring-2 ring-[#0A84FF] shadow-[0_0_8px_rgba(10,132,255,0.5)]'
-                      : 'ring-1 ring-white/10 hover:ring-white/30')
+                      ? 'ring-2 ring-[var(--accent)]'
+                      : 'ring-1 ring-[var(--line)] hover:ring-white/30')
                   }
                   style={{ backgroundColor: c }}
                 />
@@ -2349,7 +2350,7 @@ function CompositionSection() {
                 type="color"
                 value={background.value}
                 onChange={(e) => setBackground({ mode: 'color', value: e.target.value })}
-                className="h-8 w-8 shrink-0 cursor-pointer rounded-lg border border-[var(--btn-squircle-border)] bg-transparent"
+                className="h-8 w-8 shrink-0 cursor-pointer rounded border border-[var(--line)] bg-transparent"
                 aria-label="Pick color"
               />
               <input
@@ -2362,13 +2363,13 @@ function CompositionSection() {
                   }
                 }}
                 placeholder="#RRGGBB"
-                className="h-8 flex-1 rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--field)] px-3 font-mono text-xs uppercase outline-none focus:border-[#0A84FF] shadow-inner"
+                className="h-8 flex-1 rounded border border-[var(--line)] bg-[var(--field)] px-2 font-mono text-xs uppercase outline-none focus:border-[var(--accent)]"
               />
             </div>
           </div>
         )}
         {background.mode === 'gradient' && (
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-4 gap-1.5">
             {GRADIENTS.map((g, i) => (
               <button
                 key={g}
@@ -2376,10 +2377,7 @@ function CompositionSection() {
                 title={`Gradient ${i + 1}`}
                 onClick={() => setBackground({ mode: 'gradient', value: g })}
                 className={
-                  'aspect-[16/10] rounded-xl border transition-all duration-200 active:scale-95 ' +
-                  (background.value === g
-                    ? 'border-[#0A84FF] ring-2 ring-[#0A84FF]/50 shadow-[0_0_12px_rgba(10,132,255,0.4)]'
-                    : 'border-white/10 hover:border-white/30 hover:scale-105')
+                  'aspect-square rounded ' + (background.value === g ? 'ring-2 ring-[var(--accent)]' : 'ring-1 ring-[var(--line)]')
                 }
                 style={{ backgroundImage: g }}
               />
@@ -2387,14 +2385,14 @@ function CompositionSection() {
           </div>
         )}
         {background.mode === 'image' && (
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             <button
               onClick={handleUploadImage}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--btn-squircle-border)] bg-[var(--btn-squircle)] px-3 py-2 text-xs font-semibold text-[var(--text)] hover:bg-[var(--btn-squircle-hover)] shadow-sm transition-all duration-150 active:scale-[0.99]"
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-sm hover:bg-[var(--panel-2)]"
             >
               <Upload size={14} /> {t('side.uploadCustom')}
             </button>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-1.5">
               {WALLPAPER_URLS.map((url, i) => (
                 <button
                   key={url}
@@ -2402,22 +2400,22 @@ function CompositionSection() {
                   title={`Wallpaper ${i + 1}`}
                   onClick={() => setBackground({ mode: 'image', value: url })}
                   className={
-                    'group aspect-[16/10] overflow-hidden rounded-xl border transition-all duration-200 active:scale-95 shadow-sm ' +
+                    'aspect-square overflow-hidden rounded transition ' +
                     (background.value === url
-                      ? 'border-[#0A84FF] ring-2 ring-[#0A84FF]/50 shadow-[0_0_12px_rgba(10,132,255,0.4)]'
-                      : 'border-white/10 hover:border-white/30 hover:scale-105')
+                      ? 'ring-2 ring-[var(--accent)]'
+                      : 'ring-1 ring-[var(--line)] hover:ring-white/30')
                   }
                 >
-                  <img src={url} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-110" loading="lazy" />
+                  <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
                 </button>
               ))}
             </div>
             {background.value && !WALLPAPER_URLS.includes(background.value) && (
-              <div className="relative h-20 w-full overflow-hidden rounded-xl border border-[var(--line)] shadow-inner">
+              <div className="relative h-20 w-full overflow-hidden rounded border border-[var(--line)]">
                 <img src={background.value} alt="custom background preview" className="h-full w-full object-cover" />
                 <button
                   onClick={() => setBackground({ mode: 'image', value: '' })}
-                  className="absolute right-1.5 top-1.5 rounded-lg bg-[var(--panel-2)]/90 backdrop-blur-md p-1 text-[var(--text)] hover:bg-[var(--panel-3)] shadow-md transition"
+                  className="absolute right-1 top-1 rounded bg-[var(--panel-2)] p-0.5 text-[var(--text)] hover:bg-[var(--panel-2)]"
                   title={t('side.clearImage')}
                   aria-label={t('side.clearImage')}
                 >
@@ -3293,11 +3291,7 @@ function ExportProgressModal({ busy, onCancel }: { busy: BusyState; onCancel: ()
 }
 
 function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="sb-label text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)] select-none">
-      {children}
-    </div>
-  );
+  return <div className="sb-label text-xs font-semibold text-[var(--text)] tracking-normal">{children}</div>;
 }
 
 // How zoom transitions move. Document-level, not per-region: mixing a snappy
@@ -3855,10 +3849,10 @@ function ShapeBtn({
       title={label}
       aria-label={label}
       aria-pressed={active}
-      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 px-2 text-xs font-medium transition-all duration-150 ${
+      className={`flex items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-xs font-medium transition-all duration-150 ${
         active
-          ? 'bg-[var(--seg-on)] text-[var(--seg-on-fg)] shadow-[0_1px_3px_rgba(0,0,0,0.25)] font-semibold'
-          : 'text-[var(--muted)] hover:text-[var(--text)]'
+          ? 'bg-[#0A84FF] text-white shadow-[0_2px_10px_rgba(10,132,255,0.35)]'
+          : 'bg-[var(--btn-squircle)] text-[var(--muted)] border border-[var(--btn-squircle-border)] hover:bg-[var(--btn-squircle-hover)] hover:text-[var(--text)]'
       }`}
     >
       {children}
