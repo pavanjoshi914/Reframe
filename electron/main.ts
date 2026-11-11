@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, nativeTheme, clipboard, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut, session } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, nativeTheme, clipboard, ipcMain, desktopCapturer, screen, shell, protocol, dialog, globalShortcut, session, systemPreferences } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
@@ -975,6 +975,16 @@ function ensureUio() {
 
 // Ensure the global hook is loaded + running. Returns false if unavailable.
 function startUio(): boolean {
+  if (process.platform === 'darwin') {
+    try {
+      if (typeof systemPreferences?.isTrustedAccessibilityClient === 'function') {
+        const trusted = systemPreferences.isTrustedAccessibilityClient(true);
+        if (!trusted) {
+          console.warn('[main] macOS Accessibility permission requested for mouse click & cursor tracking');
+        }
+      }
+    } catch { /* ignore */ }
+  }
   const h = ensureUio();
   if (h && !uioRunning) {
     try { h.start(); uioRunning = true; } catch (err) { console.warn('[main] uiohook start failed', err); uioHook = null; }

@@ -131,28 +131,51 @@ async function openHelperAudio(
   try {
     const tracks: MediaStreamTrack[] = [];
     if (opts.withSystemAudio) {
-      const keepAlive = await navigator.mediaDevices.getUserMedia({
-        audio: { mandatory: { chromeMediaSource: 'desktop' } },
-        video: {
-          mandatory: {
-            chromeMediaSource: 'desktop',
-            chromeMediaSourceId: opts.sourceId,
-            maxWidth: 2,
-            maxHeight: 2,
-            maxFrameRate: 1
+      try {
+        const keepAlive = await navigator.mediaDevices.getUserMedia({
+          audio: { mandatory: { chromeMediaSource: 'desktop' } },
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: opts.sourceId,
+              maxWidth: 2,
+              maxHeight: 2,
+              maxFrameRate: 1
+            }
           }
-        }
-      } as unknown as MediaStreamConstraints);
-      owned.push(keepAlive);
-      tracks.push(...keepAlive.getAudioTracks());
+        } as unknown as MediaStreamConstraints);
+        owned.push(keepAlive);
+        tracks.push(...keepAlive.getAudioTracks());
+      } catch (sysErr) {
+        console.warn('[recording] helper system audio unavailable', sysErr);
+      }
     }
     if (opts.withMic) {
-      const mic = await navigator.mediaDevices.getUserMedia({
-        audio: opts.micDeviceId ? { deviceId: { exact: opts.micDeviceId } } : true,
-        video: false
-      });
-      owned.push(mic);
-      tracks.push(...mic.getAudioTracks());
+      try {
+        let mic: MediaStream | null = null;
+        if (opts.micDeviceId) {
+          try {
+            mic = await navigator.mediaDevices.getUserMedia({
+              audio: { deviceId: { exact: opts.micDeviceId } },
+              video: false
+            });
+          } catch (devErr) {
+            console.warn('[recording] helper specific mic unavailable, trying default', devErr);
+          }
+        }
+        if (!mic) {
+          mic = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false
+          });
+        }
+        if (mic) {
+          owned.push(mic);
+          tracks.push(...mic.getAudioTracks());
+        }
+      } catch (micErr) {
+        console.warn('[recording] helper mic unavailable (no mic or permission denied)', micErr);
+      }
     }
     if (tracks.length === 0) {
       owned.forEach((s) => s.getTracks().forEach((t) => t.stop()));
@@ -269,14 +292,22 @@ export async function startRecording(opts: RecordingOptions): Promise<RecordingH
     }
   }
 
+  const isMac =
+    (typeof navigator !== 'undefined' &&
+      (navigator.platform?.toLowerCase().includes('mac') || navigator.userAgent.toLowerCase().includes('mac'))) ||
+    false;
+
+  // On macOS, desktop capture audio is not supported in Chromium getUserMedia
+  // and requesting it will reject with OverconstrainedError / NotFoundError.
   const constraints: any = {
-    audio: opts.withSystemAudio
-      ? {
-          mandatory: {
-            chromeMediaSource: 'desktop'
+    audio:
+      opts.withSystemAudio && !isMac
+        ? {
+            mandatory: {
+              chromeMediaSource: 'desktop'
+            }
           }
-        }
-      : false,
+        : false,
     video: {
       mandatory: {
         chromeMediaSource: 'desktop',
@@ -291,26 +322,57 @@ export async function startRecording(opts: RecordingOptions): Promise<RecordingH
     }
   };
 
-  const screenStream = await navigator.mediaDevices.getUserMedia(constraints);
+  let screenStream: MediaStream;
+  try {
+    screenStream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (err) {
+    if (constraints.audio) {
+      console.warn('[recording] desktop capture with audio failed; retrying video-only', err);
+      constraints.audio = false;
+      screenStream = await navigator.mediaDevices.getUserMedia(constraints);
+    } else {
+      throw err;
+    }
+  }
 
   let combinedStream = screenStream;
   if (opts.withMic) {
-    const micStream = await navigator.mediaDevices.getUserMedia({
-      audio: opts.micDeviceId ? { deviceId: { exact: opts.micDeviceId } } : true,
-      video: false
-    });
-    const tracks: MediaStreamTrack[] = [...screenStream.getVideoTracks()];
-    const audioTracks: MediaStreamTrack[] = [...screenStream.getAudioTracks(), ...micStream.getAudioTracks()];
-    if (audioTracks.length > 0) {
-      const ctx = new AudioContext();
-      const dest = ctx.createMediaStreamDestination();
-      audioTracks.forEach((t) => {
-        const src = ctx.createMediaStreamSource(new MediaStream([t]));
-        src.connect(dest);
-      });
-      tracks.push(...dest.stream.getAudioTracks());
+    let micStream: MediaStream | null = null;
+    try {
+      if (opts.micDeviceId) {
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio: { deviceId: { exact: opts.micDeviceId } },
+            video: false
+          });
+        } catch (devErr) {
+          console.warn('[recording] specific mic device unavailable, trying default mic', devErr);
+        }
+      }
+      if (!micStream) {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: false
+        });
+      }
+    } catch (err) {
+      console.warn('[recording] mic capture failed (no mic plugged in or permission denied); continuing without mic', err);
     }
-    combinedStream = new MediaStream(tracks);
+
+    if (micStream) {
+      const tracks: MediaStreamTrack[] = [...screenStream.getVideoTracks()];
+      const audioTracks: MediaStreamTrack[] = [...screenStream.getAudioTracks(), ...micStream.getAudioTracks()];
+      if (audioTracks.length > 0) {
+        const ctx = new AudioContext();
+        const dest = ctx.createMediaStreamDestination();
+        audioTracks.forEach((t) => {
+          const src = ctx.createMediaStreamSource(new MediaStream([t]));
+          src.connect(dest);
+        });
+        tracks.push(...dest.stream.getAudioTracks());
+      }
+      combinedStream = new MediaStream(tracks);
+    }
   }
 
   const settings = screenStream.getVideoTracks()[0].getSettings();

@@ -149,6 +149,8 @@ export function HudApp() {
         const video = devices.filter((d) => d.kind === 'videoinput');
         setAudioInputs(audio);
         setVideoInputs(video);
+        if (audio.length === 0) setMic(false);
+        if (video.length === 0) setCam(false);
         // If a previously-selected device has been unplugged, drop the saved
         // selection so `getUserMedia` doesn't fail on a stale deviceId. The
         // UI shows "System default" again until the user picks something.
@@ -420,7 +422,13 @@ export function HudApp() {
         </ToggleBtn>
         <ToggleWithMenu
           active={mic}
-          onToggle={() => setMic((v) => !v)}
+          onToggle={() => {
+            if (!mic && audioInputs.length === 0) {
+              alert(t('hud.noDevices') + ' (Microphone)');
+              return;
+            }
+            setMic((v) => !v);
+          }}
           title={t('hud.microphone')}
           icon={<MdMic size={18} />}
           iconOff={<MdMicOff size={18} />}
@@ -435,7 +443,13 @@ export function HudApp() {
         />
         <ToggleWithMenu
           active={cam}
-          onToggle={() => setCam((v) => !v)}
+          onToggle={() => {
+            if (!cam && videoInputs.length === 0) {
+              alert(t('hud.noDevices') + ' (Camera)');
+              return;
+            }
+            setCam((v) => !v);
+          }}
           title={t('hud.webcam')}
           icon={<MdVideocam size={18} />}
           iconOff={<MdVideocamOff size={18} />}

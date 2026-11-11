@@ -50,9 +50,16 @@ Applications:
 - **Apple Silicon** (M1–M4): `Reframe-0.6.5-arm64.dmg`
 - **Intel**: `Reframe-0.6.5.dmg`
 
-> The app isn't notarized yet, so on first launch **right-click it → Open**
-> instead of double-clicking. If macOS says it's "damaged", clear the quarantine
-> flag: `xattr -cr /Applications/Reframe.app`
+> **First launch & permissions:**
+> 1. Since the app is not notarized with an Apple Developer cert yet, clear the quarantine flag after dragging to Applications:
+>    ```bash
+>    xattr -cr /Applications/Reframe.app
+>    ```
+> 2. On first launch, right-click `/Applications/Reframe.app` → **Open**.
+> 3. **Required macOS Permissions** (`System Settings > Privacy & Security`):
+>    - **Screen & System Audio Recording**: Grant Reframe permission so ScreenCaptureKit can record the display and hide the system pointer (enabling custom smooth cursors).
+>    - **Accessibility**: Grant Reframe permission so it can capture mouse clicks and pointer coordinates for custom cursor animations.
+>    - **Microphone**: If recording voice (note: Mac Mini has no built-in mic; plug in a USB mic or headset).
 
 ---
 
