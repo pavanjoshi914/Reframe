@@ -75,6 +75,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.6.6" date="2026-11-11">
+      <description>
+        <p>Modernized macOS UI &amp; Recording Hardware Robustness: Modern sleek macOS obsidian theme, frosted glass HUD Dynamic Island capsule, and Screen Studio style titlebar. Fixed device not found errors on Mac Mini and setups without microphones or cameras. Added graceful audio fallback and on-demand macOS Accessibility permission prompts for custom cursor and click tracking.</p>
+      </description>
+    </release>
     <release version="0.6.5" date="2026-10-26">
       <description>
         <p>macOS Native Capture &amp; Custom Cursor Fixes: Native ScreenCaptureKit capture and AppKit cursor kind detection now compile automatically for local development and macOS distribution. Resolved 8-second avfoundation startup delay and eliminated redundant window thumbnail captures. Fixed Retina cursor coordinate normalization so custom cursors and click ripples track accurately across the full screen without distortion.</p>
